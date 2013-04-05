@@ -1,0 +1,47 @@
+% This script uses no keyholing (i.e. uses all data) to reconstruct the
+% data acquired with "ute3d_keyhole.ppg" in the Bruker scanner.
+
+
+clc
+%% INPUTS
+% for i=13:29
+local_data_dir='E:\Scans_20120501\'; %Final directory of data in my computer (local)
+runno='00390'; %Initial run number (needs to be string for now)
+host_data_dir='20111007.dL1';
+host_scan_dir=42; %Not a string
+mat=128; %Reconstruction matrix size
+
+
+%% Get data from scanner
+% Bruker_pscp_and_move(local_data_dir, runno, host_data_dir, host_scan_dir);
+% cd(['B' runno '\From_Scanner']);
+
+% end
+%% Get trajectory data and calculate dcf
+tStart=tic;
+t1=tic;
+mat2=mat/2;
+[kspace_coords, nviews]=Bruker_open_3D_traj(mat2);
+
+iter=18; %Number of iterations used for dcf calculation
+dcf=sdc3_MAT(kspace_coords, iter, mat, 0, 2.1, ones(mat2, nviews));
+
+dcf_name=['B' runno '_no_keyholing_dcf'];
+
+assignin('base', dcf_name, dcf);
+save(dcf_name, dcf_name, '-v7.3'); clear(dcf_name);
+t1_end=toc(t1);
+display(['Calculating the density compensation factors took ' num2str(t1_end/60) ' minutes'])
+
+
+%% Get kspace data and reconstruct
+[kspace_data_all, tot_views]=Bruker_open_3D_fid(2*mat);
+Bruker_parse_acquisition_data(kspace_data_all, 1);
+
+data_name=['acq' num2str(1) '_data'];
+load(data_name); eval(['d=' data_name ';']); clear(data_name);
+dcf=['B' runno '_no_keyholing_dcf'];load(dcf);dcfv=eval(dcf); clear(dcf);
+Bruker_recon_3Dradial_4element_array_coil(runno, d, kspace_coords, dcfv, mat, 1, 0);
+
+tElapsed=toc(tStart);
+display(['Calculating the dcf and reconstructing the image took ' num2str(tElapsed/60) ' minutes'])

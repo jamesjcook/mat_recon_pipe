@@ -1,0 +1,83 @@
+#! /usr/local/radish-link/perl
+# Simplish perl script to run matlab procpar parser and save a headfile
+#
+# # comment
+# name=value
+#
+
+
+use strict;
+use warnings;
+my $ERROR_EXIT = 1;
+my $GOOD_EXIT  = 0;
+use Env qw(RADISH_RECON_DIR);
+if (! defined($RADISH_RECON_DIR)) {
+    print STDERR "Environment variable RADISH_RECON_DIR must be set. Are you user omega?\n";
+    print STDERR "   CIVM HINT setenv RADISH_RECON_DIR /recon_home/script/dir_radish\n";
+    print STDERR "Bye.\n";
+    exit $ERROR_EXIT;
+}
+#use lib "$RADISH_RECON_DIR/modules/script";
+use Env qw(RADISH_PERL_LIB);
+if (! defined($RADISH_PERL_LIB)) {
+    print STDERR "Cannot find good perl directories, quiting\n";
+    exit $ERROR_EXIT;
+}
+use lib split(':',$RADISH_PERL_LIB);
+use Env qw(RECON_HOSTNAME);
+if (! defined($RECON_HOSTNAME)) {
+    print STDERR "Environment variable RECON_HOSTNAME must be set.";
+    exit $ERROR_EXIT;
+}
+
+require Headfile;
+#require shared;
+require pipeline_utilities;
+use English;
+# use GetOpt::Std;
+use civm_simple_util qw(load_file_to_array);
+my $debug_val=0;
+my $VERSION = "12/11/21";
+my $function_m_name='agilent_saveprocparhf';
+
+my $engine_file = join("_","engine","$RECON_HOSTNAME","radish_dependencies");
+my $the_engine_constants_path = join("/",$RADISH_RECON_DIR, $engine_file);
+my $Engine_constants = new Headfile ('ro', $the_engine_constants_path);
+$Engine_constants->check()         or exit("Unable to open engine constants file $the_engine_constants_path\n");
+$Engine_constants->read_headfile() or exit("Unable to read engine constants from file $the_engine_constants_path\n");
+
+my $short_unique_purpose=$function_m_name.$PID; #$Engine_constants->get_value('scanner_pfile_header_app')
+my $matlab_app=$Engine_constants->get_value('engine_app_matlab');
+
+if ($#ARGV ne 0) {
+    error_out("no file specified, must specify full path to file to read");
+}
+
+###
+# handle input
+###
+
+###
+# read @ARGV's
+###
+my $pfile_path=shift(@ARGV);
+
+my ($n,$work_dir,$ext)=fileparts($pfile_path);
+
+###
+# set up and call matlab
+###
+open_log($work_dir);
+my $args="\'$work_dir\'";
+
+my $mat_cmd=make_matlab_command_nohf($function_m_name, $args, $short_unique_purpose, $work_dir, $matlab_app); 
+my $rc=execute(1,"",$mat_cmd);
+my $procpar_hf=$work_dir.'procpar'.'.headfile';
+#exec("cat $procpar_hf");
+my @lines;
+load_file_to_array($procpar_hf,\@lines);
+for my $line (@lines) {
+    print("$line");
+}
+exit;
+

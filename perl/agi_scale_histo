@@ -1,0 +1,140 @@
+#!/usr/local/radish-link/perl
+# Simplish perl script to run matlab scale_histo
+#
+#
+#
+#
+
+
+use strict;
+use warnings;
+my $ERROR_EXIT = 1;
+my $GOOD_EXIT  = 0;
+use Env qw(RADISH_RECON_DIR);
+if (! defined($RADISH_RECON_DIR)) {
+    print STDERR "Environment variable RADISH_RECON_DIR must be set. Are you user omega?\n";
+    print STDERR "   CIVM HINT setenv RADISH_RECON_DIR /recon_home/script/dir_radish\n";
+    print STDERR "Bye.\n";
+    exit $ERROR_EXIT;
+}
+#use lib "$RADISH_RECON_DIR/modules/script";
+use Env qw(RADISH_PERL_LIB);
+if (! defined($RADISH_PERL_LIB)) {
+    print STDERR "Cannot find good perl directories, quiting\n";
+    exit $ERROR_EXIT;
+}
+use lib split(':',$RADISH_PERL_LIB);
+use Env qw(RECON_HOSTNAME);
+if (! defined($RECON_HOSTNAME)) {
+    print STDERR "Environment variable RECON_HOSTNAME must be set.";
+    exit $ERROR_EXIT;
+}
+
+require Headfile;
+#require shared;
+require pipeline_utilities;
+use English;
+use Getopt::Std;
+#use civm_simple_util qw(load_file_to_array);
+my $debug_val=0;
+my $VERSION = "20121128_james";
+my $function_m_name='agilent_scale_histo';
+
+my $engine_file = join("_","engine","$RECON_HOSTNAME","radish_dependencies");
+my $the_engine_constants_path = join("/",$RADISH_RECON_DIR, $engine_file);
+my $Engine_constants = new Headfile ('ro', $the_engine_constants_path);
+$Engine_constants->check()         or exit("Unable to open engine constants file $the_engine_constants_path\n");
+$Engine_constants->read_headfile() or exit("Unable to read engine constants from file $the_engine_constants_path\n");
+
+my $short_unique_purpose=$function_m_name.$PID; #$Engine_constants->get_value('scanner_pfile_header_app')
+my $matlab_app=$Engine_constants->get_value('engine_app_matlab');
+
+my %options = ();
+#threftopts string if (! getopts('x:y:xz:f:r:w:b:p:c:t:h:m:', \%options)) {
+#reformeropts string if (! getopts('s:f:m:b:x:p:e:h:iIqQajlwd:', \%options)) {
+my $ret=getopts('f:d:p:h:iq', \%options);
+if (!$ret || $#ARGV < 5) {
+    my $c_message='
+  Usage: scale_histo [-sfmbqpeiqw] filename xdim ydim zdim histo_bins histo_percent
+  Find value to be mapped to fullscale ("scale-max") for scaling images from a complex volume.
+  The complex input file is typically the result of a 3dft reconstruction.
+  Good to provide input file max voxel value (-f) if you know it (avoids scan of volume).
+  Writes a file named convert_info_histo containing calulated scale-max. form 12345.222=any text
+Required params:
+   filename : name of file to reform: a floating point complex data file.
+   xdim     : x dimension of the file (x dim of output image)
+   ydim     : y dimension of the file (y dim of output image)
+   zdim     : z dimension of the file (number of output images)
+   histo_bins : number of bins to use in creating intensity-histogram (must allow accuracy to percent chosen).
+                Histogram is x=intensity (complex mag, i or q), y=count.
+   histo_percent: percent of total voxels to be encompassed by histogram.
+                The intensity-bin (x) at this count percent defines "scale-max" result.
+Options:
+   -f filename : Find intensity max written in this text file (typically produced by recon). Data scan for max
+                 is skipped. Avoid using with with -i, -r unless this max reflects correct channel.
+                 max text file form:1234567.89=any words
+   -d usermax  : Provide known intensity max, overrides -f 
+   -p odir     : Directory for output file convert_info_histo containing "scale-max" result value (default .)
+   -h bytes    : Header bytes, to override default 61464.
+   -i          : histogram based on i channel intensities, vs. default mag(i,q) .
+                 Don\'t use this with -f unless file contains i-channel max.
+   -q          : histogram based on q channel intensities, vs. default mag(i,q) .
+                 Don\'t use this with -f unless file contains q-channel max.
+The  vintage of this program is: 2007/6/25 slg
+Exit 1';
+    error_out("Unreconized or not enough  options passed to agi_scale_histo, got $#ARGV args");
+}
+
+
+foreach (sort(keys(%options))){
+    print("key=value:",$_,"=",$options{$_},"\n");
+}
+
+###
+# handle input
+###
+
+my $work_dir;
+if ( defined $options{p} ) {
+    $work_dir=$options{p};
+}
+my $max_file=$options{f};
+my $headbytes=$options{h} or 0;
+my $histo_channel='mag';
+if( defined $options{i}) {
+    $histo_channel='i';
+}
+if( defined $options{q}) {
+    $histo_channel='r';
+}
+my $maxin;
+if( defined $options{d} ) {
+    $maxin=$options{d};
+} else {
+    $maxin="\'$max_file\'";
+}
+
+###
+# read @ARGV's
+###
+my $file_path=shift(@ARGV);#input file of complex data
+my $x=shift(@ARGV);
+my $y=shift(@ARGV);
+my $z=shift(@ARGV);
+my $histo_bins=shift(@ARGV);
+my $histo_percent=shift(@ARGV);
+
+###
+# set up and call matlab
+###
+open_log($work_dir);
+#(filename,dims,histo_bins,histo_percent,maxin,outdir,histchannel)
+my $args="\'$file_path\',[$x $y $z],$histo_bins,$histo_percent,$maxin,\'$work_dir\',\'$histo_channel\'"; 
+
+
+#passing empty string to nohf at end of args so destination will be cmdline
+my $mat_cmd=make_matlab_command_nohf($function_m_name, $args, $short_unique_purpose, $work_dir, $matlab_app,''); 
+# calls make_matlab_m_file();
+#   my ($function_m_name, $args, $short_unique_purpose, $work_dir, $matlab_app) = @_;
+my $rc=execute(1,"",$mat_cmd);
+

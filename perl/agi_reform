@@ -1,0 +1,148 @@
+#!/usr/local/radish-link/perl
+# Simplish perl script to run matlab reformat raw reonstructed volume to civmraw
+# emulates sally's reform c program
+# # comment
+# name=value
+#
+
+
+use strict;
+use warnings;
+my $ERROR_EXIT = 1;
+my $GOOD_EXIT  = 0;
+use Env qw(RADISH_RECON_DIR);
+if (! defined($RADISH_RECON_DIR)) {
+    print STDERR "Environment variable RADISH_RECON_DIR must be set. Are you user omega?\n";
+    print STDERR "   CIVM HINT setenv RADISH_RECON_DIR /recon_home/script/dir_radish\n";
+    print STDERR "Bye.\n";
+    exit $ERROR_EXIT;
+}
+#use lib "$RADISH_RECON_DIR/modules/script";
+use Env qw(RADISH_PERL_LIB);
+if (! defined($RADISH_PERL_LIB)) {
+    print STDERR "Cannot find good perl directories, quiting\n";
+    exit $ERROR_EXIT;
+}
+use lib split(':',$RADISH_PERL_LIB);
+use Env qw(RECON_HOSTNAME);
+if (! defined($RECON_HOSTNAME)) {
+    print STDERR "Environment variable RECON_HOSTNAME must be set.";
+    exit $ERROR_EXIT;
+}
+
+require Headfile;
+#require shared;
+require pipeline_utilities;
+use English;
+use Getopt::Std;
+#use civm_simple_util qw(load_file_to_array);
+my $debug_val=0;
+my $VERSION = "20121128_james";
+my $function_m_name='complex_reformer';
+
+my $engine_file = join("_","engine","$RECON_HOSTNAME","radish_dependencies");
+my $the_engine_constants_path = join("/",$RADISH_RECON_DIR, $engine_file);
+my $Engine_constants = new Headfile ('ro', $the_engine_constants_path);
+$Engine_constants->check()         or exit("Unable to open engine constants file $the_engine_constants_path\n");
+$Engine_constants->read_headfile() or exit("Unable to read engine constants from file $the_engine_constants_path\n");
+
+my $short_unique_purpose=$function_m_name.$PID; #$Engine_constants->get_value('scanner_pfile_header_app')
+my $matlab_app=$Engine_constants->get_value('engine_app_matlab');
+
+my %options = ();
+#if (! getopts('x:y:xz:f:r:w:b:p:c:t:h:m:', \%options)) {
+
+my $ret=getopts('s:f:m:b:x:p:e:h:iIqQajlwd:', \%options);
+if (!$ret || $#ARGV < 5) {
+    my $c_message='
+  Usage: reform [-sfmbqpeiqw] filename xdim ydim zdim basename sysid
+  Reform a single complex data file into CIVM images, by scaling.
+  The complex input file is typically the floating point result of a 3dft reconstruction.
+  Result is a series of short int images, named in CIVM convention
+  like S12345t7imx.0001
+  Default is autoscaling based on scan of input file to find max mag(i,q).
+Required params:
+   filename : name of file to reform: a floating point complex data file.
+   xdim     : x dimension of the file (x dim of output image)
+   ydim     : y dimension of the file (y dim of output image)
+   zdim     : z dimension of the file (number of output images)
+   basename : Beginning of result image file names (typically runno, or runnoS0001).
+   sysid    : Characters embedded inside result image file names (e.g. t2, t7...)
+              to identify the system which created them.
+Options:
+   -s divisor  : Override auto scaling.  Provide a scaling divisor for conversion here.
+                 Typically want (pixel value)/divisor <= file max (default max 32766).
+   -f maxfile  : Find (i,q) magnitude max stored in this file (produced by recon). Data scan for max
+                 is skipped. Avoid using with with -i, -r or -s.
+                 max text file form:1234567.89=any words
+   -m highint  : Use this as result integer image highest value instead of default 32766.
+   -b sliceno  : Begin conversion at this slice; skip conversion of slices with lower
+                 numbers (default 1)
+                 Autoscale based on range specified. 
+   -x sliceno  : Quit converting after this slice (default is zdim).
+                 Autoscale based on range specified. 
+   -p odir     : Directory for output images(s) (default .)
+   -e echochar : Add an echo letter image name (use a, b, c..., imx->ima). Default: none.
+   -h bytes    : Header bytes, to override default 66072.
+   -i          : Return abs of i channel, vs. default mag(i,q) .
+   -I          : Return signed i channel, vs. default mag(i,q) .
+                 Don\'t use -i,-I with -m, -q, -f.
+   -q          : Return abs of q channel, vs. default mag(i,q) .
+   -Q          : Return signed q channel, vs. default mag(i,q) .
+                 Don\'t use -q,-Q with -m, -i, -f.
+   -a          : Return phase angle scaled to max, vs. default mag(i,q) .
+   -j          : Return experimental channel calc; not guaranteed to work.
+   -l          : log scale the mag or channel data, prior to maxscan, scale. 
+   -w          : Byteswap short results, to opposite of whatever is native here. Not for -d
+   -d bytes    : Input is integer complex (not float), of this many bytes per complex point (4 or 8 allowed)
+   The  vintage of this program is: 12/03/25 slg
+';
+    print($c_message);
+    error_out("Unreconized or not enough  options passed to agi_reform, got $#ARGV args");
+}
+#/Volumes/recon_home/script/dir_radish/modules/bin_macINTEL/reform14 -p /naxosspace/N50030_test_m0/N50030_test_m0images -s 0.001 -h 0 /naxosspace/N50030_test_m0.work/N50030_test_m0.afid.out 256 128 128 N50030_test_m0 t9
+
+foreach (sort(keys(%options))){
+    print("key=value:",$_,"=",$options{$_},"\n");
+}
+
+###
+# handle input
+###
+my $work_dir;
+if ( defined$options{p} ) {
+    $work_dir=$options{p};
+} else { 
+    $work_dir='.';
+}
+my $divisor=1;
+my $maxfile='';
+my $headbytes=66072;
+if ( defined $options{s} ) { $divisor=$options{s}; }
+if ( defined $options{f} ) { $maxfile=$options{f}; }
+if ( defined $options{f} ) { $headbytes=$options{h}; }
+
+###
+# read @ARGV's
+###
+my $file_path=shift(@ARGV);
+my $x=shift(@ARGV);
+my $y=shift(@ARGV);
+my $z=shift(@ARGV);
+my $basename=shift(@ARGV); 
+my $sysid=shift(@ARGV);
+
+###
+# set up and call matlab
+###
+open_log($work_dir);
+
+my $args="\'$file_path\',\'$work_dir\',$divisor,[$x $y $z],\'$basename\',\'$sysid\',1,\'.raw\'"; 
+# the integer 1  says we're running command line to agilent_recon.m
+
+#passing empty string to nohf at end of args so destination will be cmdline
+my $mat_cmd=make_matlab_command_nohf($function_m_name, $args, $short_unique_purpose, $work_dir, $matlab_app,''); 
+# calls make_matlab_m_file();
+#   my ($function_m_name, $args, $short_unique_purpose, $work_dir, $matlab_app) = @_;
+my $rc=execute(1,"",$mat_cmd);
+

@@ -1,0 +1,128 @@
+#! /usr/local/radish-link/perl
+# Simplish perl script to run matlab agilent recon
+#
+# # comment
+# name=value
+#
+
+
+use strict;
+use warnings;
+my $ERROR_EXIT = 1;
+my $GOOD_EXIT  = 0;
+use Env qw(RADISH_RECON_DIR);
+if (! defined($RADISH_RECON_DIR)) {
+    print STDERR "Environment variable RADISH_RECON_DIR must be set. Are you user omega?\n";
+    print STDERR "   CIVM HINT setenv RADISH_RECON_DIR /recon_home/script/dir_radish\n";
+    print STDERR "Bye.\n";
+    exit $ERROR_EXIT;
+}
+#use lib "$RADISH_RECON_DIR/modules/script";
+use Env qw(RADISH_PERL_LIB);
+if (! defined($RADISH_PERL_LIB)) {
+    print STDERR "Cannot find good perl directories, quiting\n";
+    exit $ERROR_EXIT;
+}
+use lib split(':',$RADISH_PERL_LIB);
+use Env qw(RECON_HOSTNAME);
+if (! defined($RECON_HOSTNAME)) {
+    print STDERR "Environment variable RECON_HOSTNAME must be set.";
+    exit $ERROR_EXIT;
+}
+
+require Headfile;
+#require shared;
+require pipeline_utilities;
+use English;
+use Getopt::Std;
+#use civm_simple_util qw(load_file_to_array);
+my $debug_val=0;
+my $VERSION = "20121126_james";
+my $function_m_name='agilent_recon';
+
+my $engine_file = join("_","engine","$RECON_HOSTNAME","radish_dependencies");
+my $the_engine_constants_path = join("/",$RADISH_RECON_DIR, $engine_file);
+my $Engine_constants = new Headfile ('ro', $the_engine_constants_path);
+$Engine_constants->check()         or exit("Unable to open engine constants file $the_engine_constants_path\n");
+$Engine_constants->read_headfile() or exit("Unable to read engine constants from file $the_engine_constants_path\n");
+
+my $short_unique_purpose=$function_m_name.$PID; #$Engine_constants->get_value('scanner_pfile_header_app')
+my $matlab_app=$Engine_constants->get_value('engine_app_matlab');
+
+my %options = ();
+
+
+my $ret=getopts('x:y:xz:f:r:w:b:p:c:t:h:m:', \%options);
+if ( ! $ret || $#ARGV < 9) {
+    my $c_message='
+Usage: threeft <options> xc,yc,zc, xa,ya,za, dir, file, header, bpp
+  3dft for large arrays, handling asymmetric k center and filtering.
+Required parameters:
+  xdim, ydim, zdim    : raw data x, y and z collected dimensions (before optional zerofill)
+  xasym, yasym, zasym : PSD asymmetry settings to describe of center of collected kspace: (0..2.0) 1=no asym
+  in_dir              : directory path to input file (not including filename); the default output dir
+  in_filename         : name of raw data input file
+  in_header_bytes     : header bytes on input file
+  in_bpp              : choose 4, 8, -8 bytes per complex input pt, i.e. short(2x2), integer(2x4) or float(2x4) complex data
+ 
+Options and their default values:
+  -x img_dim  : result image x dim, to set zerofill; default is same as input dim (dft)
+  -y img_dim  : result image y dim, to set zerofill; default is same as input dim (dft)
+  -z img_dim  : result image z dim, to set zerofill; default is same as input dim (dft)
+                image dim >= acq dim. To expand dimension, zerofill will be applied on that dimension.
+  -f boolean  : Where to apply zerofill (when image dim>acq dim): 0=on high end, else on both ends; default=1
+  -r fraction : Fermi filter radius fraction; default 0.75; 0 sets Fermi filter OFF;
+                1.0 sets Fermi filter radius to longest data radius (wrt asy center)
+  -w fraction : Fermi filter width fraction (factor on longest data radius); default 0.15.
+  -b boolean  : do rubber ball Fermi radius, 0=off; else on; default is 1=on
+                1 does non-sphere filter when asym, with the Fermi radius mapped to each data radius
+  -p out_dir  : change the destination directory for output file; default is input directory.
+  -c npts     : set x filter with leading zeros: default is 0 points (no effect)
+  -t npts     : set x filter with leading trap ramp this wide: default is 0 points (no effect)
+  -h nbytes   : (empty) header bytes on output file: default=same size as input
+  -m nMB      : memory available to this program for slabs & slices, in integer MB; default 128 Mbytes.
+ 
+     Result filename is "in_filename".out
+     Places documenting text files (max image value, Fermi params), in output directory.
+slg version 110131';
+    error_out("Unreconized or not enough options passed to agi_recon, got $#ARGV args");
+}
+
+
+foreach (sort(keys(%options))){
+    print("key=value:",$_,"=",$options{$_},"\n");
+}
+
+###
+# handle input
+###
+
+###
+# read @ARGV's
+###
+my $xdim=shift @ARGV;
+my $ydim=shift @ARGV;
+my $zdim=shift @ARGV;
+my $xdim_asym=shift @ARGV;
+my $ydim_asym=shift @ARGV;
+my $zdim_asym=shift @ARGV;
+my $work_dir=shift @ARGV; 
+my $pfile_name=shift @ARGV; 
+my $header_bytes=shift @ARGV;
+my $in_bpp_code=shift @ARGV;
+
+###
+# set up and call matlab
+###
+open_log($work_dir);
+
+my $args="\'$work_dir\',\'$pfile_name\',1"; # the one says we're running command line to agilent_recon.m
+
+
+#passing empty string to nohf at end of args so destination will be cmdline
+my $mat_cmd=make_matlab_command_nohf($function_m_name, $args, $short_unique_purpose, $work_dir, $matlab_app,''); 
+# calls make_matlab_m_file();
+#   my ($function_m_name, $args, $short_unique_purpose, $work_dir, $matlab_app) = @_;
+my $rc=execute(1,"",$mat_cmd);
+
+

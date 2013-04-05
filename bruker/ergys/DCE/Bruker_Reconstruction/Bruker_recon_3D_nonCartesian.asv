@@ -1,0 +1,34 @@
+%% This function recons images using the regredding method
+
+function [] = Bruker_recon_3D_nonCartesian(runno, dv, kv, dcfv, mat, acq, keynumber)
+
+%===============INPUTS====================
+%runno=run number
+%dv=k-space data
+%kv=k-space coordinates for the data in dv
+%dcfv=density compensation factors
+%mat=reconstruction matrix size
+%acq=index of acquisition
+%keynumber=keynumber
+
+osf=3; %Oversampling factor
+kw=3; %Kernel width
+
+recon_mat=mat*osf;
+grid_volume=grid3_MAT(dv, kv, dcfv, recon_mat, 0);
+grid_data_real=grid_volume(1:2:end); %Real data
+grid_data_imag=grid_volume(2:2:end); %Imaginary data
+grid_data=complex(grid_data_real, grid_data_imag);
+grid_data=reshape(grid_data, recon_mat, recon_mat, recon_mat);
+f=hamming_window_3D(recon_mat); %Calculate filter
+grid_data=grid_data.*f; %Apply filter
+image=fftshift(abs(ifftn(grid_data)));
+image=crop_center_3D(image, mat); %Crop center
+recon_image=image; %Do not normalize in this case
+current_directory=pwd;
+
+%%
+image_name=['\B' runno '_acq' num2str(acq) '_full_recon_filtered_dcf' num2str(iter) 'iter_osf3_kw3.raw'];
+fid=fopen([current_directory image_name], 'w');
+fwrite(fid, recon_image, 'float32', 'l'); %Little-endian ordering (lab convention)
+fclose(fid);

@@ -1,0 +1,25 @@
+Here is some info I sent before to John. I am not sure if you have it. It could be useful in your case.
+
+1.       PV data point is typically 4 bytes (32 bits).
+
+2.       Acquisition limits:
+
+a.       If GO_online_reco = No (online RECO is switched off), then the limit is 231 data points (8 Gbytes) to be acquired per a channel. This includes the number of points that will be used for averaging. Number of channels is not important. If your data set consists of a number of points larger than 231, then an overflow in internal calculations leads to wrong size estimates and the acquisition eventually fails.  
+
+3.       Reconstruction limits:
+
+a.       The equation to estimate the required memory for RECO in bytes is 32*total number of points * number of channels. 32 = 4 (2 intermediate buffers for double precision 64-bit math) * 4 (in bytes) * 2 (to account that each data point is complex and has real and imaginary parts). If the memory required is more than 231 bytes (2 GB), then the PV RECO fails. This limit holds for each repetition, so multiple repetitions can be acquired (set GO_reco_each_nr = Yes).     
+
+4.       Workstation RAM memory setup:
+
+a.       No difference between 32-bit and 64-bit operating system (because PV is a 32-bit application).
+
+b.      In principle, 2 GBytes of RAM and enough swap space should be enough.
+
+c.       Larger RAM (e.g. 4 Gbytes) may improve reco performance in general, due to better disk caching.
+
+ 
+
+Best regards,
+
+Artem 

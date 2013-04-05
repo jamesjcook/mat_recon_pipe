@@ -1,0 +1,5 @@
+
+
+%VFC=variable frequency cutoff
+
+function []=Bruker_calc_key_coords_VFC()
