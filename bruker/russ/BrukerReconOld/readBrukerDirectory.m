@@ -10,6 +10,10 @@ end
 output.acqp = readBrukerHeader([directory 'acqp']);
 output.method = readBrukerHeader([directory 'method']);
 output.fid = readBrukerFID(directory, output.method);
+if exist([directory '../subject'],'file' )
 output.subject = readBrukerHeader([directory '../subject']);
+else
+    output.subject = readBrukerHeader([directory 'subject']);
+end
 
 end

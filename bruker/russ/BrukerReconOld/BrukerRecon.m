@@ -38,7 +38,12 @@ else
         out_file=strcat(bruker.subject.SUBJECT_name_string,'_',bruker.subject.SUBJECT_date,'.nii');
         save_nii(nii,fullfile(save_path,out_file));
     else
+        %%% assuming 2d single slice acquisiotn, but that is easily wrong. 
         data_mat=reshape(bruker.fid, bruker.method.PVM_Matrix(1,1), bruker.method.PVM_Matrix(1,2));
+%       above reshape not useful for the multi-2d sequcences.
+%       data_mat=reshape(bruker.fid, bruker.acqp.ACQ_size(1,1), bruker.acqp.ACQ_size(1,2),bruker.acqp.NI);
+   
+     
         img=fftshift(abs(ifftn(data_mat)));
         m=max(img(:));
         img=img/m*(2^15-1); %for converting to 16 bit

@@ -1,4 +1,4 @@
-Unified reconstructoin pipeline done in matlab.
+Unified reconstruction pipeline done in matlab.
 Starting with mri recons, however could be expanded given that most of the steps to image reconstruction are universal. 
 
 Core requirements are CHUNKING for memory sake
@@ -9,6 +9,7 @@ Could let data loader look at/modify header.
 
 High over view is 
 pull data   ( perhaps use simple puller )
+run GUI
 decide how much data to load
 for each chunk
   load data
