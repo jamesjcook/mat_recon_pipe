@@ -150,7 +150,7 @@ data_buffer.input_headfile.origin_path=datapath;
 work_dir_name= [runno '.work'];
 work_dir_path=[data_buffer.engine_constants.engine_work_directory '/' work_dir_name];
 if ~opt_struct.use_existing_data
-    cmd=['puller_simple ''' puller_option_string ''' ' scanner ' ' puller_data ' ' work_dir_path];
+    cmd=['puller_simple ' puller_option_string ' ' scanner ' ''' puller_data ''' ' work_dir_path];
     s =system(cmd);
     if s ~= 0
         error('puller failed:%s',cmd);
