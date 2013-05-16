@@ -13,10 +13,12 @@ function img=rad_mat(scanner,runno,input,options)
 % runno    - run number for output
 % input    - string or cell array of the data name on scanner
 %          - for agilent 20120101_01/ser01.fid
-%          - for bruker   {'study','series','datanum'}  
+%          - for bruker   {'patientid','scanid'}  
 %                (datanum is optional)
 % option   - for options of course.
 %
+
+
 % supporting for sure, bruker or agilent data location convention. 
 % have to pass puller simple the correct info to get everything we need. 
 % perhaps puller simple will understand bruker format data a bit....
@@ -49,19 +51,26 @@ end
 % list all options in option struct
 all_options={'overwrite'
     'use_existing_data'
-    'write_phase'
-    'fp32_magnitude'
-    'write_kimage'
-    'write_complex'
     'skip_mem_checks'
     'testmode'
-    'saveoutput'};
+    'fp32_magnitude'
+    'saveoutput'
+    'write_complex'
+    'write_kimage'
+    'write_phase'
+    'kspace_display'
+    'output_display'};
 % make all undefinted options = 0
 for o_num=1:length(all_options)
     if ~exist('opt_struct.(all_options{o})','var')
         opt_struct.(all_options{o_num})=0;
     end
 end
+opt_struct.saveoutput=true;
+opt_struct.combine_channels=true;
+opt_struct.kspace_display=false;
+opt_struct.output_display=false;
+
 opt_struct.output_order='xyzpct'; % order of dimensions on output. p is parameters, c is channels. 
 puller_option_string='';
 for o_num=1:length(options)
@@ -86,11 +95,15 @@ for o_num=1:length(options)
             opt_struct.overwrite=1;
             error('kimages option not fully implemented yet')
         case 'write_complex'
-            opt_struct.write_kimage=1;
-            opt_struct.overwrite=1;
-            error('kimages option not fully implemented yet')
+            opt_struct.write_complex=1;
+%             opt_struct.overwrite=1;
+            warning('write_complex option not fully implemented yet')
         case 'i'
             opt_struct.skip_mem_checks=1;
+        case 'kspace_display'
+            opt_struct.kspace_display=1;
+        case 'output_display'
+            opt_struct.output_display=1;
         case ''
             display('no additional options selected');
         otherwise
@@ -105,7 +118,7 @@ for o_num=1:length(options)
             end
     end
 end
-opt_struct.saveoutput=true;
+
 statusprints=10;
 data_buffer.scanner_constants=load_scanner_dependency(scanner);
 data_buffer.engine_constants=load_engine_dependency();
@@ -464,13 +477,12 @@ for chunk_num=1:num_chunks
         end
     end
     %%% pre regrid data save.
-    kspacedisplaycheck=false;
-    if kspacedisplaycheck==true
-        input_kspace=reshape(data_buffer.data,input_dimensions);
-    end
+%     if opt_struct.kspace_display==true
+%         input_kspace=reshape(data_buffer.data,input_dimensions);
+%     end
     %%% REGRID  just simple reshape for cartesian
     rad_regid(data_buffer,c_dims);
-    if kspacedisplaycheck==true
+    if opt_struct.kspace_display==true
 %         kslice=zeros(size(data_buffer.data,1),size(data_buffer.data,2)*2);
         kslice=zeros(size(data_buffer.data,1),size(data_buffer.data,2));
         for tn=1:timepoints
@@ -515,18 +527,8 @@ for chunk_num=1:num_chunks
                     if statusprints>=20
                         fprintf('p%d ',pn);
                     end
-%                     data_buffer.data(:,:,:,cn,pn,tn)=fermi_filter_isodim2(data_buffer.data(:,:,:,cn,pn,tn),'','',true);
+%   data_buffer.data(:,:,:,cn,pn,tn)=fermi_filter_isodim2(data_buffer.data(:,:,:,cn,pn,tn),'','',true);
                     img(:,:,:,cn,pn,tn)=fftshift(ifft2(fftshift(data_buffer.data(:,:,:,cn,pn,tn))));
-
-%                     for zn=1:z
-% %                         data_buffer.data(:,:,zn,pn,cn,tn)=fermi_filter_isodim2(data_buffer.data(:,:,zn,cn,pn,tn));
-% %                         img(:,:,zn,cn,pn,tn)=fftshift(ifft2(data_buffer.data(:,:,zn,cn,pn,tn)));
-%                         img(:,:,zn,cn,pn,tn)=fftshift(ifft2(fftshift(data_buffer.data(:,:,zn,cn,pn,tn))));
-%                         if statusprints>=30
-%                             fprintf('.');
-%                         end
-%                     end
-                    
                     if statusprints>=20
                         fprintf('\n');
                     end
@@ -537,9 +539,7 @@ for chunk_num=1:num_chunks
         img=fftshift(ifftn(data_buffer.data));
     end
     
-    
-    outputdatacheck=false;
-    if outputdatacheck==true
+    if opt_struct.output_display==true
         for zn=1:z
             for tn=1:timepoints
                 for pn=1:params
@@ -553,25 +553,11 @@ for chunk_num=1:num_chunks
             end
         end
     end
-    combine_channels=false;
-    if combine_channels
+    if opt_struct.combine_channels
         % image order is expected to be xyzcpt
-        % prod/sum?
-        % 
-        combine_image=zeros([x y z params timepoints]);
-        for tn=1:timepoints
-            for pn=1:params
-                fprintf('p%d',pn);
-                for zn=1:z
-                    for yn=1:y
-                        for xn=1:x
-                            combine_image(xn,yn,zn,pn,tn)=sum(img(xn,yn,zn,:,pn,tn))/sum(img(xn,yn,zn,:,pn,tn));
-                        end
-                    end
-                end
-                fprintf('\n');
-            end
-        end
+        combine_method='mean';
+        fprintf('combining channels with %s\n',combine_method);
+        combine_image=squeeze(mean(img,4));
     end
 %     error('Code very unfinished, just meta data and setup done now.');
     % foreach interleave ( separate out interleaved acquistions to recon one at a time)
@@ -584,6 +570,7 @@ for chunk_num=1:num_chunks
 %     end
 end % end foreachchunk
 
+warning('this saving code is temporary it is not designed for chunnks');
 %% save data
 % this needs a bunch of work, for now it is just assuming the whole pile of
 % data is sitting in memory awaiting saving, does not handle chunks or
@@ -592,6 +579,19 @@ end % end foreachchunk
 %  mag=abs(raw_data(i).data);
 
 if opt_struct.saveoutput
+    work_dir_img_path_base=[ work_dir_path '/' runno ] ;
+    %%% save n-D combined nii.
+    if opt_struct.combine_channels
+        if ~exist([work_dir_img_path_base '.nii'],'file')
+            fprintf('Saving combine channel image to output work dir, using method: %s\n',combine_method);
+            nii=make_nii(abs(combine_image), [ ...
+                data_buffer.headfile.fovx/data_buffer.headfile.dim_X ...
+                data_buffer.headfile.fovy/data_buffer.headfile.dim_Y ...
+                data_buffer.headfile.fovz/data_buffer.headfile.dim_Z]); % insert fov settings here ffs....
+            save_nii(nii,[work_dir_img_path_base '.nii']);
+        end
+    end
+    
     max_mnumber=timepoints*params;
     m_length=length(num2str(max_mnumber));
     for tn=1:timepoints
@@ -599,7 +599,7 @@ if opt_struct.saveoutput
             for pn=1:params
                 tmp=squeeze(img(:,:,:,cn,pn,tn));% pulls out one volume at a time. 
 
-                %%%set channel and mnumber codes in the filename
+                %%%set channel and mnumber codes for the filename
                 if channels>1
                     channel_code=channel_alias(cn);
                 else
@@ -611,29 +611,23 @@ if opt_struct.saveoutput
                 else
                     m_code='';
                 end
-                work_dir_img_path_base=[ work_dir_path '/' runno ] ;
+                
                 work_dir_img_path=[work_dir_img_path_base channel_code m_code];
+                
                 %%% complex save
-                if opt_struct.savecomplex
+                if opt_struct.write_complex
                     save_complex(tmp,[ work_dir_img_path '.out']);
+                end
+                if opt_struct.write_kimage
+                    % save data_buffer.data to work dir
                 end
                 %%% nii_save
                 nii=make_nii(abs(tmp), [ data_buffer.headfile.fovx/data_buffer.headfile.dim_X data_buffer.headfile.fovy/data_buffer.headfile.dim_Y data_buffer.headfile.fovz/data_buffer.headfile.dim_Z]); % insert fov settings here ffs....
                 save_nii(nii,[work_dir_img_path '.nii']);
-                if combine_channels
-                    fprintf('Saving combine channel image to output work dir, using rus method\n');
-                    if ~exist([work_dir_img_path_base '.nii'],'file')
-                        nii=make_nii(abs(combine_image), [ ...
-                            data_buffer.headfile.fovx/data_buffer.headfile.dim_X ...
-                            data_buffer.headfile.fovy/data_buffer.headfile.dim_Y ...
-                            data_buffer.headfile.fovz/data_buffer.headfile.dim_Z]); % insert fov settings here ffs....
-                        save_nii(nii,[work_dir_img_path_base '.nii']);
-                    end
-                end
                 %%% civmraw save
                 space_dir_img_name =[ runno channel_code m_code];
                 space_dir_img_folder=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '/' space_dir_img_name 'images' ];
-                if ~exist('outimg_dir_path','file')
+                if ~exist('outimg_dir_path','dir')
                     mkdir(space_dir_img_folder);
                 end
                 write_headfile([space_dir_img_folder '/' space_dir_img_name '.headfile'],data_buffer.headfile);
