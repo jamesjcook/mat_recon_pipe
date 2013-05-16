@@ -153,7 +153,7 @@ if ~opt_struct.use_existing_data
     cmd=['puller_simple ' puller_option_string ' ' scanner ' ' puller_data ' ' work_dir_path];
     s =system(cmd);
     if s ~= 0
-        error('puller failed');
+        error('puller failed:%s',cmd);
     end
 end
 
