@@ -556,8 +556,15 @@ for chunk_num=1:num_chunks
     if opt_struct.combine_channels
         % image order is expected to be xyzcpt
         combine_method='mean';
-        fprintf('combining channels with %s\n',combine_method);
-        combine_image=squeeze(mean(img,4));
+        combine_method='square_and_sum':
+        fprintf('combining channel complex data with method %s\n',combine_method);
+        if strcmp(combine_method,'mean')
+            combine_image=squeeze(mean(img,4));
+        end
+        if strcmp(combine_method,'square_and_sum')
+            combine_image=squeeze(mean(img^2,4));
+        end
+        
     end
 %     error('Code very unfinished, just meta data and setup done now.');
     % foreach interleave ( separate out interleaved acquistions to recon one at a time)
