@@ -507,7 +507,11 @@ x=data_buffer.input_headfile.dim_X;
 y=data_buffer.input_headfile.dim_Y;
 z=data_buffer.input_headfile.dim_Z;
 channels=data_buffer.input_headfile.([data_tag 'channels'] );
-varying_parameter=data_buffer.input_headfile.([data_tag 'varying_parameter']);
+if isfield (data_buffer.input_headfile,[data_tag 'varying_parameter'])
+    varying_parameter=data_buffer.input_headfile.([data_tag 'varying_parameter']);
+else
+    varying_parameter='';
+end
 if strcmp(varying_parameter,'echos')
     params=data_buffer.input_headfile.ne;
 elseif strcmp(varying_parameter,'alpha')
@@ -756,7 +760,7 @@ if opt_struct.write_output
                     datatype='raw';
                 end
                 if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon
-                fprintf('\tcivm_raw save\n');
+                    fprintf('\tcivm_raw save\n');
                     complex_to_civmraw(tmp,[ runno channel_code],data_buffer.scanner_constants.scanner_tesla_image_code,space_dir_img_folder,'auto','',1,datatype)
                 end
                 
