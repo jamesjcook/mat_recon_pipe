@@ -107,8 +107,8 @@ opt_struct.combine_channels=true; % normally we want to combine channels
 % opt_struct.display_output=false;
 % 
 opt_struct.output_order='xyzcpt'; % order of dimensions on output. p is parameters, c is channels. 
-% opt_struct.combine_method='mean';
-opt_struct.combine_method='square_and_sum';
+opt_struct.combine_method='mean';
+% opt_struct.combine_method='square_and_sum';
 %%% handle options cellarray.
 % look at all before erroring by placing into cellarray err_strings or
 % warn_strings.
