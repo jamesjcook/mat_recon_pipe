@@ -32,14 +32,14 @@ function load_from_data_file(data_buffer,file_path,header_skip,load_size,load_sk
 % chunks_to_load  number of chunks to load or an array of indicies
 % 
 
-% bruker data is easy as it is just continuous acquiusition 
+% bruker data is easy as it is just continuous acquisition 
 % filename = fullfile(directory, 'fid');
 % fileid = fopen(filename, 'r', 'l');
 % fid = fread(fileid, Inf, 'int32');
 % fclose(fileid);
 % fid = fid(1:2:end) + i*fid(2:2:end);
 
-chunk_dims=size(data_buffer.data);
+% chunk_dims=size(data_buffer.data);
 
 % filename = fullfile(directory, 'fid');
 
@@ -67,6 +67,7 @@ for c=1:length(chunks_to_load)
         fid = fread(fileid, load_size, data_precision);
         fid = fid(1:2:end) + 1i*fid(2:2:end);
         data_buffer.data=fid;
+        warning('multi chunk loads probably dont work');
     end
 end
 fclose(fileid);

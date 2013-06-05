@@ -6,7 +6,8 @@ path1=[path,'\temp.dat'];
 %
 %index.dat must contain the current value of 'irep' (i.e. which average are
 %we running). It should be an ASCII file created by the macro
-irep=load([path,'\index.txt']);
+% irep=load([path,'\index.txt']);
+irep=1;
 %
 res=1;
 noise_box=9;

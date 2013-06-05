@@ -1,29 +1,72 @@
 function img=rad_mat(scanner,runno,input,options)
-% rad_mat
-% does part at a time or full data recon proecssing in matlab.
-% hope to have this 
-% for each chunk 
-% load(partial or full)
-% regrid(partial or full)
-% filter(partial or full)
-% fft (partial or full)
-% save.
+% img=RAD_MAT(scanner,runno,input,options)
+% rad_mat, a quasi generic reconstruction/reformating scanner to archive 
+% pipeline.
+% It relies on a dumpheader perl script which knows most of the differences 
+% between different types of input data. That script could be co-opted by 
+% adding a headfile override option(this isnt implemented yet).
 % 
 % scanner  - short name of scanner to get data input from
 % runno    - run number for output
 % input    - string or cell array of the data name on scanner
 %          - for agilent 20120101_01/ser01.fid
+%          - for aspect  '004534', by convention asepect runnumbers are
+%          aspect id+6000
 %          - for bruker   {'patientid','scanid'}  
-%                (datanum is optional)
-% option   - for options of course.
+%                (datanum is not supported yet?)
+% option   - for a list and explaination use 'help'.
 %
 
-
-% supporting for sure, bruker or agilent data location convention. 
-% have to pass puller simple the correct info to get everything we need. 
-% perhaps puller simple will understand bruker format data a bit....
-% patientid study scan[:datanum]/rname_01/sname_01
-
+% Primary goals,
+% A scanner independent(generic) scanner to civm raw image pipeline with 
+% archive ready outputs.
+% Use as much memory as possible without over flowing, by breaking the 
+% problem into chunks. 
+% Include taking scanner reconstucted images into the same work flow to 
+% avoid having separate handler code for them.
+%
+% the steps of the pipeline, 
+% load scanner and engine dependencies.
+% copy data using puller_simple.pl
+% interpret and save an initial scanner header using dumpHeader.pl
+% load the scanner header, 
+% determine expected memory load and disk space required
+% for each chunk 
+% load(partial or full)
+% if scanner recon inverse fft?
+% regrid(partial or full)
+% filter(partial or full)
+% fft (partial or full)
+% resort/rotate
+% save.
+% 
+% Currrently a very beta project.
+% supports Aspect data, bruker data, or agilent data location convention. 
+%
+% TODO's
+% testing
+% param file support
+% testing
+% agilent support
+% testing
+% arbitrary headfile variables through options cellarray
+% testing
+% load arbitrary headfile for overriding
+% testing
+% fix up regridding to bea  meaninful step other than reshape very
+% testing
+% specifically for GRE aspect and RARE Bruker scans
+% testing
+% add scanner image reformat support, could add inverse fft to load step, 
+% testing
+if ( nargin<4)
+    if nargin==0
+        help rad_mat; %('','','',{'help'});
+    else
+        rad_mat('','','','help');
+    end
+    
+end
 %% data setup
 data_buffer=large_array;
 data_buffer.addprop('data');
@@ -51,48 +94,53 @@ end
 % standard, ready for use, 
 % beta,     just written tested very little
 % planned,  an inkling that they're desried, possibly started etc.
-standard_options={ 
-    ''
-    'overwrite'
-    'existing_data'
-    'skip_mem_checks'
-    'testmode'
-    'write_output'     % disable all output saving, good for running inside matlab and continueing in another function
-    'skip_write_civm_raw' % do now save civm raw files.
-    'skip_write_headfile'
-    'write_unscaled'  % save unscaled nifti's in the work directory 
-    'display_kspace'
-    'display_output'
-    ''
+standard_options={
+    '',                       'Core options which have real support.'
+    'help',                   'Display the help'
+    'overwrite',              'over write anything in the way, especially re run puller and overwrite whats there'
+    'existing_data',          'use data from system(as if puller had already run)'
+    'skip_mem_checks',        'do not test if we have enough memory'
+    'testmode',               'skip qui and just put dummy info in gui fields, will not be archiveable'
+    'write_output',           ' disable all output saving, good for running inside matlab and continueing in another function'
+    'skip_write_civm_raw',    'do now save civm raw files.'
+    'skip_write_headfile',    'do not write civm headfile output'
+    'write_unscaled',         ' save unscaled nifti''s in the work directory '
+    'display_kspace',         'display the kspace data prior to reconstruction, will showcase errors in regrid and load functions'
+    'display_output',         'display reconstructed output after the resort and transform operations'
+    '',                       ''
     };
 beta_options={
-    ''
-    'planned_ok'    % specaial option which must be early in list of options, controlls whether planned optinos are an error
-    'unrecognized_ok'
-    'debug_mode'    % way to set our verbosity.
-    'channel_alias' %list of values for aliasing channels to letters, could be anything using this
-    'combine_method'
-    'write_complex'
-    'skip_filter'   % does not filter data sets.
-    'skip_recon'    % for re-writing headfiles only, implies skip filter.
-    'output_order'
-    ''
+    '',                       ' Secondary, new, experimental options'
+    'planned_ok',             ' specaial option which must be early in list of options, controlls whether planned optinos are an error'
+    'unrecognized_ok',        ' special option which must be early in list of options, controls whether arbitrary options are an error, this is so that alternate child functions could be pass ed the opt_struct variable and would work from there.'
+    'debug_mode',             ' way to set our verbosity. use debug_mode=##'
+    'channel_alias',          ' list of values for aliasing channels to letters, could be anything using this'
+    'combine_method',         ' specify the method used for combining multi-channel data. supported modes are square_and_sum, or mean, use  combine_method=text'
+    'write_complex',          ' should the complex output be written to th work directory. Will be written is rp(or near rp file) format.'
+    'do_aspect_freq_correct', ' skip the aspect frequency correction.' 
+    'skip_filter',            ' do not filter data sets.'
+    'skip_recon',             ' for re-writing headfiles only, implies skip filter.'
+    'skip_resort',            ' for 3D acquisitions we resort after fft, this alows that to be skiped'
+    'output_order',           ' specify the order of your output dimensions. Default is xyzcpt. use output_oder=xyzcpt.'
+    'ignore_kspace_oversize', ' when we do our sanity checks on input data ignore kspace file being bigger than expected, this must be on for aspect data currently'
+    'remove_slice',           ' removes a slice of the acquisition at the end, this is a hack for some acquisition types'
+    '',                       ''
     };
 planned_options={
-    ''
-    'write_phase'
-    'fp32_magnitude'
-    'write_kimage'
-    ''
+    '',                       ' Options we may want in the future, they might have been started. '
+    'write_phase',            ' write a phase output to the work directory'
+    'fp32_magnitude',         ' write fp32 civm raws instead of the normal ones'
+    'write_kimage',           ' write the regridded kspace data to the work directory.'
+    '',                       ''
     };
-beta_options_string=strjoin(beta_options(:,1)',' ');
-planned_options_string=strjoin(planned_options',' ');
-standard_options_string=strjoin(standard_options',' ');
-all_options=[standard_options; beta_options; planned_options];
+standard_options_string =[' ' strjoin(standard_options(2:end,1)',' ') ' ' ];
+beta_options_string     =[' ' strjoin(beta_options(2:end,1)',    ' ') ' ' ];
+planned_options_string  =[' ' strjoin(planned_options(2:end,1)', ' ') ' ' ];
+all_options=[standard_options; beta_options; planned_options;];
 % make all options = false, set some defaults right after this.
-for o_num=1:length(all_options)
-    if ~exist('opt_struct.(all_options{o})','var') && ~isempty(all_options{o_num})
-        opt_struct.(all_options{o_num})=false;
+for o_num=1:length(all_options(:,1))
+    if ~isfield('opt_struct',all_options{o_num,1}) && ~isempty(all_options{o_num,1})
+        opt_struct.(all_options{o_num,1})=false;
     end
 end
 %%% set default options
@@ -174,7 +222,14 @@ if ~isempty(err_string)
     useage_string=help('rad_mat');
     error('\n%s%s\n',useage_string,err_string);
 end
-
+if opt_struct.help
+    help rad_mat;
+    for o_num=1:length(all_options(:,1))
+        fprintf('%24s - %s\n',all_options{o_num,1},all_options{o_num,2});
+    end
+    error('help display stop.');
+    
+end
 if opt_struct.overwrite
     opt_struct.puller_option_string=[' -o ' opt_struct.puller_option_string];
 end
@@ -197,12 +252,11 @@ else
 end
 if numel(input)==1
     input= strsplit(input{1},'/');
-    
 end
 if numel(input)==2 && strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
     input{1}=[input{1} '*'];
 end %else
-puller_data=[ input{1} '/' input{2} dirext];
+puller_data=[strjoin(input, '/'), dirext];
 datapath=[data_buffer.scanner_constants.scanner_data_directory '/' puller_data ];
 data_buffer.input_headfile.origin_path=datapath;
 % display(['data path should be omega@' scanner ':' datapath ' based on given inputs']);
@@ -224,6 +278,13 @@ data_buffer.input_headfile=load_scanner_header(scanner, work_dir_path );
 data_buffer.headfile=combine_struct(data_buffer.headfile,data_buffer.input_headfile);
 data_buffer.headfile=combine_struct(data_buffer.headfile,data_buffer.scanner_constants);
 data_buffer.headfile=combine_struct(data_buffer.headfile,data_buffer.engine_constants);
+if isfield(data_buffer.input_headfile,'aspect_remove_slice')
+    if data_buffer.input_headfile.aspect_remove_slice
+        opt_struct.remove_slice=1;
+    else
+        opt_struct.remove_slice=0;
+    end
+end
 clear datapath dirext input puller_data s ;
 %% determing input acquisition type 
 % some of this might belong in the load data function we're going to need
@@ -430,7 +491,11 @@ fileInfo = dir(data_buffer.input_headfile.kspace_data_path);
 measured_filesize    =fileInfo.bytes;
 
 if kspace_file_size~=measured_filesize
-    error('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=%d\nCalculated=%d\n',measured_filesize,kspace_file_size);
+    if kspace_file_size<measured_filesize && ~opt_struct.ignore_kspace_oversize
+        error('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=%d\nCalculated=%d\n',measured_filesize,kspace_file_size);
+    else
+        warning('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=%d\nCalculated=%d\n',measured_filesize,kspace_file_size);
+    end
 end
 min_load_size=min_load_size/(in_bitdepth/8);
 chunk_size=chunk_size/(in_bitdepth/8);
@@ -464,6 +529,7 @@ clear ray_length2 ray_length3 fileInfo bytes_per_vox copies_in_memory in_bitdept
 
 %% collect gui info (or set testmode)
 %check civm runno convention
+% add loop while gui has not run successfully,
 if ~regexp(runno,'^[A-Z][0-9]{5-6}.*')
     %~strcmp(runno(1),'S') && ~strcmp(runno(1),'N') || length(runno(2:end))~=5 || isnan(str2double(runno(2:end)))
     display('runno does not match CIVM convention, the recon will procede in testmode')
@@ -472,16 +538,9 @@ end
 % if not testmode then create headfile
 if  opt_struct.testmode==1
     display('this recon will not be archiveable');
-%     data_buffer.headfile=0;
 else
     display('gathering gui info');
     display(' ');
-%     if opt_struct.fp32_magnitude==1 || opt_struct.write_phase==1
-%         img_format='fp32';
-%     else
-%         img_format='raw';
-%     end
-%     headfile=create_agilent_headfile(procpar,img_format,runno);
     data_buffer.engine_constants.engine_recongui_menu_path;
     [~, gui_dump]=system(['$GUI_APP ' ...
         ' ''' data_buffer.engine_constants.engine_constants_path ...
@@ -500,7 +559,7 @@ else
     end
     clear gui_info gui_dump gui_info_lines l;
 end
-
+%% do final error checks and get dimensions before reconstruction
 %%% this data get for dimensions is temporary, should be handled better in
 %%% the future.
 x=data_buffer.input_headfile.dim_X;
@@ -566,8 +625,17 @@ for chunk_num=1:num_chunks
     %     if opt_struct.display_kspace==true
     %         input_kspace=reshape(data_buffer.data,input_dimensions);
     %     end
-    %%% REGRID  just simple reshape for cartesian
+    %% REGRID  just simple reshape for cartesian
     rad_regid(data_buffer,c_dims);
+    if opt_struct.do_aspect_freq_correct && strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
+        fprintf('Performing aspect frequency correction\n');
+        aspect_freq_correct(data_buffer,opt_struct);
+%         data_buffer.data=permute(data_buffer.data,[ 1 3 2 ]);
+    elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
+        %fprintf('Performing aspect frequency correction');
+%         data_buffer.data=permute(data_buffer.data,[ 1 3 2 ]);
+    end
+    %% display kspace
     if opt_struct.display_kspace==true
         %         kslice=zeros(size(data_buffer.data,1),size(data_buffer.data,2)*2);
         kslice=zeros(size(data_buffer.data,1),size(data_buffer.data,2));
@@ -592,15 +660,26 @@ for chunk_num=1:num_chunks
             end
         end
     end
+
+    %% filter kspaces data
     if ~opt_struct.skip_filter
+        fprintf('Performing fermi filter\n');
         if strcmp(vol_type,'2D')
             data_buffer.data=reshape(data_buffer.data,[ output_dimensions(1:2) prod(output_dimensions(3:end))] );
             data_buffer.data=fermi_filter_isodim2(data_buffer.data,'','',true);
             data_buffer.data=reshape(data_buffer.data,output_dimensions );
+        elseif strcmp(vol_type,'3D')
+%             fermi_filter_isodim2_memfix_obj(data_buffer);
+            data_buffer.data=fermi_filter_isodim2(data_buffer.data,'','',false);
+        else 
+            warning('DID NOT PERFORM FILTER');
         end
-        % rad_filter(data_buffer,c_dims);
+        %
+    else
+        fprintf('skipping fermi filter\n');
     end
     %% fft
+    fprintf('Performing FFT\n');
     if strcmp(vol_type,'2D')
         if ~exist('img','var')
             img=zeros(output_dimensions);
@@ -627,6 +706,32 @@ for chunk_num=1:num_chunks
         img=fftshift(ifftn(data_buffer.data));
     end
     
+    %% resort images flip etc
+    if strcmp(vol_type,'3D') && ~opt_struct.skip_resort
+        %%% decide how and if a resort should be done.
+        if strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
+            
+            warning('90degree rotation and resort all aspect images occurs now')
+            pause(3);
+            fprintf('permuting...');
+            img=permute(img,[ 1 3 2 ]);
+            if opt_struct.remove_slice
+                z=z-1;
+               data_buffer.input_headfile.dim_Z=data_buffer.input_headfile.dim_Z-1;
+%                img=img(:,:,1:end-1);
+            end
+            fprintf('resorting along z...');
+            objlist=[z/2+1:z 1:z/2 ];
+            img=circshift(img,[ 0 y/2 0 ]);
+            img(:,:,objlist)=img;
+            fprintf('rotating image by 90...');
+%             img=imrotate(img,90);
+%             img=transpose(img();
+            fprintf('resort and rotate done!\n');
+
+        end
+        
+    end
     if opt_struct.display_output==true
         for zn=1:z
             for tn=1:timepoints
@@ -698,7 +803,7 @@ if opt_struct.write_output
         for cn=1:channels
             for pn=1:params
                 if ~opt_struct.skip_recon
-                    if opt_struct.combine_channels
+                    if opt_struct.combine_channels && channels>1
                         tmp=squeeze(combine_image(:,:,:,pn,tn));
                     else
                         tmp=squeeze(img(:,:,:,cn,pn,tn));% pulls out one volume at a time.
@@ -749,7 +854,9 @@ if opt_struct.write_output
                 %%% set param value in output
                 % if te
                 % if alpha
-                data_buffer.headfile.te=data_buffer.headfile.te_sequence(pn);
+                if isfield(data_buffer.headfile,'te_sequence')
+                    data_buffer.headfile.te=data_buffer.headfile.te_sequence(pn);
+                end
                 if ~opt_struct.skip_write_headfile
                     fprintf('\tHeadfile save\n');
                     write_headfile([space_dir_img_folder '/' space_dir_img_name '.headfile'],data_buffer.headfile);
