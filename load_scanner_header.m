@@ -35,3 +35,7 @@ cmd=[prefix 'dumpHeader' plprgext options ' ' scanner ' ' directory ' ' name];
 [s]=system(cmd);
 
 headfile=read_headfile([ directory '/' name ]);
+
+headfile.comment{end+1}=['# \/ header dump cmd ' '\/'];
+headfile.comment{end+1}=['# ' cmd ];
+headfile.comment{end+1}=['# /\ header dump cmd ' '/\'];
