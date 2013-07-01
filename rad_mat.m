@@ -308,7 +308,12 @@ clear o_num options option all_options standard_options standard_options_string 
 %% data pull and build header from input
 
 if strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
-    dirext='.fid';
+    if ~regexpi(input{end},'fid')
+        % if ! endswith fid, add fid
+        dirext='.fid';
+    else
+        dirext='';
+    end
 else
     dirext='';
 end

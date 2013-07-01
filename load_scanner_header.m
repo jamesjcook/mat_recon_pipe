@@ -25,13 +25,14 @@ if ~exist('name','var')
     name=[sdeps.scanner_vendor '.headfile'];
 end
 
-prefix=['perl /recon_home/script/dir_radish/modules/script/pipeline_utilities/'];
-plprgext='.pl';
+% prefix=['perl /recon_home/script/dir_radish/modules/script/pipeline_utilities/'];
+% plprgext='.pl';
 % 
 % prefix='';
 % plprgext='';
 options=[' -o '];
-cmd=[prefix 'dumpHeader' plprgext options ' ' scanner ' ' directory ' ' name];
+% cmd=[prefix 'dumpHeader' plprgext options ' ' scanner ' ' directory ' ' name];
+cmd=['dumpHeader'  options ' ' scanner ' ' directory ' ' name];
 [s]=system(cmd);
 
 headfile=read_headfile([ directory '/' name ]);
