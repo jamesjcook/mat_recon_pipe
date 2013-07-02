@@ -1,4 +1,8 @@
 function res=aspect_gre3d_ext_test(path)
+% function res=ASPECT_GRE3D_EXT_TEST(path)
+% path=path image directory.
+% will need to edit nfile command in script for alternate sequences.
+% 
 path1=[path,'/temp.dat'];
 %
 %temp.dat contains the current 3-D image file - the current accumulated sum
@@ -124,7 +128,7 @@ new_freq=last_f(irep);
 ndata=[dim_X dim_Y dim_Z recon_variables(4) recon_variables(5) recon_variables(6) recon_variables(7) last_f(irep)];
 ndata=ndata';
 %
-filename = [path,'\last_freq.txt'];
+filename = [path,'/last_freq.txt'];
 save(filename,'new_freq','-ascii');
 %save c:\NTNMR\last_freq.txt new_freq -ascii
 
@@ -153,7 +157,9 @@ else
     %
     path2=[path,'/recdata_aspect_freqcor.raw'];
     nfile=fopen(path2,'w');
-    magnitude_img=circshift(magnitude_img,[-16 64 0]);
+    %%% sometimes we want to circshift sometimes we do not, it is uncertain
+    %%% why and when.
+%     magnitude_img=circshift(magnitude_img,[-16 64 0]);
     fwrite(nfile,magnitude_img,'float');
 end
 % exit

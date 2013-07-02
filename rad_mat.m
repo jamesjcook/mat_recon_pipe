@@ -1153,12 +1153,13 @@ if opt_struct.write_output
                 else
                     m_code='';
                 end
-                
+                space_dir_img_name =[ data_buffer.headfile.U_runno channel_code m_code];
+                space_dir_img_folder=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '/' space_dir_img_name 'images' ];
                 work_dir_img_path=[work_dir_img_path_base channel_code m_code];
                 %%% complex save
                 if opt_struct.write_complex && ~opt_struct.skip_recon
                     fprintf('\tradish_complex save\n');
-                    save_complex(tmp,[ work_dir_img_path '.out']);
+                    save_complex(tmp,[ work_dir_img_path '.rp.out']);
                 end
                 if opt_struct.write_kimage && ~opt_struct.skip_recon
                     fprintf('\tradish_complex kimage save\n');
@@ -1171,8 +1172,6 @@ if opt_struct.write_output
                     save_nii(nii,[work_dir_img_path '.nii']);
                 end
                 %%% civmraw save
-                space_dir_img_name =[ data_buffer.headfile.U_runno channel_code m_code];
-                space_dir_img_folder=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '/' space_dir_img_name 'images' ];
                 if ~exist(space_dir_img_folder,'dir') || opt_struct.ignore_errors
                     mkdir(space_dir_img_folder);
                 elseif ~opt_struct.overwrite 
@@ -1203,6 +1202,28 @@ if opt_struct.write_output
                 if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon
                     fprintf('\tcivm_raw save\n');
                     complex_to_civmraw(tmp,[ data_buffer.headfile.U_runno channel_code],data_buffer.scanner_constants.scanner_tesla_image_code,space_dir_img_folder,'auto','',1,datatype)
+                    % must write convert_info_histo for old school radish purposesx
+histo_percent=99.95;
+histo_bins=numel(tmp);
+img_s=sort(abs(tmp(:))); 
+maxin=max(img_s);
+s_max_intensity=img_s(round(length(img_s)*histo_percent/100));%throwaway highest % of data... see if that helps.
+
+outpath=[space_dir_img_folder '/convert_info_histo'];
+% display(['Saving vintage threeft to ' outpath '.']);
+ofid=fopen(outpath,'w+');
+if ofid==-1
+    error('problem opening convert_info_hist file for writing file');
+end
+fprintf(ofid,'%f=scale_max found by agilent_scale_histo in complex file %s\n',s_max_intensity,[work_dir_img_path '.out']);
+fprintf(ofid,'%i %i : image dimensions.\n',data_buffer.headfile.dim_X,data_buffer.headfile.dim_Y);
+fprintf(ofid,'%i : image set zdim.\n', data_buffer.headfile.dim_Z);
+fprintf(ofid,'%i : hito_bins, %f : histo_percent\n',histo_bins,histo_percent);
+fprintf(ofid,'x : user provided max voxel value? pfovided for max= none (if file used).\n');
+fprintf(ofid,'%f : max voxel value used to construct histogram\n',maxin);
+fprintf(ofid,' agilent_scale_histo ma script 2012/11/28\n');
+fclose(ofid);
+
                 end
                 %%% convenience prompts
 
