@@ -47,7 +47,11 @@ $Engine_constants->check()         or exit("Unable to open engine constants file
 $Engine_constants->read_headfile() or exit("Unable to read engine constants from file $the_engine_constants_path\n");
 
 my $short_unique_purpose=$function_m_name.$PID; #$Engine_constants->get_value('scanner_pfile_header_app')
-my $matlab_app=$Engine_constants->get_value('engine_app_matlab');
+my $matlab_opts=$Engine_constants->get_value('engine_app_matlab_opts');
+if ( ! defined $matlab_opts ) { 
+    $matlab_opts="";
+}
+my $matlab_app=$Engine_constants->get_value('engine_app_matlab')." $matlab_opts";
 
 my %options = ();
 
@@ -120,7 +124,7 @@ my $args="\'$work_dir\',\'$pfile_name\',1"; # the one says we're running command
 
 
 #passing empty string to nohf at end of args so destination will be cmdline
-my $mat_cmd=make_matlab_command_nohf($function_m_name, $args, $short_unique_purpose, $work_dir, $matlab_app,''); 
+my $mat_cmd=make_matlab_command_nohf($function_m_name, $args, $short_unique_purpose, $work_dir, $matlab_app,"${work_dir}/${pfile_name}_recon.log"); 
 # calls make_matlab_m_file();
 #   my ($function_m_name, $args, $short_unique_purpose, $work_dir, $matlab_app) = @_;
 my $rc=execute(1,"",$mat_cmd);

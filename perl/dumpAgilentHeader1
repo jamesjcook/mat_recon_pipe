@@ -47,7 +47,11 @@ $Engine_constants->check()         or exit("Unable to open engine constants file
 $Engine_constants->read_headfile() or exit("Unable to read engine constants from file $the_engine_constants_path\n");
 
 my $short_unique_purpose=$function_m_name.$PID; #$Engine_constants->get_value('scanner_pfile_header_app')
-my $matlab_app=$Engine_constants->get_value('engine_app_matlab');
+my $matlab_opts=$Engine_constants->get_value('engine_app_matlab_opts');
+if ( ! defined $matlab_opts ) { 
+    $matlab_opts="";
+}
+my $matlab_app=$Engine_constants->get_value('engine_app_matlab')." $matlab_opts";
 
 if ($#ARGV ne 0) {
     error_out("no file specified, must specify full path to file to read");
@@ -70,7 +74,7 @@ my ($n,$work_dir,$ext)=fileparts($pfile_path);
 open_log($work_dir);
 my $args="\'$work_dir\'";
 
-my $mat_cmd=make_matlab_command_nohf($function_m_name, $args, $short_unique_purpose, $work_dir, $matlab_app); 
+my $mat_cmd=make_matlab_command_nohf($function_m_name, $args, $short_unique_purpose, $work_dir, $matlab_app,"${pfile_path}_reform.log"); 
 my $rc=execute(1,"",$mat_cmd);
 my $procpar_hf=$work_dir.'procpar'.'.headfile';
 #exec("cat $procpar_hf");
