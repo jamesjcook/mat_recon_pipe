@@ -667,7 +667,7 @@ else
         ' ''']);
 end
 
-    gui_info_lines=strtrim(strsplit(gui_dump,'\n'));
+gui_info_lines=strtrim(strsplit(gui_dump,'\n'));
 for l=1:length(gui_info_lines)
     guiinfo=strsplit(gui_info_lines{l},':::');
     if length(guiinfo)==2
@@ -762,11 +762,13 @@ for chunk_num=1:num_chunks
         %         reps=ray_length;
         % account for number of channels and echos here as well .
         if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
+            % padd beginning code
             logm=zeros((ray_length-ray_padding)/channels,1);
             logm(ray_length-ray_padding+1:ray_length)=1;
 %             logm=logical(repmat( logm, length(data_buffer.data)/(ray_length),1) );
 %             data_buffer.data(logm)=[];
         elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
+            % pad ending code
             logm=ones((ray_padding),1);
             logm(ray_length-ray_padding+1:ray_length)=0;
         else
@@ -809,7 +811,20 @@ for chunk_num=1:num_chunks
         data_buffer.input_headfile.dim_Z=z;
     end
     if data_buffer.headfile.echo_asymetry>0
-        error('asymetry not supported');
+        if z>1
+            error('asymetry not tested with multi-slice');
+        end
+        % move data down the x, then add some x back...
+        % ex for 128x128 image.
+        % ak(33:128,:)=ak(1:128-32,:);
+        % ak(1:32,:)=ak(128:-1:128-31,:);
+        asym_offset=x*data_buffer.headfile.echo_asymetry/2;
+        data_buffer.data(asym_offset+1:x,:)=data_buffer.data(1:x-asym_offset,:);
+        data_buffer.data(1:asym_offset+1,:)=data_buffer.data(x:-1:x-asym_offset,:);
+        warning('asymetry support very experimental! CHECK YOUR OUTPUTS!');
+        pause(8);
+        
+        
         %do asym stuff...
     end
     %% display kspace
@@ -960,9 +975,11 @@ for chunk_num=1:num_chunks
         if strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
             %             z=size(it,3);
             % for SE_ scans these values have been true 1 time(s)
-            objlist=[1:z/2; z/2+1:z];
-            objlist=objlist(:);
-            img=img(:,:,objlist);
+            if z>1
+                objlist=[1:z/2; z/2+1:z];
+                objlist=objlist(:);
+                img=img(:,:,objlist);
+            end
 %             for i=1:64
 %                 figure(6);
 %                 imagesc(log(abs(it(:,:,i))));
