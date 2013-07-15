@@ -64,7 +64,10 @@ function [img, s]=rad_mat(scanner,runno,input,options)
 % add scanner image reformat support, could add inverse fft to load step, 
 % testing
 % did i mention testing?
-%% arg check or help
+if verLessThan('matlab', '8.1.0.47')
+    error('Requires Matlab version 8.1.0.47 (2013a) or newer');
+end
+    %% arg check or help
 if ( nargin<3)
     if nargin==0
         help rad_mat; %('','','',{'help'});
@@ -73,6 +76,7 @@ if ( nargin<3)
     end
     
 end
+
 %% data setup
 img=0;
 data_buffer=large_array;
@@ -363,7 +367,7 @@ if isfield(data_buffer.input_headfile,'aspect_remove_slice')
         opt_struct.remove_slice=0;
     end
 end
-clear datapath dirext input puller_data s ;
+clear datapath dirext input puller_data s;
 %% determing input acquisition type 
 % some of this might belong in the load data function we're going to need
 vol_type=data_buffer.input_headfile.([data_tag 'vol_type']);
@@ -517,7 +521,21 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
         error(['Found no pad option with bruker scan for the first time,' ...
             'Tell james let this continue in test mode']);
     end
+elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
+    %TENC = 4
+    %INTRLV = INTRLV
+    %DISTANZA = 4
+%     if  strcmp(data_buffer.input_headfile.([data_prefix 'INTRLV']),'INTRLV')
+%         
+%     end
+    if strcmp(data_buffer.input_headfile.S_PSDname,'SE_')
+        ray_length=ray_length+50;
+        ray_padding=50;
+        input_points = 2*ray_length*rays_per_block/channels*ray_blocks;    % because ray_length is number of complex points have to doubled this.
+        min_load_size= ray_length*rays_per_block/channels*(in_bitdepth/8); % amount of bytes of data to load at a time,
+    end
 else
+    
     input_points         = 2*ray_length*rays_per_block*ray_blocks; % because ray_length is doubled, this is doubled too. 
     min_load_size=ray_length*rays_per_block*(in_bitdepth/8);             % amount of data to load at a time, (should be single 2dft's worth of data)
     % not bruker, no ray padding...
@@ -583,13 +601,13 @@ measured_filesize    =fileInfo.bytes;
 
 if kspace_file_size~=measured_filesize
     if (measured_filesize>kspace_file_size && opt_struct.ignore_kspace_oversize) || opt_struct.ignore_errors % measured > expected provisional continue
-        warning('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=%d\nCalculated=%d\n',measured_filesize,kspace_file_size);
+        warning('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=  %d\nCalculated=%d\n',measured_filesize,kspace_file_size);
     else %if measured_filesize<kspace_file_size    %if measured < exected fail.
         error('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=%d\nCalculated=%d\n',measured_filesize,kspace_file_size);
     end
 end
 min_load_size=min_load_size/(in_bitdepth/8);
-chunk_size=chunk_size/(in_bitdepth/8);
+chunk_size=   chunk_size/(in_bitdepth/8);
 if num_chunks>1 && ~opt_struct.ignore_errors
     error('not tested with more than one chunk yet');
 end
@@ -737,14 +755,22 @@ for chunk_num=1:num_chunks
     
     load_from_data_file(data_buffer, data_buffer.input_headfile.kspace_data_path, ....
         binary_header_size, min_load_size, load_skip, in_precision, chunk_size, ...
-        num_chunks,chunks_to_load(chunk_num))
+        num_chunks,chunks_to_load(chunk_num));
     
     if ray_padding>0  %remove extra elements in padded ray,
         % lenght of full ray is spatial_dim1*nchannels+pad
         %         reps=ray_length;
         % account for number of channels and echos here as well .
-        logm=zeros((ray_length-ray_padding)/4,1);
-        logm(ray_length-ray_padding+1:ray_length)=1;
+        if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
+            logm=zeros((ray_length-ray_padding)/channels,1);
+            logm(ray_length-ray_padding+1:ray_length)=1;
+%             logm=logical(repmat( logm, length(data_buffer.data)/(ray_length),1) );
+%             data_buffer.data(logm)=[];
+        elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
+            logm=ones((ray_padding),1);
+            logm(ray_length-ray_padding+1:ray_length)=0;
+        else
+        end
         logm=logical(repmat( logm, length(data_buffer.data)/(ray_length),1) );
         data_buffer.data(logm)=[];
         warning('padding correction applied, hopefully correctly.');
@@ -782,10 +808,14 @@ for chunk_num=1:num_chunks
         data_buffer.headfile.dim_Z=z;
         data_buffer.input_headfile.dim_Z=z;
     end
+    if data_buffer.headfile.echo_asymetry>0
+        error('asymetry not supported');
+        %do asym stuff...
+    end
     %% display kspace
     if opt_struct.display_kspace==true
         %         kslice=zeros(size(data_buffer.data,1),size(data_buffer.data,2)*2);
-%         kslice=zeros(x,y);
+        %         kslice=zeros(x,y);
         s.x=':';
         s.y=':';
         for tn=1:timepoints
@@ -903,15 +933,15 @@ for chunk_num=1:num_chunks
             
             warning('90degree rotation and resort all aspect images occurs now')
             pause(opt_struct.warning_pause);
-            fprintf('permuting...');
-            img=permute(img,[ 1 3 2 ]);
+%             fprintf('permuting...');
+%             img=permute(img,[ 1 3 2 ]);
             fprintf('resorting along z...');
             objlist=[z/2+1:z 1:z/2 ];
             %img=circshift(img,[ 0 y/2 0 ]);
             img(:,:,objlist)=img;
             fprintf('rotating image by 90...');
             img=imrotate(img,90);
-%             img=transpose(img();
+            %img=transpose(img());
             fprintf('resort and rotate done!\n');
         else
             fprintf('Non-aspect data is not rotated or flipped, unsure what settings should be used');
@@ -926,7 +956,27 @@ for chunk_num=1:num_chunks
             % then what?
 
         end
-        
+    else 
+        if strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
+            %             z=size(it,3);
+            % for SE_ scans these values have been true 1 time(s)
+            objlist=[1:z/2; z/2+1:z];
+            objlist=objlist(:);
+            img=img(:,:,objlist);
+%             for i=1:64
+%                 figure(6);
+%                 imagesc(log(abs(it(:,:,i))));
+%                 pause(0.18);
+%             end
+%             y=size(it,2);
+            objlist=[y/2+1:y 1:y/2];
+            img=img(:,objlist,:);
+%             for i=1:64
+%                 figure(6);
+%                 imagesc(log(abs(it2(:,:,i))));
+%                 pause(0.18);
+%             end
+        end
     end
     if opt_struct.display_output==true
         s.x=':';

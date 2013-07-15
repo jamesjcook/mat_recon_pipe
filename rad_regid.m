@@ -98,103 +98,73 @@ output_dimensions=[...
 
 
 fprintf('Regriding/Reshaping :');
+% resort data in logical order instead of interleaved.
+
+if d_struct.r>1
+    data_buffer.data=reshape(data_buffer.data,input_dimensions_with_rare);
+    data_buffer.data=permute(data_buffer.data,permute_code_with_rare);
+else
+    data_buffer.data=reshape(data_buffer.data,input_dimensions);
+    data_buffer.data=permute(data_buffer.data,permute_code ); % put in image order.
+end
+data_buffer.data=reshape(data_buffer.data,output_dimensions);% x yr z c
+
+if isfield(data_buffer.input_headfile,'dim_X_encoding_order')
+    fprintf('Found X encoding order\n');
+    xenc=data_buffer.input_headfile.dim_X_encoding_order;
+    xenc=xenc+min(xenc)+1;
+else
+    xenc=':';
+end
+if isfield(data_buffer.input_headfile,'dim_Y_encoding_order')
+    fprintf('Found Y encoding order\n');
+    yenc=data_buffer.input_headfile.dim_Y_encoding_order;
+    yenc=yenc-min(yenc)+1;
+else
+    yenc=':';
+end
+if isfield(data_buffer.input_headfile,'dim_Z_encoding_order')
+    fprintf('Found Z encoding order\n');
+    zenc=data_buffer.input_headfile.dim_Z_encoding_order;
+    zenc=zenc-min(zenc)+1;
+else
+    zenc=':';
+end
+data_buffer.data(xenc,yenc,zenc,:,:,:)=data_buffer.data;
+
 if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
     fprintf('Bruker');
-    % resort data in logical order instead of interleaved.
-    % permute might need to be left until our 3dft's are done.
-    %     acq=false;
-    if d_struct.r>1
-        data_buffer.data=reshape(data_buffer.data,input_dimensions_with_rare);
-        data_buffer.data=permute(data_buffer.data,permute_code_with_rare);
-    else
-        data_buffer.data=reshape(data_buffer.data,input_dimensions);
-        data_buffer.data=permute(data_buffer.data,permute_code ); % put in image order.
-    end
-    data_buffer.data=reshape(data_buffer.data,output_dimensions);% x yr z c
-
-    
-    %% handle encoding order swaps
-    %%% old way
-    %     objlist_name=[data_buffer.input_headfile.U_prefix 'PVM_ObjOrderList'];% belongs to z dim.
-    %     objlist=data_buffer.input_headfile.(objlist_name);
-    %     if length(objlist)<d_struct.z
-    %         warning('objlist was not defind, trying %s%s',data_tag,'encoding_order');
-    %         objlist_name=[data_tag 'encoding_order'];% belongs to z dim.
-    %         objlist=data_buffer.input_headfile.(objlist_name);
-    %     end
-    %     while min(objlist)<1
-    % %         fprintf('%i  \n',objlist+1);
-    %         objlist=objlist+1;
-    % %         pause(0.1);
-    %     end
-    %     if length(objlist)==d_struct.z
-    %         try
-    %             data_buffer.data(:,:,objlist+1,:,:,:)=data_buffer.data;
-    %         catch err
-    %             disp(err);
-    %             error(err.identifier);
-    %         end
-    %     else
-    %         warning('Object list not used for dataset.');
-    %         pause(data_buffer.headfile.rad_mat_option_warning_pause);
-    %     end
-    %%% new way gets info from headfile.
-    if isfield(data_buffer.input_headfile,'dim_X_encoding_order')
-        fprintf('Found X encoding order\n');
-        xenc=data_buffer.input_headfile.dim_X_encoding_order;
-        xenc=xenc+min(xenc)+1;
-    else
-        xenc=':';
-    end
-    if isfield(data_buffer.input_headfile,'dim_Y_encoding_order')
-        fprintf('Found Y encoding order\n');
-        yenc=data_buffer.input_headfile.dim_Y_encoding_order;
-        yenc=yenc-min(yenc)+1;
-    else
-        yenc=':';
-    end
-    if isfield(data_buffer.input_headfile,'dim_Z_encoding_order')
-        fprintf('Found Z encoding order\n');
-        zenc=data_buffer.input_headfile.dim_Z_encoding_order;
-        zenc=zenc-min(zenc)+1;
-    else
-        zenc=':';
-    end
-    data_buffer.data(xenc,yenc,zenc,:,:,:)=data_buffer.data;
-    
-%     data_buffer.data=padarray(data_buffer.data,[0 2 0 0 0 0],0 );
-    
-%     if strcmp(data_buffer.input_headfile.([data_tag 'vol_type']),'2D') %xcrzy
-%         objlist_name=[data_buffer.input_headfile.U_prefix 'ACQ_obj_order'];
-%         objlist=data_buffer.input_headfile.(objlist_name);
-%         data_buffer.data(:,:,objlist+1,:,:,:,:)=data_buffer.data;
-%         
-%     elseif strcmp(data_buffer.input_headfile.([data_tag 'vol_type']),'3D')%xcryz
-%         data_buffer.data=reshape(data_buffer.data,input_dimensions );
-%         objlist_name=[data_buffer.input_headfile.U_prefix 'PVM_ObjOrderList'];% belongs to z dim.
-%         objlist=data_buffer.input_headfile.(objlist_name);
-%         data_buffer.data(:,:,objlist+1,:,:,:)=data_buffer.data;
-% 
-%     end
-    %     else
-    %         data_buffer.data=reshape(data_buffer.data,dimensions);
-    %         data_buffer.data=permute(data_buffer.data,permute_code );
-    %     end
-    
-    % [ x y z c p t ]
-    
-    % maybe we should squeeze....
-    % if not cartesian
-    % error('never done any real regridding');
 elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
     fprintf('Aspect');
-     %[ x z y ] 
-    data_buffer.data=reshape(data_buffer.data,[ x z y ] );
-    %%% this resorting code doesnt do what is expected, it is disabled for
-    %%% now. Perhaps i cant resort prior to fft for 3D volumes? 
-%     objlist=[((z/2)+1):z  1:(z/2) ];
-%     data_buffer.data(:,objlist,:)=data_buffer.data;
-%     data_buffer.data=permute(data_buffer.data,[ 1 3 2 ]);
+%     
+% d=reshape(data_buffer.data, [306 128*64]);
+%     it=zeros(256,128,64);
+%     for i=1:64
+%         it(:,:,i)=fftshift(ifft2(fftshift(d(51:end,i:64:end))));%figure(6);imagesc(log(abs(it(:,:,i))));
+%         %pause(0.18);
+%     end
+%     
+%     z=size(it,3);
+%     objlist=[1:z/2; z/2+1:z];
+%     objlist=objlist(:);
+%     
+%     it=it(:,:,objlist);
+%     
+%     for i=1:64
+%         figure(6);
+%         imagesc(log(abs(it(:,:,i))));
+%         pause(0.18);
+%     end
+%     
+%     y=size(it,2);
+%     objlist=[y/2+1:y 1:y/2];
+%     it2=it(:,objlist,:);
+%     
+%     for i=1:64
+%         figure(6);
+%         imagesc(log(abs(it2(:,:,i))));
+%         pause(0.18);
+%     end
 else
     warning('Not bruker and Not Aspect no regid yet.');
 end
