@@ -158,6 +158,7 @@ planned_options={
     'fp32_magnitude',         ' write fp32 civm raws instead of the normal ones'
     'write_kimage',           ' write the regridded kspace data to the work directory.'
     'ignore_errors',          ' will try to continue regarless of any error'
+    'asymmetry_mirror',        ' with echo asymmetry tries to copy 85% of echo trail to leading echo side.'
     '',                       ''
     };
 standard_options_string =[' ' strjoin(standard_options(2:end,1)',' ') ' ' ];
@@ -529,6 +530,7 @@ elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
 %         
 %     end
     if strcmp(data_buffer.input_headfile.S_PSDname,'SE_')
+        warning('Aspect SE_ detected!, setting ray_padding value=navigator_length! Does not use navigator data!');
         ray_length=ray_length+50;
         ray_padding=50;
         input_points = 2*ray_length*rays_per_block/channels*ray_blocks;    % because ray_length is number of complex points have to doubled this.
@@ -810,18 +812,23 @@ for chunk_num=1:num_chunks
         data_buffer.headfile.dim_Z=z;
         data_buffer.input_headfile.dim_Z=z;
     end
-    if data_buffer.headfile.echo_asymetry>0
+    if data_buffer.headfile.echo_asymmetry>0
         if z>1
-            error('asymetry not tested with multi-slice');
+            error('asymmetry not tested with multi-slice');
         end
         % move data down the x, then add some x back...
         % ex for 128x128 image.
         % ak(33:128,:)=ak(1:128-32,:);
         % ak(1:32,:)=ak(128:-1:128-31,:);
-        asym_offset=x*data_buffer.headfile.echo_asymetry/2;
-        data_buffer.data(asym_offset+1:x,:)=data_buffer.data(1:x-asym_offset,:);
-        data_buffer.data(1:asym_offset+1,:)=data_buffer.data(x:-1:x-asym_offset,:);
-        warning('asymetry support very experimental! CHECK YOUR OUTPUTS!');
+        asym_offset=x*data_buffer.headfile.echo_asymmetry/2;
+        % perhaps a full mirror option would be good?
+        se_inputtrash=4;
+        data_buffer.data(asym_offset+1+se_inputtrash:x,:)=data_buffer.data(1:x-asym_offset-se_inputtrash,:);
+        if opt_struct.asymmetry_mirror
+            se_inputtrash=ceil(asym_offset*0.85)-se_inputtrash; %adding just a little more cut off with the asymmetry copy.
+        end
+        data_buffer.data(1:asym_offset+1+se_inputtrash,:)=data_buffer.data(x:-1:x-asym_offset-se_inputtrash,:);
+        warning('asymmetry support very experimental! CHECK YOUR OUTPUTS!');
         pause(8);
         
         
