@@ -814,7 +814,7 @@ for chunk_num=1:num_chunks
     end
     if data_buffer.headfile.echo_asymmetry>0
         if z>1
-            error('asymmetry not tested with multi-slice');
+            warning('asymmetry not tested with multi-slice');
         end
         % move data down the x, then add some x back...
         % ex for 128x128 image.
@@ -982,8 +982,8 @@ for chunk_num=1:num_chunks
         if strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
             %             z=size(it,3);
             % for SE_ scans these values have been true 1 time(s)
-            if z>1
-                objlist=[1:z/2; z/2+1:z];
+            if z>1 && mod(z,2) == 0
+                objlist=[1:z/2;z/2+1:z];
                 objlist=objlist(:);
                 img=img(:,:,objlist);
             end
