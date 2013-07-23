@@ -117,8 +117,8 @@ dim = [NP procpar.nv length(procpar.pss) procpar.volumes]; %NB seems to be used 
 
 % check to see if this is a sense reconstruction and what the sense acceleration factor is
 % senseFactor = []; % not c no need to pre-declare.
-% if isfield(procpar,'petable') && ~isempty(procpar.petable{1}) && (length(procpar.petable{1}>1))
-if isfield(procpar,'petable') && ~isempty(procpar.petable{1}) && (procpar.petable{1}>1)
+ if isfield(procpar,'petable') && ~isempty(procpar.petable{1}) && (length(procpar.petable{1}>1))
+%if isfield(procpar,'petable') && ~isempty(procpar.petable{1}) && (procpar.petable{1}>1)
     % petable name that ends in r means a sense protocol
     if isequal(procpar.petable{1}(end),'r')
         % check for the sense factor, (hopefully this number won't be greater than 9!!)
