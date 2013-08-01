@@ -92,9 +92,10 @@ slg version 110131';
     error_out("Unreconized or not enough options passed to agi_recon, got $#ARGV args");
 }
 
-
+my @options_array;
 foreach (sort(keys(%options))){
     print("key=value:",$_,"=",$options{$_},"\n");
+    push(@options_array,"\'".$_."=".$options{$_}."\'");
 }
 
 ###
@@ -121,7 +122,9 @@ my $in_bpp_code=shift @ARGV;
 open_log($work_dir);
 
 my $args="\'$work_dir\',\'$pfile_name\',1"; # the one says we're running command line to agilent_recon.m
-
+if( $#options_array>0) {
+    $args=$args.',{'.join(',',@options_array).'}';
+}
 
 #passing empty string to nohf at end of args so destination will be cmdline
 my $mat_cmd=make_matlab_command_nohf($function_m_name, $args, $short_unique_purpose, $work_dir, $matlab_app,"${work_dir}/${pfile_name}_recon.log"); 
