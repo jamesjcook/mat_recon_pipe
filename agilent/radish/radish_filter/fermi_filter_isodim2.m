@@ -25,11 +25,11 @@ if strcmp(w2,'')
 end
 if ~isnumeric(w1)
     w1=str2double(w1);
-    fprintf('\tcustom w entered=%2f\n',w1);
+    fprintf('\tcustom w entered=%2f\n',w1);% width [default: 0.15]
 end
 if ~isnumeric(w2)
     w2=str2double(w2);
-    fprintf('\tcustom r entered=%2f\n',w2);
+    fprintf('\tcustom r entered=%2f\n',w2); % window [default: 0.75]
 end
 if ~exist('bool_2D_mode','var') 
     bool_2D_mode=false;

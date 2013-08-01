@@ -33,13 +33,13 @@ end
 if strcmp(w2,'')
     w2=0.75;    % window [default: 0.75]
 end
-if ~isfloat(w1)
+if ~isnumeric(w1)
     w1=str2double(w1);
-    fprintf('\tcustom w entered=%2f\n',w1);
+    fprintf('\tcustom w entered=%2f\n',w1);% width [default: 0.15]
 end
-if ~isfloat(w2)
+if ~isnumeric(w2)
     w2=str2double(w2);
-    fprintf('\tcustom r entered=%2f\n',w2);
+    fprintf('\tcustom r entered=%2f\n',w2); % window [default: 0.75]
 end
 
 %% fermi filter
