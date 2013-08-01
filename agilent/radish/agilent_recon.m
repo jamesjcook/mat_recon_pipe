@@ -1,14 +1,13 @@
-function agilent_recon(dir,fname,cmdline)
+function agilent_recon(dir,fname,cmdline,options)
 % function agilent_recon(dir,fname,cmdline)
 % Loads an agilent procpar and fid file at dir, optionally using fname
 % instead of 'fid' and peforms a recon of file. Saves data back to that
-% directory, 
-% If no cmdline not specified or any value except 1, saves seriesname.nii. 
+% directory,
+% If no cmdline not specified or any value except 1, saves seriesname.nii.
 % If cmdline==1 saves, little endian 32-bit floats of
 %                 fname.out.mag,  magnitude image
 %                 fname.out       complex image, interleaved, like radish,
-%                 can be loaded with load_complex(path,[dims])
-% if cmdline==2 saves like cmdline==1, however it assumes you've called
+%                 can be loaded with load_complex(path,[dims])% if cmdline==2 saves like cmdline==1, however it assumes you've called
 %                this with a plain multi fid file, instead of one named with its sequence
 %                position. 
 % should conver tthis function to stub which loads the fid file, then calls
@@ -46,7 +45,34 @@ if ~exist('cmdline','var')
     cmdline=0;
 % else
 %     verbosity=0;
-
+end
+all_options={ 'r', '' ;
+    'w',''};
+if exist('options','var')
+    if ~iscell(options)
+        options={options};
+    end
+else
+    options={};
+end
+for o_num=1:length(all_options(:,1))
+    if ~isfield('opt_struct',all_options{o_num,1}) && ~isempty(all_options{o_num,1})
+        opt_struct.(all_options{o_num,1})=all_options{o_num,2};
+    end
+end
+for o_num=1:length(options)
+    option=options{o_num};
+    if regexpi(option,'=')
+        
+        parts=strsplit(option,'=');
+        if length(parts)==2
+            value=parts{2};
+            option=parts{1};
+        else
+            error('%s ''='' sign in option string %s, however does not split cleanly into two parts',err_string,option);
+        end
+    end
+    opt_struct.(option)=value;
 end
 %%% do secondary input checking.
 if ~exist([dir '/fid'],'file')
@@ -237,14 +263,14 @@ for i=image_start:image_stop
             for z=1:dim(3) % perhaps parfor this?
                 %fermi filter
 %                 raw_data(:,:,z,i)=fermi_filter_isodim2_memfix(raw_data(:,:,:,i));
-                raw_data(i).data(:,:,z)=fermi_filter_isodim2(raw_data(i).data(:,:,z));
+                raw_data(i).data(:,:,z)=fermi_filter_isodim2(raw_data(i).data(:,:,z),opt_struct.w,opt_struct.r);
             end
             %ifft
 %             img=fftshift(ifft2(raw_data.data(:,:,:,i)));
             raw_data(i).data=fftshift(ifft2(raw_data(i).data));
         elseif procpar.acqdim==3 %recon 3D data
             %fermi filter inlined for better memory useage.
-            fermi_filter_isodim2_memfix_obj(raw_data(i)); %
+            fermi_filter_isodim2_memfix_obj(raw_data(i),opt_struct.w,opt_struct.r); %
             %ifft
             raw_data(i).data=ifftn(raw_data(i).data);
             raw_data(i).data=fftshift(raw_data(i).data);

@@ -9,7 +9,7 @@ function oraw=fermi_filter_isodim2(iraw,w1,w2,bool_2D_mode)
 %
 % written by LX 11/16/12, inspired by GPC, LU, RD
 % -------------------------------------------------------------------------
-
+disp('Filtering');
 %% intial parameters
 if ~exist('w1','var')
     w1='';
@@ -17,14 +17,20 @@ end
 if ~exist('w2','var')
     w2='';
 end
-
 if strcmp(w1,'')
     w1=0.15;    % width [default: 0.15]
 end
 if strcmp(w2,'')
     w2=0.75;    % window [default: 0.75]
 end
-
+if ~isnumeric(w1)
+    w1=str2double(w1);
+    fprintf('\tcustom w entered=%2f\n',w1);
+end
+if ~isnumeric(w2)
+    w2=str2double(w2);
+    fprintf('\tcustom r entered=%2f\n',w2);
+end
 if ~exist('bool_2D_mode','var') 
     bool_2D_mode=false;
 end
