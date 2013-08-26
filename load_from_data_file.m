@@ -1,4 +1,4 @@
-function load_from_data_file(data_buffer,file_path,header_skip,load_size,load_skip,data_precision,chunk_size,total_chunks,chunks_to_load)
+function load_from_data_file(data_buffer,file_path,header_skip,load_size,load_skip,data_precision,chunk_size,total_chunks,chunks_to_load,endian)
 % function to load data has to be very smart to load to same kind of array
 % for any instrument
 % would be nice if we could specify funny things to it, so that it wouldnt
@@ -43,6 +43,9 @@ function load_from_data_file(data_buffer,file_path,header_skip,load_size,load_sk
 
 % filename = fullfile(directory, 'fid');
 
+if isempty(endian)
+    endian='l';
+end
 if load_skip==0
     load_size=chunk_size;
 end
@@ -53,21 +56,34 @@ loads_per_chunk=chunk_size/load_size;
 % chunks_to_load=[1 3 4 9];
 % chunk_size=256;
 
-fileid = fopen(file_path, 'r', 'l');
+fileid = fopen(file_path, 'r', endian);
 if ~isvector(chunks_to_load)
     chunks_to_load=(chunks_to_load);
 end
+if numel(data_buffer.data)==0
+    data_buffer.data=complex(zeros(chunk_size/2*numel(chunks_to_load),1),zeros(chunk_size/2*numel(chunks_to_load),1));
+end
+buffer_pos=1;
 for c=1:length(chunks_to_load)
-    skip=header_skip+(load_size+load_skip)*(chunks_to_load(c)-1)*loads_per_chunk;
-    fseek(fileid,skip,'bof');
+    if c>1 
+      warning('multi chunk loads probably dont work');
+    end
+    skip=header_skip+load_skip+(load_size+load_skip)*(chunks_to_load(c)-1)*loads_per_chunk;
+%     fseek(fileid,skip,'bof');
     for n=1:loads_per_chunk
-        if n>1  % skip chunk load_size header only if not first piece
-            fseek(fileid,load_skip,'bof');
+        if n==1  % skip chunk load_size header only if not first piece
+            fseek(fileid,skip,'bof');
+        else
+%             fseek(fileid,skip+(load_size*n)+1,'bof');
         end
-        fid = fread(fileid, load_size, data_precision);
-        fid = fid(1:2:end) + 1i*fid(2:2:end);
-        data_buffer.data=fid;
-        warning('multi chunk loads probably dont work');
+        fid_data = fread(fileid, load_size, data_precision);
+        fid_data = fid_data(1:2:end) + 1i*fid_data(2:2:end);
+        data_buffer.data(buffer_pos:buffer_pos+load_size/2-1,1)=fid_data;
+          % load_size/2 beacause loadsize is number plain numbers, and data_buffer.data is complex.
+        buffer_pos=buffer_pos+load_size/2;
+%     RE(:,inx:inx+ntraces-1) = squeeze(data_buffer(1,:,:));
+%     IM(:,inx:inx+ntraces-1) = squeeze(data_buffer(2,:,:));
+
     end
 end
 fclose(fileid);

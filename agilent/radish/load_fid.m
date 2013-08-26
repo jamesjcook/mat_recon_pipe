@@ -39,15 +39,15 @@ catch ME
 end
 
 % Read datafileheader
-nblocks   = fread(fid,1,'int32');
-ntraces   = fread(fid,1,'int32');
-np        = fread(fid,1,'int32');
-ebytes    = fread(fid,1,'int32');
-tbytes    = fread(fid,1,'int32');
-bbytes    = fread(fid,1,'int32');
-vers_id   = fread(fid,1,'int16');
-status    = fread(fid,1,'int16');
-nbheaders = fread(fid,1,'int32');
+nblocks   = fread(fid,1,'int32');%4
+ntraces   = fread(fid,1,'int32');%8
+np        = fread(fid,1,'int32');%12
+ebytes    = fread(fid,1,'int32');%16
+tbytes    = fread(fid,1,'int32');%20
+bbytes    = fread(fid,1,'int32');%24
+vers_id   = fread(fid,1,'int16');%26
+status    = fread(fid,1,'int16');%28
+nbheaders = fread(fid,1,'int32');%32
 
 
 % s_data    = bitget(status,1);
@@ -69,15 +69,15 @@ data_buffer=zeros(2,np/2,ntraces,'single');
 for b = 1:nblocks % blocks are usually slices or volumes of data to be read
     sprintf('read block %d\n',b);
     % Read a block header
-    scale     = fread(fid,1,'int16');
-    bstatus   = fread(fid,1,'int16');
-    index     = fread(fid,1,'int16');
-    mode      = fread(fid,1,'int16');
-    ctcount   = fread(fid,1,'int32');
-    lpval     = fread(fid,1,'float32');
-    rpval     = fread(fid,1,'float32');
-    lvl       = fread(fid,1,'float32');
-    tlt       = fread(fid,1,'float32');
+    scale     = fread(fid,1,'int16');  %2
+    bstatus   = fread(fid,1,'int16');  %4
+    index     = fread(fid,1,'int16');  %6
+    mode      = fread(fid,1,'int16');  %8
+    ctcount   = fread(fid,1,'int32');  %12
+    lpval     = fread(fid,1,'float32');%16
+    rpval     = fread(fid,1,'float32');%20
+    lvl       = fread(fid,1,'float32');%24
+    tlt       = fread(fid,1,'float32');%28
     %%% convenient break point, can be used to break every 64 blocks of data to test out of memory issues
     if nblocks>256
         if mod(b,256) ==0
