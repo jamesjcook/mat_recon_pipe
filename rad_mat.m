@@ -1270,19 +1270,13 @@ for chunk_num=1:num_chunks
                     %%% kimage_
                     if opt_struct.write_kimage && ~opt_struct.skip_filter && ~opt_struct.skip_load
                         fprintf('\tradish_magnitude kimage save\n');
-                        nii=make_nii(log(abs(data_buffer.data)), ...
-                            [ data_buffer.headfile.fovx/data_buffer.headfile.dim_X ...
-                            data_buffer.headfile.fovy/data_buffer.headfile.dim_Y ...
-                            data_buffer.headfile.fovz/data_buffer.headfile.dim_Z]);
+                        nii=make_nii(log(abs(data_buffer.data)));
                         save_nii(nii,[work_dir_img_path '_kspace.nii']);
                     end
                     %%% kimage_unfiltered
                     if opt_struct.write_kimage_unfiltered  && ~opt_struct.skip_load
                         fprintf('\twrite_kimage_unfiltered save\n');
-                        nii=make_nii(log(abs(data_buffer.data_pristine)), ...
-                            [ data_buffer.headfile.fovx/data_buffer.headfile.dim_X ...
-                            data_buffer.headfile.fovy/data_buffer.headfile.dim_Y ...
-                            data_buffer.headfile.fovz/data_buffer.headfile.dim_Z]);
+                        nii=make_nii(log(abs(data_buffer.data_pristine)));
                         save_nii(nii,[work_dir_img_path '_kspace_unfiltered.nii']);
                     end
                     %%% nii_save
