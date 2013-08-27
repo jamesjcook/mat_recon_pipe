@@ -116,22 +116,22 @@ standard_options={
     '',                       'Core options which have real support.'
     'help',                   ' Display the help'
     'overwrite',              ' over write anything in the way, especially re run puller and overwrite whats there'
-    'existing_data',          ' use data from system(as if puller had already run)'
+    'existing_data',          ' use data from system(as if puller had already run), puller will not run at all.'
     'skip_mem_checks',        ' do not test if we have enough memory'
-    'testmode',               ' skip qui and just put dummy info in gui fields, will not be archiveable'
-    'write_output',           ' disable all output saving, good for running inside matlab and continuing in another function'
-    'skip_write_civm_raw',    ' do now save civm raw files.'
+    'testmode',               ' skip GUI and just put dummy info in GUI fields, will not be archiveable'
+    'skip_write',             ' do not save anything to disk. good for running inside matlab and continuing in another function'
+    'skip_write_civm_raw',    ' do not save civm raw files.'
     'skip_write_headfile',    ' do not write civm headfile output'
     'write_unscaled',         ' save unscaled nifti''s in the work directory '
-    'display_kspace',         ' display the kspace data prior to reconstruction, will showcase errors in regrid and load functions'
-    'display_output',         ' display reconstructed output after the resort and transform operations'
+    'display_kspace',         ' display re-gridded kspace data prior to reconstruction, will showcase errors in regrid and load functions'
+    'display_output',         ' display reconstructed image after the resort and transform operations'
     '',                       ''
     };
 beta_options={
     '',                       'Secondary, new, experimental options'
-    'planned_ok',             ' specaial option which must be early in list of options, controlls whether planned optinos are an error'
-    'unrecognized_ok',        ' special option which must be early in list of options, controls whether arbitrary options are an error, this is so that alternate child functions could be pass ed the opt_struct variable and would work from there.'
-    'debug_mode',             ' way to set our verbosity. use debug_mode=##'
+    'planned_ok',             ' special option which must be early in list of options, controls whether planned options are an error'
+    'unrecognized_ok',        ' special option which must be early in list of options, controls whether arbitrary options are an error, this is so that alternate child functions could be passed the opt_struct variable and would work from there. This is also the key to inserting values into the headfile to override what our perlscript generates. '
+    'debug_mode',             ' verbosity. use debug_mode=##'
     'study',                  ' set the bruker study to pull from, useful if puller fails to find the correct data'
     'U_dimension_order',      ' input_dimension_order will override whatever the perl script comes up with.'
     'vol_type_override',      ' if the processing script fails to guess the proper acquisition type(2D|3D) it can be specified.'
@@ -140,8 +140,8 @@ beta_options={
     'channel_alias',          ' list of values for aliasing channels to letters, could be anything using this'
     'combine_method',         ' specify the method used for combining multi-channel data. supported modes are square_and_sum, or mean, use  combine_method=text'
     'skip_combine_channels',  ' do not combine the channel images'
-    'write_complex',          ' should the complex output be written to th work directory. Will be written is rp(or near rp file) format.'
-    'do_aspect_freq_correct', ' skip the aspect frequency correction.'
+    'write_complex',          ' should the complex output be written to th work directory. Will be written as rp(or near rp file) format.'
+    'do_aspect_freq_correct', ' perform aspect frequency correction.'
     'skip_load'               ' do not load data, implies skip regrid, skip filter, skip recon and skip resort'
     'skip_regrid',            ' do not regrid'
     'skip_filter',            ' do not filter data sets.'
@@ -149,8 +149,8 @@ beta_options={
     'skip_resort',            ' for 3D acquisitions we resort after fft, this alows that to be skiped'
     'force_ij_prompt',        ' force ij prompt on, it is normally ignored with skip_recon'
     'remove_slice',           ' removes a slice of the acquisition at the end, this is a hack for some acquisition types'
-    'open_volume_limit',      ' maximum number of volumes imagej will open at a time'
-    'warning_pause',          ' lenght of pause after warnings (default 3)'
+    'open_volume_limit',      ' override the maximum number of volumes imagej will open at a time,default is 36. use open_volume_limit=##'
+    'warning_pause',          ' length of pause after warnings (default 3). Errors outside matlab from the perl parsers are not effected. use warning_pause=##'
     '',                       ''
     };
 planned_options={
@@ -160,7 +160,8 @@ planned_options={
     'write_kimage',           ' write the regridded and filtered kspace data to the work directory.'
     'write_kimage_unfiltered',' write the regridded unfiltered   kspace data to the work direcotry.'
     'ignore_errors',          ' will try to continue regarless of any error'
-    'asymmetry_mirror',        ' with echo asymmetry tries to copy 85% of echo trail to leading echo side.'
+    'asymmetry_mirror',       ' with echo asymmetry tries to copy 85% of echo trail to leading echo side.'
+%     'allow_headfile_override' ' Allow arbitrary options to be passed which will overwrite headfile values once the headfile is created/loaded'
     '',                       ''
     };
 standard_options_string =[' ' strjoin(standard_options(2:end,1)',' ') ' ' ];
@@ -183,7 +184,7 @@ opt_struct.ignore_errors=false;
 %     'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' ...
 %     'n' 'o' 'p' 'q' 'r' 's' 't' 'u' 'v' 'w' 'x' 'y' 'z' ];
 opt_struct.puller_option_string='';
-opt_struct.write_output=true;     % normally we want to save output
+opt_struct.unrecognized_fields={};% place to put all the names of unrecognized options we recieved. They're assumed to all be headfile values. 
 %opt_struct.combine_channels=true; % normally we want to combine channels
 % opt_struct.display_kspace=false;
 % opt_struct.display_output=false;
@@ -239,6 +240,7 @@ for o_num=1:length(options)
         if opt_struct.unrecognized_ok  % allows unrecognized options to pass through.
             w=true;
             e=false;
+            opt_struct.unrecognized_fields{end+1}=option;
             specific_text=sprintf('%s Maybe it is used in some secondary code which did not update the allowed options here.\n continuing.',specific_text);
         end
     end
@@ -266,7 +268,7 @@ end
 if opt_struct.help
     help rad_mat;
     for o_num=1:length(all_options(:,1))
-        fprintf('%24s - %s\n',all_options{o_num,1},all_options{o_num,2});
+        fprintf('%24s - %60s\n',all_options{o_num,1},all_options{o_num,2});
     end
     error('help display stop.');
 end
@@ -538,21 +540,22 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
             'Tell james let this continue in test mode']);
     end
 elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
+    display('Aspect scan, data size uncertain');
     %TENC = 4
     %INTRLV = INTRLV
     %DISTANZA = 4
     %     if  strcmp(data_buffer.input_headfile.([data_prefix 'INTRLV']),'INTRLV')
     %
     %     end
-    if strcmp(data_buffer.input_headfile.S_PSDname,'SE_')
+    if strcmp(data_buffer.input_headfile.S_PSDname,'SE_')||strcmp(data_buffer.input_headfile.S_PSDname,'ME_SE_')
         warning('Aspect SE_ detected!, setting ray_padding value=navigator_length! Does not use navigator data!');
         ray_length=ray_length+50;
         ray_padding=50;
-        input_points = 2*ray_length*rays_per_block/channels*ray_blocks;
-        % because ray_length is number of complex points have to doubled this.
-        min_load_size= ray_length*rays_per_block/channels*(in_bitdepth/8);
-        % minimum amount of bytes of data we can load at a time,
     end
+    input_points = 2*ray_length*rays_per_block/channels*ray_blocks;
+    % because ray_length is number of complex points have to doubled this.
+    min_load_size= ray_length*rays_per_block/channels*(in_bitdepth/8);
+    % minimum amount of bytes of data we can load at a time,
 else
     % not bruker, no ray padding...
     input_points = 2*ray_length*rays_per_block*ray_blocks;
@@ -920,7 +923,9 @@ for chunk_num=1:num_chunks
                 %             fermi_filter_isodim2_memfix_obj(data_buffer);
                 data_buffer.data=fermi_filter_isodim2(data_buffer.data,'','',false);
             else
-                warning('DID NOT PERFORM FILTER');
+                warning('%svol_type not specified, DID NOT PERFORM FILTER. \n can use vol_type_override=[2D|3D] to overcome headfile parse defficiency.',data_tag);
+                pause(opt_struct.warning_pause);
+
             end
             %
         else
@@ -1115,7 +1120,7 @@ for chunk_num=1:num_chunks
         datatype='raw';
     end
     data_buffer.headfile.F_imgformat=datatype;
-    if opt_struct.write_output
+    if ~opt_struct.skip_write
         work_dir_img_path_base=[ work_dir_path '/' data_buffer.headfile.U_runno ] ;
         %%% save n-D combined nii.
         if ~opt_struct.skip_combine_channels && channels>1 && ~opt_struct.skip_recon && opt_struct.write_unscaled
@@ -1269,7 +1274,7 @@ for chunk_num=1:num_chunks
                     end
                     %%% kimage_
                     if opt_struct.write_kimage && ~opt_struct.skip_filter && ~opt_struct.skip_load
-                        fprintf('\tradish_magnitude kimage save\n');
+                        fprintf('\twrite_kimage save\n');
                         nii=make_nii(log(abs(data_buffer.data)));
                         save_nii(nii,[work_dir_img_path '_kspace.nii']);
                     end
@@ -1331,7 +1336,7 @@ for chunk_num=1:num_chunks
                         outpath=[space_dir_img_folder '/convert_info_histo'];
                         % display(['Saving vintage threeft to ' outpath '.']);
                         ofid=fopen(outpath,'w+');
-                        if ofid==-1
+                        if ofid==-1 
                             error('problem opening convert_info_hist file for writing file');
                         end
                         fprintf(ofid,'%f=scale_max found by agilent_scale_histo in complex file %s\n',s_max_intensity,[work_dir_img_path '.out']);
@@ -1361,6 +1366,8 @@ for chunk_num=1:num_chunks
                 end
             end
         end
+    else
+        fprintf('No outputs written.\n');
     end
     if ~isempty(ij_prompt)&& ~opt_struct.skip_write_civm_raw
         fprintf('test image output from a terminal using following command (it may only open the first and last in lage sequences).\n');
