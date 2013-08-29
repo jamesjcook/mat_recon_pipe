@@ -560,7 +560,7 @@ else
     % not bruker, no ray padding...
     input_points = 2*ray_length*rays_per_block*ray_blocks;
     % because ray_length is doubled, this is doubled too.
-    min_load_size=ray_length*rays_per_block*(in_bitdepth/8);
+    min_load_size= 2*ray_length*rays_per_block*(in_bitdepth/8);
     % minimum amount of bytes of data we can load at a time,
 end
 total_memory_required= (input_points+voxel_count*copies_in_memory)*bytes_per_vox;
@@ -771,11 +771,12 @@ output_dimensions=[d_struct.(opt_struct.output_order(1)) d_struct.(opt_struct.ou
 % for each chunk, load chunk, regrid, filter, fft, (save)
 % save not implemented yet, requires a chunk stitch funtion as well.
 % for now assuming we didnt chunk and saves after the fact.
-%
+%        
+chunks_to_load=[1];
 for chunk_num=1:num_chunks
     if ~opt_struct.skip_load
         %%% LOAD
-        chunks_to_load=[1];
+        fprintf('Loading data\n');
         %load data with skips function, does not reshape, leave that to regridd
         %program.
         
@@ -807,8 +808,10 @@ for chunk_num=1:num_chunks
             % expected given datasamples, so that would be
             % (ray_legth-ray_padding)*rays_per_blocks*blocks_per_chunk
             % NOTE: blocks_per_chunk is same as blocks_per_volume with small data,
-            if numel(data_buffer.data) ~= (ray_length-ray_padding)/channels*rays_per_block*ray_blocks && ~opt_struct.ignore_errors
-                error('Ray_padding reversal went awrry. Data length should be %d, but is %d',(ray_length-ray_padding)/channels*rays_per_block*ray_blocks,numel(data_buffer.data));
+            if numel(data_buffer.data) ~= ...
+                    (ray_length-ray_padding)/channels*rays_per_block*ray_blocks && ~opt_struct.ignore_errors
+                error('Ray_padding reversal went awrry. Data length should be %d, but is %d',...
+                    (ray_length-ray_padding)/channels*rays_per_block*ray_blocks,numel(data_buffer.data));
             else
                 fprintf('Data padding retains corrent number of elements, continuing...\n');
             end
@@ -1229,6 +1232,7 @@ for chunk_num=1:num_chunks
                 for pn=1:params
                     s.p=pn;
                     if ~opt_struct.skip_recon
+                        fprintf('Extracting image channel:%0.0f param:%0.0f timepoint:%0.0f\n',cn,pn,tn);
                         if ~opt_struct.skip_combine_channels  && ~ ischar(combine_image);% && channels>1
                             tmp=squeeze(combine_image(...
                                 s.(opt_struct.output_order(1)),...
@@ -1251,7 +1255,6 @@ for chunk_num=1:num_chunks
                     else
                         tmp=img;
                     end
-                    fprintf('Extracting image channel:%0.0f param:%0.0f timepoint:%0.0f\n',cn,pn,tn);
                     %%%set channel and mnumber codes for the filename
                     if channels>1
                         channel_code=opt_struct.channel_alias(cn);
@@ -1267,6 +1270,9 @@ for chunk_num=1:num_chunks
                     space_dir_img_name =[ data_buffer.headfile.U_runno channel_code m_code];
                     space_dir_img_folder=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '/' space_dir_img_name 'images' ];
                     work_dir_img_path=[work_dir_img_path_base channel_code m_code];
+
+                    fprintf('Writing standard outputs to %s,\nWriting debug outputs to %s\n',space_dir_img_folder,work_dir_path);
+                    
                     %%% complex save
                     if opt_struct.write_complex && ~opt_struct.skip_recon
                         fprintf('\twrite_complex (radish_format) save\n');
@@ -1316,7 +1322,7 @@ for chunk_num=1:num_chunks
                     end
                     
                     if ~opt_struct.skip_write_headfile
-                        fprintf('\tHeadfile save\n');
+                        fprintf('\twrite_headfile save \n');
                         write_headfile([space_dir_img_folder '/' space_dir_img_name '.headfile'],data_buffer.headfile);
                         % insert validate_header perl script check here?
                     end
