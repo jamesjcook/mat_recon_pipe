@@ -293,7 +293,7 @@ end
 if opt_struct.overwrite
     opt_struct.puller_option_string=[' -o ' opt_struct.puller_option_string];
 end
-if opt_struct.existing_data||opt_struct.skip_recon
+if opt_struct.existing_data %||opt_struct.skip_recon
     opt_struct.puller_option_string=[' -e ' opt_struct.puller_option_string];
 end
 clear possible_dimensions warn_string err_string;
@@ -348,9 +348,9 @@ cmd=['puller_simple ' opt_struct.puller_option_string ' ' scanner ' ''' puller_d
 data_buffer.headfile.comment{end+1}=['# \/ pull cmd ' '\/'];
 data_buffer.headfile.comment{end+1}=['# ' cmd ];
 data_buffer.headfile.comment{end+1}=['# /\ pull cmd ' '/\'];
-if ~opt_struct.existing_data&&~opt_struct.skip_recon
+if ~opt_struct.existing_data  %&&~opt_struct.skip_recon
     s =system(cmd);
-    if s ~= 0|| opt_struct.ignore_errors
+    if s ~= 0 && ~opt_struct.ignore_errors
         error('puller failed:%s',cmd);
     end
 end
