@@ -1,4 +1,4 @@
-function [img, s]=rad_mat(scanner,runno,input,options)
+function [img, s]=rad_mat(scanner,runno,input_data,options)
 % [img, s]=RAD_MAT(scanner,runno,input,options)
 % Reconstruct All Devices in MATlab
 % rad_mat, a quasi generic reconstruction/reformating scanner to archive
@@ -95,8 +95,8 @@ data_buffer.headfile.comment{end+1}=['# Reconstruction time ' datestr(now,'yyyy-
 % version=  ''; % get version from v file name on disk
 
 %% option and function argument handling
-if ~iscell(input)
-    input={input};
+if ~iscell(input_data)
+    input_data={input_data};
 end
 
 %switch for setting options might be better served ina little struct?
@@ -123,6 +123,7 @@ standard_options={
     'skip_write_civm_raw',    ' do not save civm raw files.'
     'skip_write_headfile',    ' do not write civm headfile output'
     'write_unscaled',         ' save unscaled nifti''s in the work directory '
+    'write_unscaled_nD',      ' save unscaled nifti''s in the work directory '
     'display_kspace',         ' display re-gridded kspace data prior to reconstruction, will showcase errors in regrid and load functions'
     'display_output',         ' display reconstructed image after the resort and transform operations'
     '',                       ''
@@ -135,6 +136,7 @@ beta_options={
     'study',                  ' set the bruker study to pull from, useful if puller fails to find the correct data'
     'U_dimension_order',      ' input_dimension_order will override whatever the perl script comes up with.'
     'vol_type_override',      ' if the processing script fails to guess the proper acquisition type(2D|3D) it can be specified.'
+    'kspace_shift',           ' x:y:z shift of kspace, use kspace_shift=##:##:##' 
     'ignore_kspace_oversize', ' when we do our sanity checks on input data ignore kspace file being bigger than expected, this currently must be on for aspect data'
     'output_order',           ' specify the order of your output dimensions. Default is xyzcpt. use output_oder=xyzcpt.'
     'channel_alias',          ' list of values for aliasing channels to letters, could be anything using this'
@@ -180,6 +182,7 @@ opt_struct.open_volume_limit=36;
 opt_struct.channel_alias='abcdefghijklmnopqrstuvwxyz';
 opt_struct.warning_pause=3;
 opt_struct.ignore_errors=false;
+opt_struct.kspace_shift='0:0:0';
 % [... % just a lookup of letters to assign to channel data, we'll reserve _m numbers for acquisition params other than channels, eg. time, te, tr alpha, gradients
 %     'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l' 'm' ...
 %     'n' 'o' 'p' 'q' 'r' 's' 't' 'u' 'v' 'w' 'x' 'y' 'z' ];
@@ -272,6 +275,35 @@ if opt_struct.help
     end
     error('help display stop.');
 end
+if opt_struct.skip_recon
+    opt_struct.skip_write_civm_raw=true;
+    opt_struct.write_complex=false;
+    opt_struct.fp32magnitude=false;
+    opt_struct.write_phase=false;
+    if opt_struct.skip_write_civm_raw && ~opt_struct.write_complex && ~opt_struct.write_kimage && ~opt_struct.write_kimage_unfiltered
+        opt_struct.skip_load=true;
+    end
+end
+
+if isnumeric(opt_struct.kspace_shift)
+    opt_struct.kspace_shift=num2str(opt_struct.kspace_shift);
+end
+if regexp(opt_struct.kspace_shift,'[-]?[0-9]+(:[-]?[0-9]+){0,2}')
+    temp=strsplit(opt_struct.kspace_shift,':');
+    opt_struct=rmfield(opt_struct,'kspace_shift');
+    opt_struct.kspace_shift=zeros(1,3);
+    for ks=1:length(temp)
+        opt_struct.kspace_shift(ks)=str2double(temp{ks});
+    end
+else
+    kspace_shift_string='kspace_shift params incorrect. Must be comma separated list of integers, with at most 3 elements.';
+    if ~opt_struct.ignore_errors
+        error(kspace_shift_string);
+    else
+        warning(kspace_shift_string);
+    end
+end
+
 if length(opt_struct.output_order)<length(possible_dimensions)
     for char=1:length(possible_dimensions)
         test=strfind(opt_struct.output_order,possible_dimensions(char));
@@ -298,10 +330,11 @@ if opt_struct.existing_data %||opt_struct.skip_recon
 end
 clear possible_dimensions warn_string err_string;
 
+tic
 %% dependency loading
 data_buffer.scanner_constants=load_scanner_dependency(scanner);
 data_buffer.engine_constants=load_engine_dependency();
-data_buffer.headfile.matlab_functioncall=['rad_mat('''  scanner ''', ''' data_buffer.headfile.U_runno ''', {''' strjoin(input,''', ''') '''} ' ', {''' strjoin(options,''', ''') '''})'];
+data_buffer.headfile.matlab_functioncall=['rad_mat('''  scanner ''', ''' data_buffer.headfile.U_runno ''', {''' strjoin(input_data,''', ''') '''} ' ', {''' strjoin(options,''', ''') '''})'];
 data_buffer.headfile.comment{end+1}='# \/ Matlab function call \/';
 data_buffer.headfile.comment{end+1}=['# ' data_buffer.headfile.matlab_functioncall];
 data_buffer.headfile.comment{end+1}='# /\ Matlab function call /\';
@@ -317,7 +350,7 @@ clear o_num options option all_options standard_options standard_options_string 
 %% data pull and build header from input
 
 if strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
-    if ~regexpi(input{end},'fid')
+    if ~regexpi(input_data{end},'fid')
         % if ! endswith fid, add fid
         dirext='.fid';
     else
@@ -326,16 +359,16 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
 else
     dirext='';
 end
-if numel(input)==1
-    input= strsplit(input{1},'/');
+if numel(input_data)==1
+    input_data= strsplit(input_data{1},'/');
 end
-if numel(input)==2 && strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
-    input{1}=[input{1} '*'];
+if numel(input_data)==2 && strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
+    input_data{1}=[input_data{1} '*'];
     if opt_struct.study~=0
         opt_struct.puller_option_string=sprintf('%s -s %s',opt_struct.puller_option_string,opt_struct.study);
     end
 end %else
-puller_data=[strjoin(input, '/'), dirext];
+puller_data=[strjoin(input_data, '/'), dirext];
 datapath=[data_buffer.scanner_constants.scanner_data_directory '/' puller_data ];
 data_buffer.input_headfile.origin_path=datapath;
 % display(['data path should be omega@' scanner ':' datapath ' based on given inputs']);
@@ -436,31 +469,66 @@ in_precision=[in_bytetype num2str(in_bitdepth)];
 %         interleave=false;
 %     end
 % end
-volumes=data_buffer.input_headfile.([data_tag 'volumes']);
+% volumes=data_buffer.input_headfile.([data_tag 'volumes']);
 if regexp(scan_type,'channel')
     warning('multi-channel support still poor.');
 end
-%% calculate required disk space
-bytes_per_pix_output=(2+8+4+4);
+%% calculate required disk and memory space
+bytes_per_voxel_disk=0;%
+% write_phase,write_phase,write_kimage,write_kimage_unfiltered
+bytes_per_output_voxel_RAM=0;
+volumes_in_memory_at_time=2;
+bytes_per_input_sample_RAM=volumes_in_memory_at_time*in_bitdepth/8;
+if ~opt_struct.skip_write_civm_raw
+    bytes_per_voxel_disk=bytes_per_voxel_disk+2;
+    if opt_struct.fp32_magnitude
+        bytes_per_voxel_disk=bytes_per_voxel_disk+2;
+    end
+end
+if opt_struct.write_unscaled
+    bytes_per_voxel_disk=bytes_per_voxel_disk+4;
+end
+if opt_struct.write_unscaled
+    bytes_per_voxel_disk=bytes_per_voxel_disk+4;
+end
+if opt_struct.write_phase
+    bytes_per_voxel_disk=bytes_per_voxel_disk+4;
+end
+if opt_struct.write_complex
+    bytes_per_voxel_disk=bytes_per_voxel_disk+4;
+end
+if opt_struct.write_kimage
+    bytes_per_voxel_disk=bytes_per_voxel_disk+4;
+    bytes_per_output_voxel_RAM=bytes_per_output_voxel_RAM+8;
+end
+if opt_struct.write_kimage_unfiltered
+    bytes_per_voxel_disk=bytes_per_voxel_disk+4;
+    bytes_per_output_voxel_RAM=bytes_per_output_voxel_RAM+8;
+end
+if opt_struct.write_unscaled || opt_struct.write_phase|| opt_struct.write_complex 
+    bytes_per_output_voxel_RAM=bytes_per_output_voxel_RAM+4;
+end
 % calculate space required on disk to save the output.
 % 2 bytes for each voxel in civm image, 8 bytes per voxel of complex output
 % if saved, 4 bytes for save 32-bit mag, 4 bytes for save 32-bit phase
-voxel_count=volumes*...
+voxel_count=...
     data_buffer.input_headfile.dim_X*...
     data_buffer.input_headfile.dim_Y*...
-    data_buffer.input_headfile.dim_Z;
-required_free_space=voxel_count*bytes_per_pix_output;
+    data_buffer.input_headfile.dim_Z*...
+    data_buffer.input_headfile.([data_tag 'volumes']);
+required_free_space=voxel_count*bytes_per_voxel_disk;
 
 %% disk usage checking
 fprintf('Required disk space is %0.2fMB\n',required_free_space/1024/1024);
-%%% get free space
-
+% get free space
 [~,local_space_bytes] = unix(['df ',data_buffer.engine_constants.engine_work_directory,' | tail -1 | awk ''{print $4}'' ']);
 local_space_bytes=512*str2double(local_space_bytes); %this converts to bytes because default blocksize=512 byte
-%  required_free_space=npoints*ntraces*nblocks*10; %estimate we need at least 10 bytes per image point because we save an unscaled 32 bit and a 16 bit and compelx
-fprintf('Available disk space is %0.2fMB\n',local_space_bytes/1024/1024)
+fprintf('Available disk space is %0.2fMB\n',local_space_bytes/1024/1024);
 if required_free_space<local_space_bytes|| opt_struct.ignore_errors
     fprintf('      .... Proceding with plenty of disk space\n');
+elseif required_free_space<2*local_space_bytes
+    warning('Local disk space is low, may run out');
+    pause(opt_struct.warning_pause);
 else
     error('not enough free local disk space to reconstruct data, delete some files and try again');
 end
@@ -472,16 +540,6 @@ clear local_space_bytes status required_free_space bytes_per_pix_output;
 display('Determining RAM requirements and chunk size');
 data_prefix=data_buffer.input_headfile.(['U_' 'prefix']);
 meminfo=imaqmem; %check available memory
-copies_in_memory=3; % number of copies of each point required to do work.
-%    (as we improve we should update this number)
-% in theory,
-% 1 copy to load,
-% 1 copy for filter,
-% 1 copy for output files
-bytes_per_vox=8;    % number of bytes each voxel requires in memory.
-% 4 for single precision, 8 for double, generally
-% matlab requires single or double, and we cant
-% calculate in short
 
 binary_header_size   =data_buffer.input_headfile.binary_header_size; %distance to first data point in bytes
 load_skip            =data_buffer.input_headfile.block_header_size;  %distance between blocks of rays in file
@@ -563,9 +621,10 @@ else
     min_load_size= 2*ray_length*rays_per_block*(in_bitdepth/8);
     % minimum amount of bytes of data we can load at a time,
 end
-total_memory_required= (input_points+voxel_count*copies_in_memory)*bytes_per_vox;
+total_memory_required= volumes_in_memory_at_time*input_points*bytes_per_input_sample_RAM+voxel_count*bytes_per_output_voxel_RAM;
 system_reserved_memory=2*1024*1024*1024;% reserve 2gb for the system while we work.
-
+fprintf(' input_points:%d output_voxels%d\n',input_points,voxel_count);
+fprintf(' total_memory_required for all at once:%dM, available memory:%dM\n',total_memory_required/1024/1024,(meminfo.TotalPhys-system_reserved_memory)/1024/1024);
 % handle ignore memory limit options
 if opt_struct.skip_mem_checks==1;
     display('you have chosen to ignore this machine''s memory limits, this machine may crash');
@@ -593,7 +652,11 @@ if meminfo.AvailPhys<memory_space_required
 end
 %%% now prompt for program close and purge each time
 while meminfo.AvailPhys<memory_space_required
-    input('you have too many programs open.\n close some programs and then press enter >> ','s');
+    fprintf('%d/%d you have too many programs open.\n ',meminfo.AvailPhys,memory_space_required);
+    breakout=input('close some programs and then press enter >> ','s');
+    if strcmp(breakout,'c')
+        meminfo.AvailPhys=memory_space_required;
+    end
     system('purge');
 end
 %%% Load size calculation,
@@ -867,12 +930,52 @@ for chunk_num=1:num_chunks
         else
             disp('No asymmetry handling');
         end
+        %% kspace shifting
+        %opt_struct.kspace_shift
+        if min(opt_struct.kspace_shift) <0 || max(opt_struct.kspace_shift) > 0
+            warning('Kspace shifting choosen. Very uncertain of consequences. Custom output order not supported!');
+            data_buffer.data=circshift(data_buffer.data,opt_struct.kspace_shift);
+            ks=opt_struct.kspace_shift;
+            xb=1;xe=d_struct.x;yb=1;ye=d_struct.y;zb=1;ze=d_struct.z;
+            if ks(1)<=0
+                xe=d_struct.x-abs(ks(1));
+            else
+                xb=ks(1);
+            end
+            if ks(2)<=0
+                ye=d_struct.y-abs(ks(2));
+            else
+                yb=ks(2);
+            end
+            if ks(3)<=0
+                ze=d_struct.z-abs(ks(3));
+%                 zinc=1;
+                zr=ze:d_struct.z;
+            else
+                zb=ks(3);
+%                 zinc=-1;
+                zr=zb-ks(3)+1:d_struct.z-ze+ks(3);
+            end
+            mask2D=logical(sparse(d_struct.x,d_struct.y));
+            mask2D(xb:xe,yb:ye)=1;
+            mask2D=full(mask2D);
+%             mask3D= false(d_struct.x,d_struct.y,d_struct.z,'uint8');
+            mask3D=repmat(mask2D,[1 1  d_struct.z]);
+            
+            mask3D(:,:,zr)=0;
+            maskAD=repmat(mask3D,[1 1 1 d_struct.c d_struct.p d_struct.t]);
+            data_buffer.data=data_buffer.data.*maskAD;
+%             data_buffer.data(:,:,ze:end,:,:,:)=0;
+            clear xb xe yb ye zb ze mask;
+        end
+        
         %% display kspace
         if opt_struct.display_kspace==true
             %         kslice=zeros(size(data_buffer.data,1),size(data_buffer.data,2)*2);
             %         kslice=zeros(x,y);
             s.x=':';
             s.y=':';
+            figure(1);colormap gray;
             for tn=1:timepoints
                 s.t=tn;
                 for zn=1:z
@@ -896,7 +999,7 @@ for chunk_num=1:num_chunks
                                     s.(opt_struct.output_order(6)));
                             end
                             %kslice(1:size(data_buffer.data,1),size(data_buffer.data,2)+1:size(data_buffer.data,2)*2)=input_kspace(:,cn,pn,zn,:,tn);
-                            imagesc(log(abs(squeeze(kslice))));
+                            imagesc(log(abs(squeeze(kslice)))), axis image;
                             %                             fprintf('.');
                             pause(4/z/channels/params);
                             %                         pause(1);
@@ -912,8 +1015,8 @@ for chunk_num=1:num_chunks
         end
         %% preserve original kspace
         if opt_struct.write_kimage_unfiltered
-            data_buffer.addprop('data_pristine');
-            data_buffer.data_pristine=data_buffer.data;
+            data_buffer.addprop('kspace_unfiltered');
+            data_buffer.kspace_unfiltered=data_buffer.data;
         end
         %% filter kspaces data
         if ~opt_struct.skip_filter
@@ -925,6 +1028,8 @@ for chunk_num=1:num_chunks
             elseif strcmp(vol_type,'3D')
                 %             fermi_filter_isodim2_memfix_obj(data_buffer);
                 data_buffer.data=fermi_filter_isodim2(data_buffer.data,'','',false);
+            elseif strcmp(vol_type,'4D')
+                data_buffer.data=fermi_filter_isodim2(data_buffer.data,'','',false);
             else
                 warning('%svol_type not specified, DID NOT PERFORM FILTER. \n can use vol_type_override=[2D|3D] to overcome headfile parse defficiency.',data_tag);
                 pause(opt_struct.warning_pause);
@@ -935,6 +1040,10 @@ for chunk_num=1:num_chunks
             fprintf('skipping fermi filter\n');
         end
         %% fft
+        if opt_struct.write_kimage
+            data_buffer.addprop('kspace');
+            data_buffer.kspace=data_buffer.data;
+        end
         if ~opt_struct.skip_recon
             fprintf('Performing FFT\n');
             if strcmp(vol_type,'2D')
@@ -984,8 +1093,47 @@ for chunk_num=1:num_chunks
                         end
                     end
                 end
+                data_buffer.data=img;
+                clear img;
             else
-                img=fftshift(ifftn(data_buffer.data));
+                %method 1 fails for more than 3D
+                %                 odims=size(data_buffer.data);
+                %                 data_buffer.data=reshape(data_buffer.data,[odims(1:3) prod(odims(4:end))]);
+                %                 data_buffer.data=fftshift(ifftn(data_buffer.data));
+                % method 2 very slow and memory inefficient.
+                %                 Y = data_buffer.data;
+                %                 for p = 1:3%length(size(data_buffer.data))
+                %                     Y = fftshift(ifft(Y,[],p));
+                %                 end
+                %                 data_buffer.data=Y;
+                % method 3 was incorrect shifting
+                %                 data_buffer.data=fftshift(ifft(...
+                %                     fftshift(ifft(...
+                %                     fftshift(ifft(...
+                %                     fftshift(data_buffer.data),[],1)),[],2)),[],3));
+                % method 4 looks right however, does not produce same
+                % result as evan code. Seems to be issue with my fft
+                % shifts.
+                
+%                 data_buffer.data=...
+%                     fftshift(ifft(...
+%                     fftshift(ifft(...
+%                     fftshift(ifft(...
+%                     data_buffer.data,[],1)),[],2)),[],3));
+%                 
+                % method 5 very slow, seems ok for memory use.
+                %                 for six=1:size(data_buffer.data,6)
+                %                     for five=1:size(data_buffer.data,5)
+                %                         for four=1:size(data_buffer.data,4)
+                %                             data_buffer.data(:,:,:,four,five,six)=fftshift(ifftn(data_buffer.data(:,:,:,four,five,six)));
+                %                         end
+                %                         fprintf('.');
+                %                     end
+                %                 end
+                %                 fprintf('\n');
+                % method 6 is same as 4, working on getting the right
+                % fftshift But givs very wrong result
+                data_buffer.data=fftshift(fftshift(fftshift(ifft(ifft(ifft(data_buffer.data,[],1),[],2),[],3),1),2),3);
             end
             
             %% resort images flip etc
@@ -1000,9 +1148,9 @@ for chunk_num=1:num_chunks
                     fprintf('resorting along z...');
                     objlist=[z/2+1:z 1:z/2 ];
                     %img=circshift(img,[ 0 y/2 0 ]);
-                    img(:,:,objlist)=img;
+                    data_buffer.data(:,:,objlist)=data_buffer.data;
                     fprintf('rotating image by 90...');
-                    img=imrotate(img,90);
+                    data_buffer.data=imrotate(data_buffer.data,90);
                     %img=transpose(img());
                     fprintf('resort and rotate done!\n');
                 else
@@ -1025,7 +1173,7 @@ for chunk_num=1:num_chunks
                     if z>1 && mod(z,2) == 0
                         objlist=[1:z/2;z/2+1:z];
                         objlist=objlist(:);
-                        img=img(:,:,objlist);
+                        data_buffer.data=data_buffer.data(:,:,objlist);
                     end
                     %             for i=1:64
                     %                 figure(6);
@@ -1034,7 +1182,7 @@ for chunk_num=1:num_chunks
                     %             end
                     %             y=size(it,2);
                     objlist=[y/2+1:y 1:y/2];
-                    img=img(:,objlist,:);
+                    data_buffer.data=data_buffer.data(:,objlist,:);
                     %             for i=1:64
                     %                 figure(6);
                     %                 imagesc(log(abs(it2(:,:,i))));
@@ -1053,14 +1201,14 @@ for chunk_num=1:num_chunks
                             s.p=pn;
                             for cn=1:channels
                                 s.c=cn;
-                                imagesc(log(abs(squeeze(img(...
+                                imagesc(log(abs(squeeze(data_buffer.data(...
                                     s.(opt_struct.output_order(1)),...
                                     s.(opt_struct.output_order(2)),...
                                     s.(opt_struct.output_order(3)),...
                                     s.(opt_struct.output_order(4)),...
                                     s.(opt_struct.output_order(5)),...
                                     s.(opt_struct.output_order(6))...
-                                    )))));
+                                    ))))), axis image;
                                 pause(4/z/channels/params);
                                 
                             end
@@ -1069,15 +1217,15 @@ for chunk_num=1:num_chunks
                     end
                 end
             end
-            combine_image='DID NOT COMBINE';
+%             combine_image='DID NOT COMBINE';
             if ~opt_struct.skip_combine_channels && channels>1
                 % To respect the output order we use strfind.
                 fprintf('combining channel complex data with method %s\n',opt_struct.combine_method);
                 dind=strfind(opt_struct.output_order,'c'); % get dimension index for channels
                 if regexpi(opt_struct.combine_method,'mean')
-                    combine_image=squeeze(mean(abs(img),dind));
+                    data_buffer.data=squeeze(mean(abs(data_buffer.data),dind));
                 elseif regexpi(opt_struct.combine_method,'square_and_sum')
-                    combine_image=squeeze(mean(img.^2,dind));
+                    data_buffer.data=squeeze(mean(data_buffer.data.^2,dind));
                 else
                     %%% did not combine
                 end
@@ -1092,7 +1240,6 @@ for chunk_num=1:num_chunks
             %         savedata(data_buffer,interleave_num,outloc);
             %     end
         else
-            img='RECON_DISABLED';
             if opt_struct.remove_slice
                 z=z-1;
                 data_buffer.headfile.dim_Z=z;
@@ -1161,7 +1308,7 @@ for chunk_num=1:num_chunks
             'channels=1;\n',...
             'frames=', num2str(timepoints),';\n', ...
             'slices=', num2str(z),';\n', ...
-            'volumes=', num2str(1),';\n', ...
+            'volumes=', num2str(data_buffer.headfile.([data_tag 'volumes'])),';\n', ...
             'runno="', data_buffer.headfile.U_runno, '"',';\n', ...
             'runno_dir="', data_buffer.engine_constants.engine_work_directory, '/"+runno+""',';\n', ...
             'open_all_output="open";\n',...
@@ -1172,7 +1319,7 @@ for chunk_num=1:num_chunks
             '    for(channelnum=1;channelnum<=channels;channelnum++) {\n', ...
             '        volumenum=(framenum-1)*channels+channelnum;\n', ...
             '        if (volumes > 1) {\n', ...
-            '            num=d2s(volumenum,0);\n', ...
+            '            num=d2s(volumenum-1,0);\n', ...
             '            digits=lengthOf(d2s(volumes,0));\n', ...
             '            while(lengthOf(num)<digits && lengthOf(num) < 4 ) {\n', ...
             '               num="0"+num;\n', ...
@@ -1225,25 +1372,42 @@ for chunk_num=1:num_chunks
         s.x=':';
         s.y=':';
         s.z=':';
+        if ( opt_struct.write_unscaled_nD && ~opt_struct.skip_recon ) %|| opt_struct.skip_write_civm_raw
+            fprintf('\twrite_unscaled_nD save\n');
+            nii=make_nii(abs(squeeze(data_buffer.data)), [ ...
+                data_buffer.headfile.fovx/data_buffer.headfile.dim_X ...
+                data_buffer.headfile.fovy/data_buffer.headfile.dim_Y ...
+                data_buffer.headfile.fovz/data_buffer.headfile.dim_Z]); % insert fov settings here ffs....
+            %                         data_buffer.data(...
+            %                                 s.(opt_struct.output_order(1)),...
+            %                                 s.(opt_struct.output_order(2)),...
+            %                                 s.(opt_struct.output_order(3)),...
+            %                                 s.(opt_struct.output_order(4)),...
+            %                                 s.(opt_struct.output_order(5)),...
+            %                                 s.(opt_struct.output_order(6))...
+            %                                 )
+            fprintf('\t\t save_nii\n');
+            save_nii(nii,[work_dir_img_path_base '_ND.nii']);
+        end
         for tn=1:timepoints
             s.t=tn;
             for cn=1:channels
                 s.c=cn;
                 for pn=1:params
                     s.p=pn;
-                    if ~opt_struct.skip_recon
+                    if ~opt_struct.skip_recon && ( opt_struct.write_complex || opt_struct.write_unscaled || ~opt_struct.skip_write_civm_raw)
                         fprintf('Extracting image channel:%0.0f param:%0.0f timepoint:%0.0f\n',cn,pn,tn);
-                        if ~opt_struct.skip_combine_channels  && ~ ischar(combine_image);% && channels>1
-                            tmp=squeeze(combine_image(...
-                                s.(opt_struct.output_order(1)),...
-                                s.(opt_struct.output_order(2)),...
-                                s.(opt_struct.output_order(3)),...
-                                s.(opt_struct.output_order(4)),...
-                                s.(opt_struct.output_order(5)),...
-                                s.(opt_struct.output_order(6))...
-                                ));
-                        else
-                            tmp=squeeze(img(...
+%                         if ~opt_struct.skip_combine_channels  && ~ischar(combine_image);% && channels>1
+%                             tmp=squeeze(data_buffer.data(...
+%                                 s.(opt_struct.output_order(1)),...
+%                                 s.(opt_struct.output_order(2)),...
+%                                 s.(opt_struct.output_order(3)),...
+%                                 s.(opt_struct.output_order(4)),...
+%                                 s.(opt_struct.output_order(5)),...
+%                                 s.(opt_struct.output_order(6))...
+%                                 ));
+%                         else
+                            tmp=squeeze(data_buffer.data(...
                                 s.(opt_struct.output_order(1)),...
                                 s.(opt_struct.output_order(2)),...
                                 s.(opt_struct.output_order(3)),...
@@ -1251,9 +1415,9 @@ for chunk_num=1:num_chunks
                                 s.(opt_struct.output_order(5)),...
                                 s.(opt_struct.output_order(6))...
                                 ));% pulls out one volume at a time.
-                        end
+%                         end
                     else
-                        tmp=img;
+                        tmp='RECON_DISABLED';
                     end
                     %%%set channel and mnumber codes for the filename
                     if channels>1
@@ -1261,7 +1425,7 @@ for chunk_num=1:num_chunks
                     else
                         channel_code='';
                     end
-                    m_number=(tn-1)*params+pn;
+                    m_number=(tn-1)*params+pn-1;
                     if timepoints> 1 || params >1
                         m_code=sprintf(['_m%0' num2str(m_length) '.0f'], m_number);
                     else
@@ -1277,17 +1441,41 @@ for chunk_num=1:num_chunks
                     if opt_struct.write_complex && ~opt_struct.skip_recon
                         fprintf('\twrite_complex (radish_format) save\n');
                         save_complex(tmp,[ work_dir_img_path '.rp.out']);
+%                         data_buffer.data(...
+%                                 s.(opt_struct.output_order(1)),...
+%                                 s.(opt_struct.output_order(2)),...
+%                                 s.(opt_struct.output_order(3)),...
+%                                 s.(opt_struct.output_order(4)),...
+%                                 s.(opt_struct.output_order(5)),...
+%                                 s.(opt_struct.output_order(6))...
+%                                 )
                     end
                     %%% kimage_
                     if opt_struct.write_kimage && ~opt_struct.skip_filter && ~opt_struct.skip_load
-                        fprintf('\twrite_kimage save\n');
-                        nii=make_nii(log(abs(data_buffer.data)));
+                        fprintf('\twrite_kimage make_nii\n');
+                        nii=make_nii(log(abs(data_buffer.kspace(...
+                                s.(opt_struct.output_order(1)),...
+                                s.(opt_struct.output_order(2)),...
+                                s.(opt_struct.output_order(3)),...
+                                s.(opt_struct.output_order(4)),...
+                                s.(opt_struct.output_order(5)),...
+                                s.(opt_struct.output_order(6))...
+                                ))));
+                        fprintf('\t\t save_nii\n');
                         save_nii(nii,[work_dir_img_path '_kspace.nii']);
                     end
                     %%% kimage_unfiltered
                     if opt_struct.write_kimage_unfiltered  && ~opt_struct.skip_load
-                        fprintf('\twrite_kimage_unfiltered save\n');
-                        nii=make_nii(log(abs(data_buffer.data_pristine)));
+                        fprintf('\twrite_kimage_unfiltered make_nii\n');
+                        nii=make_nii(log(abs(data_buffer.kspace_unfiltered(...
+                                s.(opt_struct.output_order(1)),...
+                                s.(opt_struct.output_order(2)),...
+                                s.(opt_struct.output_order(3)),...
+                                s.(opt_struct.output_order(4)),...
+                                s.(opt_struct.output_order(5)),...
+                                s.(opt_struct.output_order(6))...
+                                ))));
+                        fprintf('\t\t save_nii\n');
                         save_nii(nii,[work_dir_img_path '_kspace_unfiltered.nii']);
                     end
                     %%% nii_save
@@ -1297,6 +1485,15 @@ for chunk_num=1:num_chunks
                             data_buffer.headfile.fovx/data_buffer.headfile.dim_X ...
                             data_buffer.headfile.fovy/data_buffer.headfile.dim_Y ...
                             data_buffer.headfile.fovz/data_buffer.headfile.dim_Z]); % insert fov settings here ffs....
+%                         data_buffer.data(...
+%                                 s.(opt_struct.output_order(1)),...
+%                                 s.(opt_struct.output_order(2)),...
+%                                 s.(opt_struct.output_order(3)),...
+%                                 s.(opt_struct.output_order(4)),...
+%                                 s.(opt_struct.output_order(5)),...
+%                                 s.(opt_struct.output_order(6))...
+%                                 )
+                        fprintf('\t\t save_nii\n');
                         save_nii(nii,[work_dir_img_path '.nii']);
                     end
                     %%% civmraw save
@@ -1329,11 +1526,27 @@ for chunk_num=1:num_chunks
                     
                     if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon
                         fprintf('\tcivm_raw save\n');
-                        complex_to_civmraw(tmp,[ data_buffer.headfile.U_runno channel_code], ...
+                        complex_to_civmraw(tmp,[ data_buffer.headfile.U_runno channel_code m_code], ...
                             data_buffer.scanner_constants.scanner_tesla_image_code, ...
                             space_dir_img_folder,'auto','',1,datatype)
+%                         data_buffer.data(...
+%                                 s.(opt_struct.output_order(1)),...
+%                                 s.(opt_struct.output_order(2)),...
+%                                 s.(opt_struct.output_order(3)),...
+%                                 s.(opt_struct.output_order(4)),...
+%                                 s.(opt_struct.output_order(5)),...
+%                                 s.(opt_struct.output_order(6))...
+%                                 )
                         % must write convert_info_histo for old school radish purposesx
                         histo_percent=99.95;
+                        tmp=data_buffer.data(...
+                                s.(opt_struct.output_order(1)),...
+                                s.(opt_struct.output_order(2)),...
+                                s.(opt_struct.output_order(3)),...
+                                s.(opt_struct.output_order(4)),...
+                                s.(opt_struct.output_order(5)),...
+                                s.(opt_struct.output_order(6))...
+                                );
                         histo_bins=numel(tmp);
                         img_s=sort(abs(tmp(:)));
                         maxin=max(img_s);
@@ -1390,5 +1603,5 @@ for chunk_num=1:num_chunks
     end
     
     
-    
 end
+toc;
