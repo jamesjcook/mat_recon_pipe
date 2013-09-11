@@ -37,7 +37,9 @@ try
 catch ME
     disp(ME)
 end
-
+if fid == -1
+    error( 'failed to open file%s',[name '/fid']);
+end
 % Read datafileheader
 nblocks   = fread(fid,1,'int32');%4
 ntraces   = fread(fid,1,'int32');%8

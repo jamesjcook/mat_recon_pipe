@@ -8,7 +8,7 @@ function load_from_data_file(data_buffer,file_path,header_skip,load_size,load_sk
 %                 data, and to put the data into.
 % file_path       path to input file
 % header_skip     bytes to skip forward in file counting for first header
-% load_size       how much data we can load at a time
+% load_size       number of contiguous data points. will be 2 * complex points
 % load_skip       how many bytes of non-data between loads, we skip this much before every load
 % data_precsion   input data precision
 % chunk_size      size of a data chunk we expect to fit in memory should be

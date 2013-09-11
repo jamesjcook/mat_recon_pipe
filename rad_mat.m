@@ -484,6 +484,7 @@ if ~opt_struct.skip_write_civm_raw
     if opt_struct.fp32_magnitude
         bytes_per_voxel_disk=bytes_per_voxel_disk+2;
     end
+    bytes_per_output_voxel_RAM=bytes_per_output_voxel_RAM+4;
 end
 if opt_struct.write_unscaled
     bytes_per_voxel_disk=bytes_per_voxel_disk+4;
@@ -614,6 +615,14 @@ elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
     % because ray_length is number of complex points have to doubled this.
     min_load_size= ray_length*rays_per_block/channels*(in_bitdepth/8);
     % minimum amount of bytes of data we can load at a time,
+elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
+    display('Agilent scan, data size uncertain');
+    % agilent multi-channels handleing.... so far they acquire in xyc ...
+    % order. 
+    input_points = 2*ray_length*rays_per_block*channels*ray_blocks;
+    % because ray_length is doubled, this is doubled too.
+    min_load_size= 2*ray_length*rays_per_block*(in_bitdepth/8);
+    % minimum amount of bytes of data we can load at a time,
 else
     % not bruker, no ray padding...
     input_points = 2*ray_length*rays_per_block*ray_blocks;
@@ -623,7 +632,7 @@ else
 end
 total_memory_required= volumes_in_memory_at_time*input_points*bytes_per_input_sample_RAM+voxel_count*bytes_per_output_voxel_RAM;
 system_reserved_memory=2*1024*1024*1024;% reserve 2gb for the system while we work.
-fprintf(' input_points:%d output_voxels%d\n',input_points,voxel_count);
+fprintf(' input_points(2*samples):%d output_voxels%d\n',input_points,voxel_count);
 fprintf(' total_memory_required for all at once:%dM, available memory:%dM\n',total_memory_required/1024/1024,(meminfo.TotalPhys-system_reserved_memory)/1024/1024);
 % handle ignore memory limit options
 if opt_struct.skip_mem_checks==1;
@@ -634,6 +643,9 @@ end
 %%% set number of chunks and chunk size based on memory required and
 %%% total memory available. if volume will fit in memory happily will
 %%% evaluate to num_chunks=1
+%%% min chunks is the minimum number we will need to procede. 
+%%% Max_loadable_ uses min_chunks. It should evaluate to complete data size
+%%% when min_chunks is 1.
 min_chunks=ceil(total_memory_required/(meminfo.TotalPhys-system_reserved_memory));
 memory_space_required=(total_memory_required/min_chunks);
 max_loadable_chunk_size=(input_points*(in_bitdepth/8))/min_chunks;
@@ -669,7 +681,7 @@ chunk_size=floor(max_loadable_chunk_size/min_load_size)*min_load_size;
 
 kspace_header_bytes  =binary_header_size+load_skip*(ray_blocks-1);
 if strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
-    kspace_header_bytes  =binary_header_size+load_skip*ray_blocks; %%% TEMPORARY HACK TO FIX ISSUES WITH AGILENT
+    kspace_header_bytes  =binary_header_size+load_skip*ray_blocks*channels; %%% TEMPORARY HACK TO FIX ISSUES WITH AGILENT
 end
 % total bytes used in header into throught out the kspace data
 kspace_data          =input_points*(in_bitdepth/8);
@@ -690,9 +702,9 @@ measured_filesize    =fileInfo.bytes;
 
 if kspace_file_size~=measured_filesize
     if (measured_filesize>kspace_file_size && opt_struct.ignore_kspace_oversize) || opt_struct.ignore_errors % measured > expected provisional continue
-        warning('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=  %d\nCalculated=%d\n',measured_filesize,kspace_file_size);
+        warning('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=\t%d\nCalculated=\t%d\n',measured_filesize,kspace_file_size);
     else %if measured_filesize<kspace_file_size    %if measured < exected fail.
-        error('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=%d\nCalculated=%d\n',measured_filesize,kspace_file_size);
+        error('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=\t%d\nCalculated=\t%d\n',measured_filesize,kspace_file_size);
     end
 end
 min_load_size=min_load_size/(in_bitdepth/8); % minimum_load_size in data samples.
