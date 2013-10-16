@@ -317,7 +317,7 @@ if length(opt_struct.U_dimension_order)<length(possible_dimensions)
     for char=1:length(possible_dimensions)
         test=strfind(opt_struct.U_dimension_order,possible_dimensions(char));
         if isempty(test)
-            warning('mission dimension %s, appending to end of list',possible_dimensions(char));
+            warning('missing dimension %s, appending to end of list',possible_dimensions(char));
             opt_struct.U_dimension_order=sprintf('%s%s',opt_struct.U_dimension_order,possible_dimensions(char));
         end
     end
@@ -390,14 +390,24 @@ end
 
 % load data header given scanner and directory name
 data_buffer.input_headfile=load_scanner_header(scanner, work_dir_path );
-data_tag=data_buffer.input_headfile.S_scanner_tag;
-if opt_struct.U_dimension_order ~=0
-    data_buffer.input_headfile.([data_tag 'dimension_order'])=opt_struct.U_dimension_order;
-end
+
 data_buffer.headfile=combine_struct(data_buffer.headfile,data_buffer.input_headfile,'combine');
 data_buffer.headfile=combine_struct(data_buffer.headfile,data_buffer.scanner_constants,false);
 data_buffer.headfile=combine_struct(data_buffer.headfile,data_buffer.engine_constants,false);
 data_buffer.headfile=combine_struct(data_buffer.headfile,opt_struct,'rad_mat_option_');
+
+if isfield(data_buffer.input_headfile,'S_scanner_tag')
+    data_tag=data_buffer.input_headfile.S_scanner_tag;
+else
+    bad_hf_path = [work_dir_path '/failed' runno '.headfile'];
+    write_headfile(bad_hf_path,data_buffer.headfile);
+    error('Failed to process scanner header using dump command ( %s )\nWrote partial hf to %s\nGIVE THE OUTPUT OF THIS TO JAMES TO HELP FIX THE PROBLEM. ',data_buffer.input_headfile.comment{end-1}(2:end),bad_hf_path);
+end
+
+if opt_struct.U_dimension_order ~=0
+    data_buffer.input_headfile.([data_tag 'dimension_order'])=opt_struct.U_dimension_order;
+end
+
 if isfield(data_buffer.input_headfile,'aspect_remove_slice')
     if data_buffer.input_headfile.aspect_remove_slice
         opt_struct.remove_slice=1;
@@ -633,7 +643,7 @@ end
 total_memory_required= volumes_in_memory_at_time*input_points*bytes_per_input_sample_RAM+voxel_count*bytes_per_output_voxel_RAM;
 system_reserved_memory=2*1024*1024*1024;% reserve 2gb for the system while we work.
 fprintf(' input_points(2*samples):%d output_voxels%d\n',input_points,voxel_count);
-fprintf(' total_memory_required for all at once:%dM, available memory:%dM\n',total_memory_required/1024/1024,(meminfo.TotalPhys-system_reserved_memory)/1024/1024);
+fprintf(' total_memory_required for all at once:%dM, system memory(- reserve):%dM\n',total_memory_required/1024/1024,(meminfo.TotalPhys-system_reserved_memory)/1024/1024);
 % handle ignore memory limit options
 if opt_struct.skip_mem_checks==1;
     display('you have chosen to ignore this machine''s memory limits, this machine may crash');
@@ -665,11 +675,12 @@ end
 %%% now prompt for program close and purge each time
 while meminfo.AvailPhys<memory_space_required
     fprintf('%d/%d you have too many programs open.\n ',meminfo.AvailPhys,memory_space_required);
-    breakout=input('close some programs and then press enter >> ','s');
-    if strcmp(breakout,'c')
+    reply=input('close some programs and then press enter >> (press c to ignore mem limit, NOT RECOMMENDED)','s');
+    system('purge');
+    meminfo=imaqmem; 
+    if strcmp(reply,'c')
         meminfo.AvailPhys=memory_space_required;
     end
-    system('purge');
 end
 %%% Load size calculation,
 max_loads_per_chunk=max_loadable_chunk_size/min_load_size;
