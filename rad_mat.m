@@ -398,6 +398,11 @@ data_buffer.headfile=combine_struct(data_buffer.headfile,opt_struct,'rad_mat_opt
 
 if isfield(data_buffer.input_headfile,'S_scanner_tag')
     data_tag=data_buffer.input_headfile.S_scanner_tag;
+    bad_hf_path = [work_dir_path '/failed' runno '.headfile'];
+    if exist(bad_hf_path,'file')
+        % this will only happen rarely. but whatever. 
+        delete(bad_hf_path);
+    end
 else
     bad_hf_path = [work_dir_path '/failed' runno '.headfile'];
     write_headfile(bad_hf_path,data_buffer.headfile);
@@ -1177,7 +1182,7 @@ for chunk_num=1:num_chunks
                     %img=transpose(img());
                     fprintf('resort and rotate done!\n');
                 else
-                    fprintf('Non-aspect data is not rotated or flipped, unsure what settings should be used');
+                    fprintf('Non-aspect data is not rotated or flipped, unsure what settings should be used\n');
                     %imagejmacro commands for drawing centerline.
                     %in a bruker volume of 160,240,108
                     % makeLine(80, 26, 80, 206);
@@ -1245,10 +1250,14 @@ for chunk_num=1:num_chunks
                 % To respect the output order we use strfind.
                 fprintf('combining channel complex data with method %s\n',opt_struct.combine_method);
                 dind=strfind(opt_struct.output_order,'c'); % get dimension index for channels
+                %%% Removed the squeeze from our combine operation, better
+                %%% to maintain the dimensions of the data object.
                 if regexpi(opt_struct.combine_method,'mean')
-                    data_buffer.data=squeeze(mean(abs(data_buffer.data),dind));
+%                     data_buffer.data=squeeze(mean(abs(data_buffer.data),dind));
+                    data_buffer.data=mean(abs(data_buffer.data),dind);
                 elseif regexpi(opt_struct.combine_method,'square_and_sum')
-                    data_buffer.data=squeeze(mean(data_buffer.data.^2,dind));
+%                     data_buffer.data=squeeze(mean(data_buffer.data.^2,dind));
+                    data_buffer.data=mean(data_buffer.data.^2,dind);
                 else
                     %%% did not combine
                 end
@@ -1299,7 +1308,7 @@ for chunk_num=1:num_chunks
         if ~opt_struct.skip_combine_channels && channels>1 && ~opt_struct.skip_recon && opt_struct.write_unscaled
             if ~exist([work_dir_img_path_base '.nii'],'file') || opt_struct.overwrite
                 fprintf('Saving image combined with method:%s using %i channels to output work dir.\n',opt_struct.combine_method,channels);
-                nii=make_nii(abs(combine_image), [ ...
+                nii=make_nii(abs(data_buffer.data), [ ...
                     data_buffer.headfile.fovx/data_buffer.headfile.dim_X ...
                     data_buffer.headfile.fovy/data_buffer.headfile.dim_Y ...
                     data_buffer.headfile.fovz/data_buffer.headfile.dim_Z]); % insert fov settings here ffs....
@@ -1501,7 +1510,7 @@ for chunk_num=1:num_chunks
                         fprintf('\t\t save_nii\n');
                         save_nii(nii,[work_dir_img_path '_kspace_unfiltered.nii']);
                     end
-                    %%% nii_save
+                    %%% unscaled_nii_save
                     if ( opt_struct.write_unscaled && ~opt_struct.skip_recon ) %|| opt_struct.skip_write_civm_raw
                         fprintf('\twrite_unscaled save\n');
                         nii=make_nii(abs(tmp), [ ...
@@ -1521,7 +1530,9 @@ for chunk_num=1:num_chunks
                     end
                     %%% civmraw save
                     if ~exist(space_dir_img_folder,'dir') || opt_struct.ignore_errors
-                        mkdir(space_dir_img_folder);
+                        if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_write_headfile 
+                            mkdir(space_dir_img_folder);
+                        end
                     elseif ~opt_struct.overwrite
                         % the folder existed, however we were not set for
                         % overwrite
@@ -1584,7 +1595,7 @@ for chunk_num=1:num_chunks
                         fprintf(ofid,'%f=scale_max found by agilent_scale_histo in complex file %s\n',s_max_intensity,[work_dir_img_path '.out']);
                         fprintf(ofid,'%i %i : image dimensions.\n',data_buffer.headfile.dim_X,data_buffer.headfile.dim_Y);
                         fprintf(ofid,'%i : image set zdim.\n', data_buffer.headfile.dim_Z);
-                        fprintf(ofid,'%i : hito_bins, %f : histo_percent\n',histo_bins,histo_percent);
+                        fprintf(ofid,'%i : histo_bins, %f : histo_percent\n',histo_bins,histo_percent);
                         fprintf(ofid,'x : user provided max voxel value? pfovided for max= none (if file used).\n');
                         fprintf(ofid,'%f : max voxel value used to construct histogram\n',maxin);
                         fprintf(ofid,' agilent_scale_histo ma script 2012/11/28\n');
