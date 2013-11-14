@@ -15,9 +15,13 @@ function []=DCE_calc_Ktrans(Patient_ID, Study, DCE_runno, DCE_Scan_ID, D)
 
 local_dir='/androsspace'; cd(local_dir);
 DCE_dir=[local_dir '/' DCE_runno '.work'];
-transferred_dir=[DCE_dir '/' Patient_ID '_' Study]; cd(transferred_dir);
-cd(num2str(DCE_Scan_ID)); method_header=readBrukerHeader('method');
-mat=method_header.PVM_Matrix; mat=mat(1); mat2=mat/2; TR_dyn=method_header.PVM_RepetitionTime;
+transferred_dir=[DCE_dir '/' Patient_ID '_' Study];
+cd(transferred_dir);
+cd(num2str(DCE_Scan_ID));
+method_header=readBrukerHeader('method');
+mat=method_header.PVM_Matrix; mat=mat(1);
+mat2=mat/2;
+TR_dyn=method_header.PVM_RepetitionTime;
 key_hole=method_header.KeyHole; n_projs=method_header.NPro;
 repeat=method_header.PVM_NRepetitions;
 temp_rez=n_projs*TR_dyn/(key_hole*1000); %Temporal resolution in seconds

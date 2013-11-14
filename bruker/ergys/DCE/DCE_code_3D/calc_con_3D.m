@@ -79,13 +79,16 @@ FA_dyn=FA_dyn*pi/180; %Convert angle to radians
 s=size(S_t, 2);
 
 S0_mat=S0*ones(1,s); %Matrix having S0 as columns needed in the calculation of R1
-d1=sin(FA_dyn).*Mo_map; d1=d1(:); d1=d1*ones(1,s);
+d1=sin(FA_dyn).*Mo_map;
+d1=d1(:);
+d1=d1*ones(1,s);
 
 A=(S_t-S0_mat)./d1;
 clear S_t
 
 E1=E1(:);
-B=(ones(size(E1))-E1)./(ones(size(E1))-cos(FA_dyn).*E1); B=B*ones(1,s);
+B=(ones(size(E1))-E1)./(ones(size(E1))-cos(FA_dyn).*E1);
+B=B*ones(1,s);
 AB=A+B;
 clear E1 A B S0
 
@@ -100,7 +103,8 @@ log_arg(isnan(log_arg))=1; %Discard meaningless values
 R1=-(1/TR_dyn).*log(log_arg);
 R1(isnan(R1)) = 0; %Discard meaningless values
 
-R1map_0=R1map_0(:); R1map_0=R1map_0*ones(1,s);
+R1map_0=R1map_0(:);
+R1map_0=R1map_0*ones(1,s);
 
 Con_tracer=(R1-R1map_0)/r_magnevist;
 Con_tracer(Con_tracer<0)=0; %Concentration cannot be less than zero

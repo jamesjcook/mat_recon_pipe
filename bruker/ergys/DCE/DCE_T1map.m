@@ -29,9 +29,14 @@ T1map_dir=[local_dir '/' T1_runno '.work']; mkdir(T1map_dir);
 T1_ScanRange_string=[num2str(T1_ScanRange(1)) '-' num2str(T1_ScanRange(end))];
 getbruker_command=['/pipe_home/script/bash/getbruker.bash ' T1map_dir ' ' Patient_ID ' ' Study ' ' T1_ScanRange_string];
 system(getbruker_command)
-transferred_dir=[T1map_dir '/' Patient_ID '_' Study]; cd(transferred_dir);
-cd(num2str(T1_ScanRange(1))); method_header=readBrukerHeader('method');
-mat=method_header.PVM_Matrix; mat=mat(1); mat2=mat/2; TR=method_header.PVM_RepetitionTime;
+transferred_dir=[T1map_dir '/' Patient_ID '_' Study];
+cd(transferred_dir);
+cd(num2str(T1_ScanRange(1)));
+method_header=readBrukerHeader('method');
+mat=method_header.PVM_Matrix;
+mat=mat(1);
+mat2=mat/2;
+TR=method_header.PVM_RepetitionTime;
 
 
 %% Get trajectory data and calculate dcf
@@ -56,7 +61,7 @@ for i=T1_ScanRange
     FAvalues(im_indx)=scan_FA;
     
     % Get kspace data and reconstruct
-    [kspace_data, ~]=Bruker_open_3D_fid(2*mat);
+    [kspace_data, ~]=Bruker_open_3D_fid(2*mat); % this should be nchannels*mat2 not 2*mat.
     
     im_name=[T1_runno '_m' num2str(im_indx)];
     cd(T1map_dir);

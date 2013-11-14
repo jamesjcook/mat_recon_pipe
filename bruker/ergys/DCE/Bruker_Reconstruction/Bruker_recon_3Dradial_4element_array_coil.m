@@ -16,7 +16,7 @@ RecoScaleChan2=1;
 RecoScaleChan3=1;
 RecoScaleChan4=1;
 
-mat2=mat/2;
+mat2=mat/2;%get ray length(instead of line).
 kdata_ch1=dv(:,1:mat2,:); %Channel 1
 kdata_ch2=dv(:,(mat2+1):(2*mat2),:); %Channel 2
 kdata_ch3=dv(:,(2*mat2+1):(3*mat2),:); %Channel 3
