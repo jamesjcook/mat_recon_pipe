@@ -40,11 +40,11 @@ zvec=reshape(single(-dz/2:dz/2-1),1,1,[]);
 zvec=zvec.^2/(dz/mres).^2;
 
 % 
-if numel(raw_data)==max_array_elements
+if numel(raw_data)>=max_array_elements
     display('Starting fermi filtering, this can take a long time(5-30 minutes) on larger arrays, especially when falling out of memory.');
 end
 FW=1./(1+exp((sqrt(bsxfun(@plus,xvec,bsxfun(@plus,yvec,zvec)))-fermiu)/fermit));     % computing the FERMI window
-if numel(raw_data)==max_array_elements
+if numel(raw_data)>=max_array_elements
     display('main filtering done.');
 end
 FW=FW/max(FW(:));
@@ -52,6 +52,6 @@ FW=FW/max(FW(:));
 raw_data=raw_data.*FW;
 
 clear FW
-if numel(raw_data)==max_array_elements
+if numel(raw_data)>=max_array_elements
     display('fitering finished');
 end
