@@ -11,7 +11,7 @@ function load_from_data_file(data_buffer,file_path,header_skip,load_size,load_sk
 % load_size       number of contiguous data points. will be 2 * complex points
 % load_skip       how many bytes of non-data between loads, we skip this much before every load
 % data_precsion   input data precision
-% chunk_size      size of a data chunk we expect to fit in memory should be
+% chunk_size      size of a data chunk we expect to fit in memory, should be
 %                 equal to size(data_buffer.data)*bytes_per_pix+header info
 % total_chunks    number of chunks to make up the file. 
 % chunks_to_load  number of chunks to load or an array of indicies

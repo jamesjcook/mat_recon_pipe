@@ -33,6 +33,7 @@ end
 options=[' -o '];
 % cmd=[prefix 'dumpHeader' plprgext options ' ' scanner ' ' directory ' ' name];
 cmd=['dumpHeader'  options ' ' scanner ' ' directory ' ' name];
+fprintf('running header dumper\n\t%s\n',cmd);
 [s]=system(cmd);
 
 headfile=read_headfile([ directory '/' name ]);
