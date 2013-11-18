@@ -19,15 +19,22 @@ RecoScaleChan1=1; %These are variable names used in the Bruker magnet. Use if ex
 RecoScaleChan2=1;
 mat2=mat/2;
 recon_mat=mat*osf;
- 
+nchannels=4;% 1 2 3 4
+kdata=zeros([2, 64, 25740, nchannels]);
 kdata(:,:,:,1)=dv(:,1:mat2,:); %Channel 1
-kdata(:,:,:,2)=dv(:,(mat2+1):end,:); %Channel 2
+c2=mat2+1;
+kdata(:,:,:,2)=dv(:,c2:c2+63,:); %Channel 2
+c3=c2+64;
+kdata(:,:,:,3)=dv(:,(c3:c3+63),:); %Channel 1
+c4=c3+64;
+kdata(:,:,:,4)=dv(:,c4:end,:); %Channel 2
+ 
  
 tic
-img=zeros([mat mat mat 2],'single');
+img=zeros([mat mat mat nchannels],'single');
 % matlabpool local 2    % SAVE FOR LATER, opening matlab pool is slow
 % parfor ind=1:2
-for ind=1:2
+for ind=1:nchannels
     grid_data=grid3_MAT(kdata(:,:,:,ind), kv, dcfv, recon_mat, 8);  % 0=nonthreaded, 8=threaded
     grid_datac=complex(grid_data(1:2:end), grid_data(2:2:end));
     grid_datac=reshape(grid_datac, repmat(recon_mat,[1 3]));
@@ -40,7 +47,11 @@ end
 % matlabpool close
 toc
  
-final_recon_im=sqrt((RecoScaleChan1*img(:,:,:,1)).^2+(RecoScaleChan2*img(:,:,:,2)).^2); %Sum of squares (SoS) reconstruction (image domain)
+final_recon_im=sqrt((RecoScaleChan1*img(:,:,:,1)).^2 ...
+    +(RecoScaleChan2*img(:,:,:,2)).^2 ...
+    +(RecoScaleChan2*img(:,:,:,3)).^2 ...
+    +(RecoScaleChan2*img(:,:,:,4)).^2 ...
+    ); %Sum of squares (SoS) reconstruction (image domain)
 
 %% Save image
 %image_name=['\B' runno '_acq' num2str(acq) '_key' num2str(keynumber) '.raw'];

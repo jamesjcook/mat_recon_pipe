@@ -123,6 +123,9 @@ for c=1:length(chunks_to_load)
     else
         fprintf('Experimental loading, (load_size+load_skip)*nloads\n');
         [fid_data points_read]= fread(fileid, chunk_with_skip, [data_precision '=>single']);
+        if  points_read ~= chunk_with_skip
+            error('Did not correctly read file');
+        end
         fid_data=reshape(fid_data,[load_size+load_skip,loads_per_chunk]);
         fid_data(1:load_skip,:)=[];
         fid_data=reshape(fid_data,[2 numel(fid_data)/2 ]);

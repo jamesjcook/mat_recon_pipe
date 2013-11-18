@@ -115,7 +115,7 @@ for scanner_num=1:numel(scanner_list)
                     studyname=studyname(5:end);
                     acquisition_numbers=patients.(pname).(sname);
                     fprintf('Found %d scans in study %s\n',numel(acquisition_numbers),studyname);
-                    for acq_num=1:numel(acquisition_numbers)
+                    for acq_num=1:1 %numel(acquisition_numbers) %only do first acq to collect traj files
                         num=acquisition_numbers(acq_num);
                         if ~recon_status
                             if test_rad_mat
@@ -124,6 +124,7 @@ for scanner_num=1:numel(scanner_list)
                                         ['test_RM_' scanner '_' method '_' patient_id '_' studyname '_s' sprintf('%02d',num)],...
                                         {patient_id,num2str(num)},...
                                         {'warning_pause=0'
+                                        'debug_mode=0'
                                         ['study=' studyname]
                                         'overwrite'
                                         'existing_data'
@@ -131,7 +132,13 @@ for scanner_num=1:numel(scanner_list)
                                         'write_unscaled_nD'
                                         'skip_write_civm_raw'
                                         'skip_write_headfile'
+                                        'ignore_errors'
+                                        'skip_fft'
+                                        'skip_regrid'
+                                        'skip_filter'
+                                        'skip_write'
                                         }');
+                                    recon_status=false;
                                     
                                     %         if s==0
                                     %         fail_list=sprintf('%s\n%s',fail_list,num2str(num));
