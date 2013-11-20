@@ -155,51 +155,55 @@ else
     %% radial regridding.
     warning('Radial regridding! Still very experimental.')
         
-    data_buffer.addprop('radial');
     oversample_factor=3;
-    if isfield('rad_mat_option_grid_oversample_factor',data_buffer.headfile)
-        fprintf('Using headfile oversampling of ');
-        oversample_factor=data_buffer.headfile.rad_mat_option_grid_oversample_factor;
+    if isfield(data_buffer.headfile,'radial_grid_oversample_factor')
+        fprintf('Using oversampling of ');
+        oversample_factor=data_buffer.headfile.radial_grid_oversample_factor;
     else
-        fprintf('Using default oversampling of ');
-        data_buffer.headfile.rad_mat_option_grid_oversample_factor=oversample_factor;
+        fprintf('Using regrid function default oversampling of ');
+        data_buffer.headfile.radial_grid_oversample_factor=oversample_factor;
     end
     fprintf('%d.\n',oversample_factor);
     
-    data_buffer.radial=data_buffer.data;
-    %moving data to radial is separated from the reshaping command to avoid copy on write
-    data_buffer.radial=reshape(data_buffer.radial,...
-        [data_buffer.headfile.ray_length,...
-        d_struct.c,...
-        data_buffer.headfile.rays_per_block*data_buffer.headfile.ray_blocks]);
-    data_buffer.data=[];
-    %%% for each vol?  do regrid?
-    %%% 
-    % traj and dcf are shaped into keys. 
-    %re-grid per channel per key?
-    %%% The whole re-gridding process might be avertable by useing static
-    %%% trajectory, dcf and transforms. Presumably for a given acquisition
-    %%% format we could pre-calculate the dcf, and then the transormation
-    %%% matrix and use some other software(perhaps ANTS) to apply that
-    %%% transoform.
-
-    %%% must convert data to double precision 2 part vector from complex before
-    %%% grid3_MAT
-    %%% example
-    % kspace_d=[kspace_r;kspace_i];
-    % kspace_data2=reshape(kspace_d,[64,2,4,25740]);
-    % kspace_data2=permute(kspace_data2,[2,1,3,4]);
-    data_buffer.radial=[real(data_buffer.radial);imag(data_buffer.radial)];
-    data_buffer.radial=reshape(data_buffer.radial, ...
-        [data_buffer.headfile.ray_length,...
-        2,...  % two part complex.
-        d_struct.c,...
-        d_struct.p,...
-        data_buffer.headfile.rays_per_block,...
-        data_buffer.headfile.ray_blocks]);
-    %%% modify permute to account for n volumes as well....
-    % working in complex,raylength,rays_perkey,channels,keys
-    data_buffer.radial=permute(data_buffer.radial,[2,1,5,6,3,4]);
+    % could do an isfield test as well and then set som bool to allow for
+    % struct.
+    if ~isprop(data_buffer,'radial')
+        data_buffer.addprop('radial');
+        data_buffer.radial=data_buffer.data;
+        %moving data to radial is separated from the reshaping command to avoid copy on write
+        data_buffer.radial=reshape(data_buffer.radial,...
+            [data_buffer.headfile.ray_length,...
+            d_struct.c,...
+            data_buffer.headfile.rays_per_block*data_buffer.headfile.ray_blocks]);
+        data_buffer.data=[];
+        %%% for each vol?  do regrid?
+        %%%
+        % traj and dcf are shaped into keys.
+        %re-grid per channel per key?
+        %%% The whole re-gridding process might be avertable by useing static
+        %%% trajectory, dcf and transforms. Presumably for a given acquisition
+        %%% format we could pre-calculate the dcf, and then the transormation
+        %%% matrix and use some other software(perhaps ANTS) to apply that
+        %%% transoform.
+        
+        %%% must convert data to double precision 2 part vector from complex before
+        %%% grid3_MAT
+        %%% example
+        % kspace_d=[kspace_r;kspace_i];
+        % kspace_data2=reshape(kspace_d,[64,2,4,25740]);
+        % kspace_data2=permute(kspace_data2,[2,1,3,4]);
+        data_buffer.radial=[real(data_buffer.radial);imag(data_buffer.radial)];
+        data_buffer.radial=reshape(data_buffer.radial, ...
+            [data_buffer.headfile.ray_length,...
+            2,...  % two part complex.
+            d_struct.c,...
+            d_struct.p,...
+            data_buffer.headfile.rays_per_block,...
+            data_buffer.headfile.ray_blocks]);
+        %%% modify permute to account for n volumes as well....
+        % working in complex,raylength,rays_perkey,channels,keys
+        data_buffer.radial=permute(data_buffer.radial,[2,1,5,6,3,4]);
+    end
     % probably will end up in xyzKcp
 %     crop_index_s=d_struct.x*oversample_factor-d_struct.x;
 %     crop_index_e=d_struct.x*oversample_factor-2*d_struct.x;
@@ -215,9 +219,19 @@ else
             warning('Matlab pool failed to open with message, %s',err_m);
         end
     end
-    fprintf('Prealocate output data\n');
-    data=zeros([ oversample_factor*d_struct.x,oversample_factor*d_struct.x,oversample_factor*d_struct.x output_dimensions(4:end-1)],'single');
-    data=complex(data,data);
+    %%% we need an oversample space to work in to prevent re-allocating all
+    %%% the time
+    % if ~isprop(data_buffer,'oversample_space')
+    fprintf('Prealocate regrid data\n');
+    %     data=zeros([ oversample_factor*d_struct.x,oversample_factor*d_struct.x,oversample_factor*d_struct.x output_dimensions(4:end-1)],'single');
+    %     data=complex(data,data);
+    re_gridded_data=complex(zeros([ oversample_factor*d_struct.x,oversample_factor*d_struct.x,oversample_factor*d_struct.x output_dimensions(4:end-1)],'single'));
+    
+    % data_buffer.addprop('oversample_space');
+    % data_buffer.oversample_space=data;
+    % else
+    % 
+    % end
     clear e err err_m;
     %     if ~data_buffer.headfile.('rad_mat_option_skip_combine_channels')
     %% window selective regrid 
@@ -225,22 +239,35 @@ else
         data_buffer.headfile.rays_per_block,...
         data_buffer.headfile.ray_blocks_per_volume]);
     %jrKRcp
-    dims=size(data);
+    dims=size(re_gridded_data);
     rdims=size(data_buffer.radial);
-    if numel(size(data))>3
-        data=reshape(data,[dims(1:3) prod(dims(4:end))]);
+    if numel(size(re_gridded_data))>3
+        re_gridded_data=reshape(re_gridded_data,[dims(1:3) prod(dims(4:end))]);
 
     end
     if numel(rdims>=5)
         data_buffer.radial=reshape(data_buffer.radial,[rdims(1:4)  prod(rdims(5:end))]);
     end
-    for time_pt=1:d_struct.t
+    if isfield(data_buffer.headfile,'processing_chunk')
+        t_s=data_buffer.headfile.processing_chunk;
+        t_e=data_buffer.headfile.processing_chunk;
+    else
+        t_s=1;
+        t_e=d_struct.t;
+    end
+    % for time_pt=1:d_struct.t
+    for time_pt=t_s:t_e
         %data_buffer.headfile.ray_blocks-(data_buffer.headfile.ray_blocks_per_volume-1)
         % need to put in variable freq cutoff here using mask method. will
         % multiply radial/traj/dcf by freq mask to get desired effect.
-        startindex=data_buffer.headfile.ray_blocks_per_volume*(time_pt-1)+1;
-        endindex  =data_buffer.headfile.ray_blocks_per_volume*(time_pt-1)+data_buffer.headfile.ray_blocks_per_volume;
-        radial=data_buffer.radial(:,:,:,startindex:endindex,:); % currently  [r,i] x ray_length x rays_per_key x keys x channel x parameters 
+        if time_pt==2
+            disp('break_point');
+        end
+%         index_start=data_buffer.headfile.ray_blocks_per_volume*(time_pt-1)+1;
+%         index_end  =data_buffer.headfile.ray_blocks_per_volume*(time_pt-1)+data_buffer.headfile.ray_blocks_per_volume;
+        index_start=time_pt;
+        index_end  =(time_pt-1)+data_buffer.headfile.ray_blocks_per_volume;
+        radial=data_buffer.radial(:,:,:,index_start:index_end,:); % currently  [r,i] x ray_length x rays_per_key x keys x channel x parameters 
         traj=  circshift(data_buffer.trajectory,[0 0 0 mod(time_pt,data_buffer.headfile.ray_blocks_per_volume)-1]); 
         dcf=   circshift(data_buffer.dcf,       [0 0 0 mod(time_pt,data_buffer.headfile.ray_blocks_per_volume)-1]);
         %
@@ -267,17 +294,18 @@ else
                     grid3_MAT(double(reshape(squeeze(radial(:,:,:,:,v)),[rd(1:2),rd(3)*rd(4)])),...
                     reshape(traj,[3,rd(2),rd(3)*rd(4)]),...
                     reshape(dcf,[rd(2),rd(3)*rd(4)]),oversample_factor*d_struct.x,8);
-                data(:,:,:,v)=complex(single(temp(1,:,:,:)),single(temp(2,:,:,:)));
+                re_gridded_data(:,:,:,v)=complex(single(temp(1,:,:,:)),single(temp(2,:,:,:)));
 %                 data(:,:,:,v+(time_pt-1)*d_struct.c*d_struct.p)=complex(single(temp(1,:,:,:)),single(temp(2,:,:,:)));
                 %1:vt
                 % time_pt time_pt*
                 % vt:2vt
                 % 
             end
-            if d_struct.t>1
-                data=reshape(data,dims);
-                save(['/tmp/temp_' num2str(time_pt) '.mat' ],'data','-v7.3');
-            end
+            
+%             if d_struct.t>1
+%                 data=reshape(data,dims);
+%                 save(['/tmp/temp_' num2str(time_pt) '.mat' ],'data','-v7.3');
+%             end
             %             end
 %             data_buffer.data=data;
 %             clear s e temp traj dcf radial data;
@@ -309,7 +337,7 @@ else
                     %                     data_buffer.data(:,:,:,1,lnum1,lnum2)=complex(r,i);
                     % [s,e]=center_crop(oversample_factor*d_struct.x,d_struct.x);
                     % data(:,:,:,c_num,lnum1,lnum2)=complex(temp(1,s:e,s:e,s:e),temp(2,s:e,s:e,s:e));
-                    data(:,:,:,1,lnum1,lnum2)=complex(temp(1,:,:,:),temp(2,:,:,:));
+                    re_gridded_data(:,:,:,1,lnum1,lnum2)=complex(temp(1,:,:,:),temp(2,:,:,:));
                     clear temp;
                 end
             end
@@ -319,8 +347,17 @@ else
     end
     %%% because of reasons we have to permute back on radial scans.
     %%% xyztcp  123564
-    data_buffer.data=data;
-    data_buffer.data=permute(data_buffer.data,[1,2,3,5,6,4]);
+    re_gridded_data=permute(re_gridded_data,[1,2,3,5,6,4]);
+    if oversample_factor~=1
+        if ~isprop(data_buffer,'kspace')
+            data_buffer.addprop('kspace');
+        end
+        data_buffer.kspace=re_gridded_data;
+    else
+        data_buffer.data=re_gridded_data;
+        data_buffer.data=re_gridded_data;
+    end
+    
 
 end
 %% per scanner cleanup, currently no scanner specific code.

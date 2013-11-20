@@ -54,68 +54,82 @@ end
 if ~exist('bool_2D_mode','var') 
     bool_2D_mode=false;
 end
+% get correct data element of large_array
+% if no kspace to filter, presume filter data
+if ~isprop(large_array,'kspace')
+    output_field='data';
+else
+    output_field='kspace';
+end
 %% fermi filter
-dx=size(large_array.data,1);
-dy=size(large_array.data,2);
-dz=size(large_array.data,3);
-if bool_2D_mode
-    dz=1;
+if ~isprop(large_array,'filter')
+    dx=size(large_array.(output_field),1);
+    dy=size(large_array.(output_field),2);
+    dz=size(large_array.(output_field),3);
+    if bool_2D_mode
+        dz=1;
+    end
+    mres=max([dx,dy,dz]);     % use the max res
+    nres=min([dx,dy,dz]);     % use the min res (is this supposed to  be mres istead of nres?)
+    %
+    fermit=single(mres.*w1/2);   % fermi temp: increase for more curvature/smooth edge [default=.03]
+    fermiu=single(mres.*w2/2);  % fermi level: increase for larger window [default=.3]
+    %
+    xvec=reshape(single(-dx/2:dx/2-1),[],1,1);
+    xvec=xvec.^2/(dx/mres).^2;
+    yvec=reshape(single(-dy/2:dy/2-1),1,[],1);
+    yvec=yvec.^2/(dy/mres).^2;
+    zvec=reshape(single(-dz/2:dz/2-1),1,1,[]);
+    zvec=zvec.^2/(dz/mres).^2;
+    
+    %
+    if numel(large_array.(output_field))>=max_array_elements
+        display('Starting fermi filtering, this can take a long time(5-30 minutes) on larger arrays, especially when falling out of memory.');
+    end
+    FW=1./(1+exp((sqrt(bsxfun(@plus,xvec,bsxfun(@plus,yvec,zvec)))-fermiu)/fermit));     % computing the FERMI window
+    if numel(large_array.(output_field))>=max_array_elements
+        display('Filter calc done.');
+    end
+    FW=FW/max(FW(:));
+    large_array.addprop('filter');
+    large_array.filter=FW;
+else
+    fprintf('Using pre-calculated filter.\n');
+    FW=large_array.filter;
 end
-mres=max([dx,dy,dz]);     % use the max res
-nres=min([dx,dy,dz]);     % use the min res (is this supposed to  be mres istead of nres?)
-%
-fermit=single(mres.*w1/2);   % fermi temp: increase for more curvature/smooth edge [default=.03]
-fermiu=single(mres.*w2/2);  % fermi level: increase for larger window [default=.3]
-%
-xvec=reshape(single(-dx/2:dx/2-1),[],1,1);
-xvec=xvec.^2/(dx/mres).^2;
-yvec=reshape(single(-dy/2:dy/2-1),1,[],1);
-yvec=yvec.^2/(dy/mres).^2;
-zvec=reshape(single(-dz/2:dz/2-1),1,1,[]);
-zvec=zvec.^2/(dz/mres).^2;
-
 % 
-if numel(large_array.data)>=max_array_elements
-    display('Starting fermi filtering, this can take a long time(5-30 minutes) on larger arrays, especially when falling out of memory.');
-end
-FW=1./(1+exp((sqrt(bsxfun(@plus,xvec,bsxfun(@plus,yvec,zvec)))-fermiu)/fermit));     % computing the FERMI window
-if numel(large_array.data)>=max_array_elements
-    display('Filter calc done.');
-end
-FW=FW/max(FW(:));
-
-% 
-dims=size(large_array.data);
+dims=size(large_array.(output_field));
 if numel(dims)==3
-    large_array.data=large_array.data.*FW;
+    large_array.(output_field)=large_array.(output_field).*FW;
 else
     %%%
     % code copy from the n-d 2d code
     if ~bool_2D_mode
-        if numel(size(large_array.data))>3
-            large_array.data=reshape(large_array.data,[dims(1:3) prod(dims(4:end))]);
+        if numel(size(large_array.(output_field)))>3
+            large_array.(output_field)=reshape(large_array.(output_field),[dims(1:3) prod(dims(4:end))]);
         end
         %     oraw=zeros(size(iraw));
-%         temp=large_array.data(:,:,:,1);
-% these per volume loops appear to cause a memory double.
-fprintf('Filtering %d volumes...\n',size(large_array.data,4));
-tic;
-        for v=1:size(large_array.data,4)
-%             temp=large_array.data(:,:,:,v);
+        %         temp=large_array.(output_field)(:,:,:,1);
+        % these per volume loops appear to cause a memory double.
+        fprintf('Filtering %d volumes... ',size(large_array.(output_field),4));
+        tic;
+        for v=1:size(large_array.(output_field),4)
+%             temp=large_array.(output_field)(:,:,:,v);
 %             temp=temp.*FW;
-%             temp=large_array.data(:,:,:,v).*FW;
-%             large_array.data(:,:,:,v)=temp;
-            large_array.data(:,:,:,v)=large_array.data(:,:,:,v).*FW;
+%             temp=large_array.(output_field)(:,:,:,v).*FW;
+%             large_array.(output_field)(:,:,:,v)=temp;
+            large_array.(output_field)(:,:,:,v)=large_array.(output_field)(:,:,:,v).*FW;
         end
         fprintf('Apply filter time was %f seconds.\n',toc);
         %     oraw=reshape(oraw,dims);
     else
-        for image=1:size(large_array.data,3)
-            large_array.data(:,:,image)=large_array.data(:,:,image).*FW;
+        for image=1:size(large_array.(output_field),3)
+            large_array.(output_field)(:,:,image)=large_array.(output_field)(:,:,image).*FW;
         end
     end
 end
-clear FW
-if numel(large_array.data)>=max_array_elements
+large_array.(output_field)=large_array.(output_field);
+% clear FW large_array.(output_field);
+if numel(large_array.(output_field))>=max_array_elements
     display('Fitering finished');
 end
