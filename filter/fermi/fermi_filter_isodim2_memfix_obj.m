@@ -86,9 +86,9 @@ if ~isprop(large_array,'filter')
     if numel(large_array.(output_field))>=max_array_elements
         display('Starting fermi filtering, this can take a long time(5-30 minutes) on larger arrays, especially when falling out of memory.');
     end
-    FW=1./(1+exp((sqrt(bsxfun(@plus,xvec,bsxfun(@plus,yvec,zvec)))-fermiu)/fermit));     % computing the FERMI window
+    tic; FW=1./(1+exp((sqrt(bsxfun(@plus,xvec,bsxfun(@plus,yvec,zvec)))-fermiu)/fermit));     % computing the FERMI window
     if numel(large_array.(output_field))>=max_array_elements
-        display('Filter calc done.');
+        fprintf('Filter calc done in %0.2f seconds.',toc);
     end
     FW=FW/max(FW(:));
     large_array.addprop('filter');
@@ -128,7 +128,7 @@ else
         end
     end
 end
-large_array.(output_field)=large_array.(output_field);
+large_array.(output_field)=reshape(large_array.(output_field),dims);
 % clear FW large_array.(output_field);
 if numel(large_array.(output_field))>=max_array_elements
     display('Fitering finished');

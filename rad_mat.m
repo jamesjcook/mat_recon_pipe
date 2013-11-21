@@ -192,6 +192,7 @@ planned_options={
     'asymmetry_mirror',       ' with echo asymmetry tries to copy 85% of echo trail to leading echo side.'
     'independent_scaling',    ' scale output images independently'
     'workspace_doubles',      ' use double precision in the workspace instead of single'
+    'chunk_test_max',         ' maximum number of chunks to process before quiting. NOT a production option!'
 %     'allow_headfile_override' ' Allow arbitrary options to be passed which will overwrite headfile values once the headfile is created/loaded'
     '',                       ''
     };
@@ -359,7 +360,10 @@ if opt_struct.skip_write_civm_raw &&...
         ~opt_struct.write_unscaled_nD
     opt_struct.skip_fft=true;
 end
-%% option sanity checks.    
+%% option sanity checks and cleanup
+if ~opt_struct.chunk_test_max
+    opt_struct.chunk_test_max=Inf;
+end
 if isnumeric(opt_struct.kspace_shift)
     opt_struct.kspace_shift=num2str(opt_struct.kspace_shift);
 end
@@ -635,7 +639,7 @@ data_out.disk_bytes_per_voxel=0;
 data_out.RAM_bytes_per_voxel=0;
 data_out.RAM_volume_multiplier=1;
 data_in.RAM_volume_multiplier=1;
-data_work.RAM_volume_multiplier=2;
+data_work.RAM_volume_multiplier=1;
 data_work.RAM_bytes_per_voxel=0;
 % volumes_in_memory_at_time=2; % part of the peak memory calculations. Hopefully supplanted with better way of calcultating in future
 data_in.RAM_bytes_per_sample=2*data_in.disk_bit_depth/8; % input samples are always double because complex points are (always?) stored in 2 component vectors.
@@ -668,7 +672,7 @@ if regexp(vol_type,'.*radial.*') % unfortunately radial requires double precisio
     
 end
 data_out.precision_bytes=4;
-
+data_work.RAM_bytes_per_voxel=data_work.precision_bytes;
 % calculate space required on disk and in memory to save the output.
 % 2 bytes for each voxel in civm image, 8 bytes per voxel of complex output
 % 4 bytes for save 32-bit mag, 32-bit phase, unscaled nii, kspace image,
@@ -684,7 +688,6 @@ end
 if opt_struct.write_unscaled
     data_out.disk_bytes_per_voxel=data_out.disk_bytes_per_voxel+data_out.precision_bytes;
     data_out.disk_bytes_header_per_out_vol=data_out.disk_bytes_header_per_out_vol+data_out.disk_bytes_single_header;
-    data_work.RAM_bytes_per_voxel=data_work.RAM_bytes_per_voxel+data_work.precision_bytes;
 end
 % if opt_struct.write_unscaled
 %     data_out.disk_bytes_per_voxel=data_out.disk_bytes_per_voxel+data_out.precision_bytes;
@@ -714,6 +717,7 @@ end
 if opt_struct.write_unscaled || opt_struct.write_unscaled_nD || opt_struct.write_phase|| opt_struct.write_complex 
 %     output_
     data_out.RAM_bytes_per_voxel=data_out.RAM_bytes_per_voxel+data_work.precision_bytes;
+    data_work.RAM_bytes_per_voxel=data_work.RAM_bytes_per_voxel+data_work.precision_bytes;
 end
 %% calculate expected disk usage and check free disk space.
 data_out.volumes=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c;
@@ -839,7 +843,7 @@ elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
     % order. 
     data_in.total_points = ray_length*rays_per_block*d_struct.c*ray_blocks;
     % because ray_length is doubled, this is doubled too.
-    data_in.min_load_bytes= data_in.line_points*rays_per_block*(data_in.disk_bit_depth/8);
+    data_in.min_load_bytes= 2*data_in.line_points*rays_per_block*(data_in.disk_bit_depth/8);
     % minimum amount of bytes of data we can load at a time,
 else
     error('Stopping for unrecognized scanner_vendor, not sure if how to calculate the memory size.');
@@ -939,9 +943,12 @@ if useable_RAM>=maximum_RAM_requirement || opt_struct.skip_mem_checks
     % load_skip
     % chunk_size
     % num_chunks
-    % chunks_to_load(chunk_num)
+    % chunks_to_load(chunk_num)]
+%     if true
+    min_chunks=1;
     memory_space_required=maximum_RAM_requirement;
-    max_loadable_chunk_size=((data_in.line_points*rays_per_block+load_skip)*ray_blocks*data_in.RAM_bytes_per_sample);
+    % max_loadable_chunk_size=((data_in.line_points*rays_per_block+load_skip)*ray_blocks*data_in.RAM_bytes_per_sample);
+    max_loadable_chunk_size=((data_in.line_points*rays_per_block)*ray_blocks*data_in.RAM_bytes_per_sample);
     % the maximum chunk size for an exclusive data per volume reconstruction.
     c_dims=[ d_struct.x,...
         d_struct.y,...
@@ -957,6 +964,36 @@ if useable_RAM>=maximum_RAM_requirement || opt_struct.skip_mem_checks
     if num_chunks>1 && ~opt_struct.ignore_errors
         error('not tested with more than one chunk yet');
     end
+%     else
+%         min_chunks=ceil(maximum_RAM_requirement/useable_RAM);
+%         memory_space_required=(maximum_RAM_requirement/min_chunks); % this is our maximum memory requirements
+%         % max_loadable_chunk_size=(data_input.sample_points*d_struct.c*(kspace.bit_depth/8))/min_chunks;
+%         max_loadable_chunk_size=((data_in.line_points*rays_per_block)*ray_blocks*data_in.RAM_bytes_per_sample)...
+%             /min_chunks;
+%         % the maximum chunk size for an exclusive data per volume reconstruction.
+%         
+%         c_dims=[ d_struct.x,...
+%             d_struct.y,...
+%             d_struct.z];
+%         warning('c_dims set poorly just to volume dimensions for now');
+%         
+%         max_loads_per_chunk=max_loadable_chunk_size/data_in.min_load_bytes;
+%         if floor(max_loads_per_chunk)<max_loads_per_chunk && ~opt_struct.ignore_errors
+%             error('un-even loads per chunk size, %f < %f have to do better job getting loading sizes',floor(max_loads_per_chunk),max_loads_per_chunk);
+%         end
+%         chunk_size_bytes=floor(max_loadable_chunk_size/data_in.min_load_bytes)*data_in.min_load_bytes;
+%         
+%         num_chunks           =kspace_data/chunk_size_bytes;
+%         if floor(num_chunks)<num_chunks
+%             warning('Number of chunks did not work out to integer, things may be wrong!');
+%         end
+%         if data_in.min_load_bytes>chunk_size_bytes && ~opt_struct.skip_mem_checks && ~opt_struct.ignore_errors
+%             error('Oh noes! blocks of data too big to be handled in a single chunk, bailing out');
+%         end
+%         
+%         min_load_size=data_in.min_load_bytes/(data_in.disk_bit_depth/8); % minimum_load_size in data samples.
+%         chunk_size=   chunk_size_bytes/(data_in.disk_bit_depth/8);    % chunk_size in data samples.
+%     end
 elseif true
     % set variables
     %%%
@@ -1018,17 +1055,22 @@ elseif true
 %     vols_or_vols_plus_channels=floor((meminfo.TotalPhys-system_reserved_RAM-data_in.total_bytes_RAM-extra_RAM_bytes_required)/working_space);
     if recon_strategy.load_whole
         memory_space_required=data_in.total_bytes_RAM+data_work.single_vol_RAM*prod(output_dimensions(4:rd))+data_out.single_vol_RAM*prod(output_dimensions(4:rd));
-        max_loadable_chunk_size=((data_in.line_points*rays_per_block+load_skip)*ray_blocks*data_in.RAM_bytes_per_sample);
+        % max_loadable_chunk_size=((data_in.line_points*rays_per_block+load_skip)*ray_blocks*data_in.RAM_bytes_per_sample);
+        max_loadable_chunk_size=((data_in.line_points*rays_per_block)*ray_blocks*data_in.RAM_bytes_per_sample);
         min_load_size=data_in.min_load_bytes/(data_in.disk_bit_depth/8); % minimum_load_size in data samples.
         
         %this chunk_size only works here because we know that we cut at
         %least one dimensions because we can only get here when we havnt
         %got enough memory for all at once. 
-        chunk_size_bytes=max_loadable_chunk_size/output_dimensions(numel(recon_strategy.dim_string)+1);
+        if numel(recon_strategy.dim_string)<numel(output_dimensions)
+            chunk_size_bytes=max_loadable_chunk_size/output_dimensions(numel(recon_strategy.dim_string)+1);
+        else
+            chunk_size_bytes=max_loadable_chunk_size/output_dimensions(end);
+        end
         num_chunks      =kspace_data/chunk_size_bytes;
         chunk_size=   chunk_size_bytes/(data_in.disk_bit_depth/8);       % chunk_size in # of values (eg, 2*complex_points.
     else
-        error('not tested with more than one chunk yet');
+        error('not tested with more than one load chunk yet');
     end
     clear rd;
 else
@@ -1119,7 +1161,7 @@ if ~regexp(data_buffer.headfile.U_runno,'^[A-Z][0-9]{5-6}.*')
     opt_struct.testmode=1;
 end
 % if not testmode then create headfile
-if  opt_struct.testmode==1
+if  opt_struct.testmode
     display('this recon will not be archiveable, rerun same command with skip_recon to rewrite just the headfile using the gui settings.');
     data_buffer.engine_constants.engine_recongui_menu_path;
     [~, gui_dump]=system(['$GUI_APP ' ...
@@ -1173,7 +1215,8 @@ clear gui_info gui_dump gui_info_lines l;
 %%% last second stuff options into headfile
 data_buffer.headfile=combine_struct(data_buffer.headfile,opt_struct,'rad_mat_option_');
 chunks_to_load=[1];
-for chunk_num=1:num_chunks
+% for chunk_num=1:num_chunks
+for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
     %% reconstruction
     time_chunk=tic;
     if ~opt_struct.skip_load
@@ -1361,8 +1404,9 @@ for chunk_num=1:num_chunks
                     clear t_cdcf;
                 else
                     if matlabpool('size')==0 && opt_struct.matlab_parallel
+                        matlab_pool_size=d_struct.c;
                         try
-                            matlabpool local 12
+                            matlabpool('local',matlab_pool_size)
                         catch err
                             err_m=[err.message ];
                             for e=1:length(err.stack)
@@ -1439,11 +1483,13 @@ for chunk_num=1:num_chunks
                 data_buffer.headfile.processing_chunk=chunk_num;
             end
             rad_regid(data_buffer,c_dims);
-            if num_chunks==1 && regexp(vol_type,'.*radial.*')
-                fprintf('Clearing traj,dcf and radial kspace data\n');
-                data_buffer.trajectory=[];
-                data_buffer.dcf=[];
-                data_buffer.radial=[];
+            if  regexp(vol_type,'.*radial.*')
+                if num_chunks==1
+                    fprintf('Clearing traj,dcf and radial kspace data\n');
+                    data_buffer.trajectory=[];
+                    data_buffer.dcf=[];
+                    data_buffer.radial=[];
+                end
             end
         else
             data_buffer.data=reshape(data_buffer.data,input_dimensions);
@@ -1580,14 +1626,20 @@ for chunk_num=1:num_chunks
         end
         %% filter kspace data
         if ~opt_struct.skip_filter
-            dim_string=sprintf('%d ',size(data_buffer.data,1),size(data_buffer.data,1),size(data_buffer.data,1));
-            for d_num=4:length(output_dimensions)
-                dim_string=sprintf('%s %d ',dim_string,output_dimensions(d_num));
-            end ; clear d_num;
+            if ~isprop(data_buffer,'kspace')
+                filter_input='data';
+            else
+                filter_input='kspace';
+            end
+            %  dim_string=sprintf('%d ',size(data_buffer.(filter_input),1),size(data_buffer.(filter_input),2),size(data_buffer.(filter_input),3));
+            dim_string=sprintf('%d ',size(data_buffer.(filter_input)));
+%             for d_num=4:length(output_dimensions)
+%                 dim_string=sprintf('%s %d ',dim_string,output_dimensions(d_num));
+%             end ; clear d_num;
             fprintf('Performing fermi filter on volume with size %s\n',dim_string );
-
-            if strcmp(vol_type,'2D') 
-                % this requires regridding to place volume in same dimensions as the output dimensions 
+            
+            if strcmp(vol_type,'2D')
+                % this requires regridding to place volume in same dimensions as the output dimensions
                 % it also requires the first two dimensions of the output to be to be xy.
                 % these asumptions may not always be true. 
                 data_buffer.data=reshape(data_buffer.data,[ output_dimensions(1:2) prod(output_dimensions(3:end))] );
@@ -1641,8 +1693,9 @@ for chunk_num=1:num_chunks
         %% fft, resort, cut bad data, and display
         if ~opt_struct.skip_fft
             %% fft
-            fprintf('Performing FFT\n');
+            fprintf('Performing FFT on');
             if strcmp(vol_type,'2D')
+                fprintf('%s volumes\n',vol_type);
                 if ~exist('img','var') || numel(img)==1;
                     img=zeros(output_dimensions);
                 end
@@ -1692,6 +1745,7 @@ for chunk_num=1:num_chunks
                 data_buffer.data=img;
                 clear img;
             elseif regexp(vol_type,'.*radial.*')
+                fprintf('%s volumes\n',vol_type);
                 fprintf('Radial fft optimizations\n');
                 %% timepoints
                 if isfield(data_buffer.headfile,'processing_chunk')
@@ -1734,6 +1788,7 @@ for chunk_num=1:num_chunks
                 data_buffer.headfile.grid_crop=[c_s,c_e];
                 clear c_s c_e dims temp;
             else
+                fprintf('%s volumes\n',vol_type);
                 %method 1 fails for more than 3D
                 %                 odims=size(data_buffer.data);
                 %                 data_buffer.data=reshape(data_buffer.data,[odims(1:3) prod(odims(4:end))]);
@@ -1857,7 +1912,7 @@ for chunk_num=1:num_chunks
             end
             %% combine channel data
             if ~opt_struct.skip_combine_channels && d_struct.c>1
-                if ~regexp(vol_type,'.*radial.*')
+                if regexp(vol_type,'2D|3D')
                     % To respect the output order we use strfind.
                     fprintf('combining channel complex data with method %s\n',opt_struct.combine_method);
                     dind=strfind(opt_struct.output_order,'c'); % get dimension index for channels
@@ -1873,7 +1928,7 @@ for chunk_num=1:num_chunks
                         %%% did not combine
                     end
                 else
-                    fprintf('Radial timepoint combine');
+                    fprintf('Radial channel combine');
                     dind=4;
                     if isfield(data_buffer.headfile,'processing_chunk')
                         t_s=data_buffer.headfile.processing_chunk;
@@ -2064,65 +2119,81 @@ for chunk_num=1:num_chunks
         dim_select.z=':';
         data_buffer.headfile.group_max_atpct='auto';
         data_buffer.headfile.group_max_intensity=0;
-        if ~opt_struct.independent_scaling ||  ( opt_struct.write_unscaled_nD && ~opt_struct.skip_recon )
-            data_buffer.headfile.group_max_atpct=0;
-            for tn=1:d_struct.t
-                dim_select.t=tn;
-                for cn=1:d_struct.c
-                    dim_select.c=cn;
-                    for pn=1:d_struct.p
-                        dim_select.p=pn;
-                        tmp=abs(squeeze(data_buffer.data(...
-                            dim_select.(opt_struct.output_order(1)),...
-                            dim_select.(opt_struct.output_order(2)),...
-                            dim_select.(opt_struct.output_order(3)),...
-                            dim_select.(opt_struct.output_order(4)),...
-                            dim_select.(opt_struct.output_order(5)),...
-                            dim_select.(opt_struct.output_order(6))...
-                            )));
-                        tmp=sort(tmp(:));
-                        m_tmp=max(tmp);
-                        p_tmp=prctile(tmp,opt_struct.histo_percent);
-                        if tmp>data_buffer.headfile.group_max_intensity
-                            data_buffer.headfile.group_max_intensity=m_tmp;
-                        end
-                        if data_buffer.headfile.group_max_atpct<p_tmp
-                            data_buffer.headfile.group_max_atpct=p_tmp;
+        if num_chunks==1
+            if ~opt_struct.independent_scaling ||  ( opt_struct.write_unscaled_nD && ~opt_struct.skip_recon )
+                data_buffer.headfile.group_max_atpct=0;
+                for tn=1:d_struct.t
+                    dim_select.t=tn;
+                    for cn=1:d_struct.c
+                        dim_select.c=cn;
+                        for pn=1:d_struct.p
+                            dim_select.p=pn;
+                            tmp=abs(squeeze(data_buffer.data(...
+                                dim_select.(opt_struct.output_order(1)),...
+                                dim_select.(opt_struct.output_order(2)),...
+                                dim_select.(opt_struct.output_order(3)),...
+                                dim_select.(opt_struct.output_order(4)),...
+                                dim_select.(opt_struct.output_order(5)),...
+                                dim_select.(opt_struct.output_order(6))...
+                                )));
+                            tmp=sort(tmp(:));
+                            m_tmp=max(tmp);
+                            p_tmp=prctile(tmp,opt_struct.histo_percent);
+                            if tmp>data_buffer.headfile.group_max_intensity
+                                data_buffer.headfile.group_max_intensity=m_tmp;
+                            end
+                            if data_buffer.headfile.group_max_atpct<p_tmp
+                                data_buffer.headfile.group_max_atpct=p_tmp;
+                            end
                         end
                     end
                 end
-            end
-            if ( opt_struct.write_unscaled_nD && ~opt_struct.skip_recon ) %|| opt_struct.skip_write_civm_raw
-                fprintf('Writing debug outputs to %s\n',data_buffer.headfile.work_dir_path);
-                fprintf('\twrite_unscaled_nD save\n');
-                if strcmp(opt_struct.combine_method,'square_and_sum') && ~opt_struct.skip_combine_channels
-                    nii=make_nii(abs(squeeze(data_buffer.data)), [ ...
-                        data_buffer.headfile.fovx/d_struct.x ...
-                        data_buffer.headfile.fovy/d_struct.y ...
-                        data_buffer.headfile.fovz/d_struct.z]); % insert fov settings here ffs....
-                else
-                    nii=make_nii(log(abs(squeeze(data_buffer.data))), [ ...
-                        data_buffer.headfile.fovx/d_struct.x ...
-                        data_buffer.headfile.fovy/d_struct.y ...
-                        data_buffer.headfile.fovz/d_struct.z]); % insert fov settings here ffs....
+                if ( opt_struct.write_unscaled_nD && ~opt_struct.skip_recon ) %|| opt_struct.skip_write_civm_raw
+                    fprintf('Writing debug outputs to %s\n',data_buffer.headfile.work_dir_path);
+                    fprintf('\twrite_unscaled_nD save\n');
+                    if ( strcmp(opt_struct.combine_method,'square_and_sum')|| strcmp(opt_struct.combine_method,'regrid')) && ~opt_struct.skip_combine_channels
+                        nii=make_nii(abs(squeeze(data_buffer.data)), [ ...
+                            data_buffer.headfile.fovx/d_struct.x ...
+                            data_buffer.headfile.fovy/d_struct.y ...
+                            data_buffer.headfile.fovz/d_struct.z]); % insert fov settings here ffs....
+                    else
+                        nii=make_nii(log(abs(squeeze(data_buffer.data))), [ ...
+                            data_buffer.headfile.fovx/d_struct.x ...
+                            data_buffer.headfile.fovy/d_struct.y ...
+                            data_buffer.headfile.fovz/d_struct.z]); % insert fov settings here ffs....
+                    end
+                    %                         data_buffer.data(...
+                    %                                 s.(opt_struct.output_order(1)),...
+                    %                                 s.(opt_struct.output_order(2)),...
+                    %                                 s.(opt_struct.output_order(3)),...
+                    %                                 s.(opt_struct.output_order(4)),...
+                    %                                 s.(opt_struct.output_order(5)),...
+                    %                                 s.(opt_struct.output_order(6))...
+                    %                                 )
+                    fprintf('\t\t save_nii\n');
+                    save_nii(nii,[work_dir_img_path_base '_ND.nii']);
+                    write_headfile([work_dir_img_path_base '_ND.headfile'],data_buffer.headfile);
+                    
                 end
-                %                         data_buffer.data(...
-                %                                 s.(opt_struct.output_order(1)),...
-                %                                 s.(opt_struct.output_order(2)),...
-                %                                 s.(opt_struct.output_order(3)),...
-                %                                 s.(opt_struct.output_order(4)),...
-                %                                 s.(opt_struct.output_order(5)),...
-                %                                 s.(opt_struct.output_order(6))...
-                %                                 )
-                fprintf('\t\t save_nii\n');
-                save_nii(nii,[work_dir_img_path_base '_ND.nii']);
-                write_headfile([work_dir_img_path_base '_ND.headfile'],data_buffer.headfile);
-                                        
             end
         end
         %% save volumes
-        for tn=1:d_struct.t
-            dim_select.t=tn;
+        if isfield(data_buffer.headfile,'processing_chunk')
+            t_s=data_buffer.headfile.processing_chunk;
+            t_e=data_buffer.headfile.processing_chunk;
+        else
+            t_s=1;
+            t_e=d_struct.t;
+        end
+        % for time_pt=1:d_struct.t
+        % need to change this around so that any piece can be the selected 
+        % dimension for chunking on.
+        for tn=t_s:t_e
+            if num_chunks>1
+                dim_select.t=1;
+            else
+                dim_select.t=tn;
+            end
             for cn=1:d_struct.c
                 dim_select.c=cn;
                 for pn=1:d_struct.p
@@ -2317,13 +2388,7 @@ for chunk_num=1:num_chunks
                          
                     end
                     %%% convenience prompts
-                    
-                    if ~opt_struct.skip_recon||opt_struct.force_ij_prompt
-                        % display ij call to examine images.
-                        [~,txt]=system('echo -n $ijstart');  %-n for no newline i think there is a smarter way to get system variables but this works for now.
-                        ij_prompt=sprintf('%s -macro %s',txt, openmacro_path);
-                        mat_ij_prompt=sprintf('system(''%s'');',ij_prompt);
-                    end
+
                     if ~opt_struct.skip_write_civm_raw
                         %write_archive_tag(runno,spacename, slices, projectcode, img_format,civmid)
                         runnumbers(rindx)={[data_buffer.headfile.U_runno channel_code m_code]};
@@ -2337,26 +2402,36 @@ for chunk_num=1:num_chunks
     else
         fprintf('No outputs written.\n');
     end
-    %% convenience prompts
-    if ~isempty(ij_prompt)&& ~opt_struct.skip_write_civm_raw
-        fprintf('test civm image output from a terminal using following command\n');
-        fprintf('  (it may only open the first and last in large sequences).\n');
-        fprintf('\n\n%s\n\n\n',ij_prompt);
-        fprintf('test civm image output from matlab using following command\n');
-        fprintf('  (it may only open the first and last in large sequences).\n');
-        fprintf('\n%s\n\n',mat_ij_prompt);
+
+    if (num_chunks>1)
+        fprintf('chunk_time:%0.2f\n',toc(time_chunk));
     end
-    if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon
-        archive_prompts=sprintf('%s%s',archive_prompts,...
-            write_archive_tag(runnumbers,...
-            data_buffer.engine_constants.engine_work_directory,...
-            d_struct.z,data_buffer.headfile.U_code,datatype,...
-            data_buffer.headfile.U_civmid,false));
-        fprintf('initiate archive from a terminal using, (should change person to yourself). \n\n');
-        fprintf(archive_prompts);
-    end
-    fprintf('chunk_time:%0.2f',toc(time_chunk));
 end
-fprintf(' Total rad_mat time is %f second\n',toc(rad_start));
+%% convenience prompts
+
+if ~opt_struct.skip_recon||opt_struct.force_ij_prompt
+    % display ij call to examine images.
+    [~,txt]=system('echo -n $ijstart');  %-n for no newline i think there is a smarter way to get system variables but this works for now.
+    ij_prompt=sprintf('%s -macro %s',txt, openmacro_path);
+    mat_ij_prompt=sprintf('system(''%s'');',ij_prompt);
+end
+if ~isempty(ij_prompt)&& ~opt_struct.skip_write_civm_raw
+    fprintf('test civm image output from a terminal using following command\n');
+    fprintf('  (it may only open the first and last in large sequences).\n');
+    fprintf('\n\n%s\n\n\n',ij_prompt);
+    fprintf('test civm image output from matlab using following command\n');
+    fprintf('  (it may only open the first and last in large sequences).\n');
+    fprintf('\n%s\n\n',mat_ij_prompt);
+end
+if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon
+    archive_prompts=sprintf('%s%s',archive_prompts,...
+        write_archive_tag(runnumbers,...
+        data_buffer.engine_constants.engine_work_directory,...
+        d_struct.z,data_buffer.headfile.U_code,datatype,...
+        data_buffer.headfile.U_civmid,false));
+    fprintf('initiate archive from a terminal using, (should change person to yourself). \n\n');
+    fprintf(archive_prompts);
+end
+fprintf('Total rad_mat time is %f second\n',toc(rad_start));
 
 success_status=true;

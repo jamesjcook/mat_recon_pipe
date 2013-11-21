@@ -78,7 +78,8 @@ for d_num=1:numel(data_buffer.headfile.('rad_mat_option_output_order'))
 end
 
 %% reformat/reshape/regrid
-if( ~regexp(data_buffer.headfile.([data_tag 'vol_type']),'radial'))
+if( ~strcmp(data_buffer.headfile.([data_tag 'vol_type']),'radial'))
+% if( regexp(data_buffer.headfile.([data_tag 'vol_type']),'2D|3D|4D'))
     %% cartesian (literally all non-radial, if other sequences come up we'll have to deal)
     permute_code=zeros(size(dim_order));
     for d_num=1:length(dim_order)
@@ -209,8 +210,9 @@ else
 %     crop_index_e=d_struct.x*oversample_factor-2*d_struct.x;
 %%% guess matlabpool size based on floor( mem avail/mem required)
     if matlabpool('size')==0 && data_buffer.headfile.rad_mat_option_matlab_parallel
+        matlab_pool_size=d_struct.c;
         try
-            matlabpool local 12
+            matlabpool('local',matlab_pool_size)
         catch err
             err_m=[err.message ];
             for e=1:length(err.stack)
@@ -221,11 +223,25 @@ else
     end
     %%% we need an oversample space to work in to prevent re-allocating all
     %%% the time
-    % if ~isprop(data_buffer,'oversample_space')
-    fprintf('Prealocate regrid data\n');
+    if oversample_factor==1
+        output_field='data';
+    else
+        output_field='kspace';
+        if ~isprop(data_buffer,'kspace')
+            data_buffer.addprop('kspace');
+            fprintf('Prealocate regrid data\n');
+            if ~strcmp(data_buffer.headfile.rad_mat_option_combine_method,'regrid')
+                data_buffer.(output_field)=complex(zeros([ oversample_factor*d_struct.x,oversample_factor*d_struct.x,oversample_factor*d_struct.x output_dimensions(4:end-1)],'single'));
+            else
+                data_buffer.(output_field)=complex(zeros([ oversample_factor*d_struct.x,oversample_factor*d_struct.x,oversample_factor*d_struct.x output_dimensions(5:end-1)],'single'));
+            end
+        end
+
+    end
+    
+    % if ~isprop(data_buffer,'kspace')
     %     data=zeros([ oversample_factor*d_struct.x,oversample_factor*d_struct.x,oversample_factor*d_struct.x output_dimensions(4:end-1)],'single');
     %     data=complex(data,data);
-    re_gridded_data=complex(zeros([ oversample_factor*d_struct.x,oversample_factor*d_struct.x,oversample_factor*d_struct.x output_dimensions(4:end-1)],'single'));
     
     % data_buffer.addprop('oversample_space');
     % data_buffer.oversample_space=data;
@@ -239,10 +255,10 @@ else
         data_buffer.headfile.rays_per_block,...
         data_buffer.headfile.ray_blocks_per_volume]);
     %jrKRcp
-    dims=size(re_gridded_data);
+    dims=size(data_buffer.(output_field));
     rdims=size(data_buffer.radial);
-    if numel(size(re_gridded_data))>3
-        re_gridded_data=reshape(re_gridded_data,[dims(1:3) prod(dims(4:end))]);
+    if numel(size(data_buffer.(output_field)))>3
+        data_buffer.(output_field)=reshape(data_buffer.(output_field),[dims(1:3) prod(dims(4:end))]);
 
     end
     if numel(rdims>=5)
@@ -268,47 +284,45 @@ else
         index_start=time_pt;
         index_end  =(time_pt-1)+data_buffer.headfile.ray_blocks_per_volume;
         radial=data_buffer.radial(:,:,:,index_start:index_end,:); % currently  [r,i] x ray_length x rays_per_key x keys x channel x parameters 
-        traj=  circshift(data_buffer.trajectory,[0 0 0 mod(time_pt,data_buffer.headfile.ray_blocks_per_volume)-1]); 
-        dcf=   circshift(data_buffer.dcf,       [0 0 0 mod(time_pt,data_buffer.headfile.ray_blocks_per_volume)-1]);
-        %
+%         traj=  circshift(data_buffer.trajectory,[0 0 0 mod(time_pt,data_buffer.headfile.ray_blocks_per_volume)-1]); 
+%         dcf=   circshift(data_buffer.dcf,       [0 0 0 mod(time_pt,data_buffer.headfile.ray_blocks_per_volume)-1]);
+        traj=  circshift(data_buffer.trajectory,[0 0 0 -mod(time_pt,data_buffer.headfile.ray_blocks_per_volume)+1]);
+        dcf=   circshift(data_buffer.dcf,       [0 0 0 -mod(time_pt,data_buffer.headfile.ray_blocks_per_volume)+1]);
+        %%%%
+        process_volumes=d_struct.c*d_struct.p;
+        if strcmp(data_buffer.headfile.rad_mat_option_combine_method,'regrid')
+            %%%% make traj/dcf longer by n channels
+            % could probably be made cleaner but this should work.
+            process_volumes=process_volumes/d_struct.c;
+            ts=size(traj);
+            traj=repmat(data_buffer.trajectory,ones(1, numel(ts(1:end-1))),d_struct.c);
+            ds=size(dcf);
+            dcf=repmat(data_buffer.dcf,ones(numel(ds(1:end-1))),d_struct.c );
+            rs=size(radial);
+            radial=reshape(radial,[rs(1:3), rs(4)*d_struct.c,d_struct.p]);
+            clear ts ds rs;
+        end
         if true % always use the sepearate channel code, have to investigate how channel combining works out.
             fprintf('Start Grid per channel\n');
-            %             serial_process=true;
-            %             if ~serial_process
-            %                 fprintf('Parallel loop for regrid.');
-            %                 parfor v=1:size(data_buffer.radial,5)
-            %                     temp=...
-            %                         grid3_MAT(double(radial(:,:,:,v)),...
-            %                         traj,...
-            %                         dcf,oversample_factor*d_struct.x,0);
-            %                     % [s,e]=center_crop(oversample_factor*d_struct.x,d_struct.x);
-            %                     % data(:,:,:,c_num,lnum1,lnum2)=complex(temp(1,s:e,s:e,s:e),temp(2,s:e,s:e,s:e));
-            %                     data(:,:,:,v)=complex(single(temp(1,:,:,:)),single(temp(2,:,:,:)));
-            %                 end
-            %             else
+
             fprintf('Serial loop for regrid.\n');
             rd=size(radial);
-%             Vt=d_struct.c*d_struct.p;
-            for v=1:d_struct.c*d_struct.p
+            % Vt=d_struct.c*d_struct.p;
+            holding_zone=data_buffer.(output_field);
+            data_buffer.(output_field)=[];
+            parfor v=1:process_volumes
                 temp=...
                     grid3_MAT(double(reshape(squeeze(radial(:,:,:,:,v)),[rd(1:2),rd(3)*rd(4)])),...
                     reshape(traj,[3,rd(2),rd(3)*rd(4)]),...
                     reshape(dcf,[rd(2),rd(3)*rd(4)]),oversample_factor*d_struct.x,8);
-                re_gridded_data(:,:,:,v)=complex(single(temp(1,:,:,:)),single(temp(2,:,:,:)));
-%                 data(:,:,:,v+(time_pt-1)*d_struct.c*d_struct.p)=complex(single(temp(1,:,:,:)),single(temp(2,:,:,:)));
-                %1:vt
-                % time_pt time_pt*
-                % vt:2vt
-                % 
+%                 data_buffer.(output_field)(:,:,:,v)=complex(single(temp(1,:,:,:)),single(temp(2,:,:,:)));
+                holding_zone(:,:,:,v)=complex(single(temp(1,:,:,:)),single(temp(2,:,:,:)));
+
+
             end
-            
-%             if d_struct.t>1
-%                 data=reshape(data,dims);
-%                 save(['/tmp/temp_' num2str(time_pt) '.mat' ],'data','-v7.3');
-%             end
-            %             end
-%             data_buffer.data=data;
-%             clear s e temp traj dcf radial data;
+            data_buffer.(output_field)=holding_zone;
+            clear holding_zone;
+
         else
             %%% experimental pass extra data to the re-gridder by duplicating
             %%% trajectory and dcf.
@@ -337,7 +351,7 @@ else
                     %                     data_buffer.data(:,:,:,1,lnum1,lnum2)=complex(r,i);
                     % [s,e]=center_crop(oversample_factor*d_struct.x,d_struct.x);
                     % data(:,:,:,c_num,lnum1,lnum2)=complex(temp(1,s:e,s:e,s:e),temp(2,s:e,s:e,s:e));
-                    re_gridded_data(:,:,:,1,lnum1,lnum2)=complex(temp(1,:,:,:),temp(2,:,:,:));
+                    data_buffer.(output_field)(:,:,:,1,lnum1,lnum2)=complex(temp(1,:,:,:),temp(2,:,:,:));
                     clear temp;
                 end
             end
@@ -347,16 +361,13 @@ else
     end
     %%% because of reasons we have to permute back on radial scans.
     %%% xyztcp  123564
-    re_gridded_data=permute(re_gridded_data,[1,2,3,5,6,4]);
-    if oversample_factor~=1
-        if ~isprop(data_buffer,'kspace')
-            data_buffer.addprop('kspace');
-        end
-        data_buffer.kspace=re_gridded_data;
-    else
-        data_buffer.data=re_gridded_data;
-        data_buffer.data=re_gridded_data;
-    end
+    data_buffer.(output_field)=permute(data_buffer.(output_field),[1,2,3,5,6,4]);
+%     if oversample_factor~=1
+%         data_buffer.kspace=re_gridded_data;
+%     else
+%         data_buffer.data=re_gridded_data;
+%         data_buffer.data=re_gridded_data;
+%     end
     
 
 end
