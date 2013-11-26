@@ -1,5 +1,5 @@
-function [img, success_status]=rad_mat(scanner,runno,input_data,options)
-% [img, s]=RAD_MAT(scanner,runno,input,options)
+function [img, success_status,data_buffer]=rad_mat(scanner,runno,input_data,options)
+% [img, s, buffer]=RAD_MAT(scanner,runno,input,options)
 % Reconstruct All Devices in MATlab
 % rad_mat, a quasi generic reconstruction/reformating scanner to archive
 % pipeline.
@@ -23,6 +23,9 @@ function [img, success_status]=rad_mat(scanner,runno,input_data,options)
 % img      - output volume in the output_order
 % s        - status 1 for success, and 0 for failures.
 %            (following matlab boolean, true/false)
+% buffer   - the databuffer, including the headfile writeen to disk any any
+%            other data left inside it. For all at once recons buffer.data 
+%            should be the n-D reconstructed volumes after combining the channels. 
 
 % Primary goals,
 % A scanner independent(generic) scanner to civm raw image pipeline with
@@ -193,6 +196,7 @@ planned_options={
     'independent_scaling',    ' scale output images independently'
     'workspace_doubles',      ' use double precision in the workspace instead of single'
     'chunk_test_max',         ' maximum number of chunks to process before quiting. NOT a production option!'
+    'image_return_type',      ' set the return type image from unscaled 32-bit float magnitude to something else.'
 %     'allow_headfile_override' ' Allow arbitrary options to be passed which will overwrite headfile values once the headfile is created/loaded'
     '',                       ''
     };
@@ -401,12 +405,6 @@ if length(opt_struct.U_dimension_order)<length(possible_dimensions)
         end
     end
 end
-if opt_struct.overwrite
-    opt_struct.puller_option_string=[' -o ' opt_struct.puller_option_string];
-end
-if opt_struct.existing_data %||opt_struct.skip_recon
-    opt_struct.puller_option_string=[' -e ' opt_struct.puller_option_string];
-end
 clear possible_dimensions warn_string err_string char ks e o_num parts all_options beta_options beta_options_string planned_options planned_options_string standard_options standard_options_string temp test value w
 %% dependency loading
 rad_start=tic;
@@ -458,11 +456,21 @@ data_buffer.input_headfile.origin_path=datapath;
 %pull the data to local machine
 work_dir_name= [data_buffer.headfile.U_runno '.work'];
 data_buffer.headfile.work_dir_path=[data_buffer.engine_constants.engine_work_directory '/' work_dir_name];
+if opt_struct.overwrite
+    opt_struct.puller_option_string=[' -o ' opt_struct.puller_option_string];
+end
+if opt_struct.existing_data && exist(data_buffer.headfile.work_dir_path,'dir') %||opt_struct.skip_recon
+    opt_struct.puller_option_string=[' -e ' opt_struct.puller_option_string];
+end
 cmd=['puller_simple ' opt_struct.puller_option_string ' ' scanner ' ''' puller_data ''' ' data_buffer.headfile.work_dir_path];
 data_buffer.headfile.comment{end+1}=['# \/ pull cmd ' '\/'];
 data_buffer.headfile.comment{end+1}=['# ' cmd ];
 data_buffer.headfile.comment{end+1}=['# /\ pull cmd ' '/\'];
-if ~opt_struct.existing_data  %&&~opt_struct.skip_recon
+if ~opt_struct.existing_data || ~exist(data_buffer.headfile.work_dir_path,'dir')  %&&~opt_struct.skip_recon
+    if ~exist(data_buffer.headfile.work_dir_path,'dir') && opt_struct.existing_data
+        warning('You wanted existing data BUT IT WASNT THERE!\n\tContinuing by tring to fetch new.');
+        pause(1);
+    end
     dim_select =system(cmd);
     if dim_select ~= 0 && ~opt_struct.ignore_errors
         error('puller failed:%s',cmd);
@@ -2432,6 +2440,10 @@ if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon
     fprintf('initiate archive from a terminal using, (should change person to yourself). \n\n');
     fprintf(archive_prompts);
 end
-fprintf('Total rad_mat time is %f second\n',toc(rad_start));
 
+%% End of line set output
+%%% handle image return type at somepoint in future using image_return_type
+%%% option, for now we're just going to magnitude. 
+img=abs(data_buffer.data);
 success_status=true;
+fprintf('Total rad_mat time is %f second\n',toc(rad_start));
