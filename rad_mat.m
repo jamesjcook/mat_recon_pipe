@@ -222,7 +222,7 @@ opt_struct.ignore_errors=false;
 opt_struct.kspace_shift='0:0:0';
 opt_struct.histo_percent=99.95;
 opt_struct.puller_option_string='';
-opt_struct.unrecognized_fields={};% place to put all the names of unrecognized options we recieved. They're assumed to all be headfile values. 
+unrecognized_fields=struct;% place to put all the names of unrecognized options we recieved. They're assumed to all be headfile values. 
 %opt_struct.combine_channels=true; % normally we want to combine channels
 % opt_struct.display_kspace=false;
 % opt_struct.display_output=false;
@@ -289,7 +289,7 @@ for o_num=1:length(options)
         if opt_struct.unrecognized_ok  % allows unrecognized options to pass through.
             w=true;
             e=false;
-            opt_struct.unrecognized_fields{end+1}=option;
+            unrecognized_fields.(option)=value;
             specific_text=sprintf('%s Maybe it is used in some secondary code which did not update the allowed options here.\n continuing.',specific_text);
         end
     end
@@ -471,12 +471,12 @@ if ~opt_struct.existing_data || ~exist(data_buffer.headfile.work_dir_path,'dir')
         warning('You wanted existing data BUT IT WASNT THERE!\n\tContinuing by tring to fetch new.');
         pause(1);
     end
-    dim_select =system(cmd);
-    if dim_select ~= 0 && ~opt_struct.ignore_errors
+    p_status =system(cmd);
+    if p_status ~= 0 && ~opt_struct.ignore_errors
         error('puller failed:%s',cmd);
     end
 end
-clear cmd s datapath puller_data puller_data work_dir_name;
+clear cmd s datapath puller_data puller_data work_dir_name p_status;
 %% load data header and combine with other setting files
 data_buffer.input_headfile=load_scanner_header(scanner, data_buffer.headfile.work_dir_path ,opt_struct);
 
@@ -609,6 +609,7 @@ d_struct.t=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c/d_struct.p;
 % end
 
 input_order=data_buffer.headfile.([data_tag 'dimension_order' ]);
+%% set data acquisition parameters to determine how much to work on at a time and how.
 % permute_code=zeros(size(input_order));
 % for char=1:length(input_order)
 %     permute_code(char)=strfind(opt_struct.output_order,input_order(char));
@@ -942,6 +943,7 @@ end
 recon_strategy.load_whole=true;
 recon_strategy.channels_at_once=true;
 recon_strategy.dim_string=opt_struct.output_order;
+recon_strategy.work_by_chunk=false;
 if useable_RAM>=maximum_RAM_requirement || opt_struct.skip_mem_checks
     % for our best case where verything fits in memory set recon variables.
     % set variables 
@@ -1063,6 +1065,9 @@ elseif true
 %     vols_or_vols_plus_channels=floor((meminfo.TotalPhys-system_reserved_RAM-data_in.total_bytes_RAM-extra_RAM_bytes_required)/working_space);
     if recon_strategy.load_whole
         memory_space_required=data_in.total_bytes_RAM+data_work.single_vol_RAM*prod(output_dimensions(4:rd))+data_out.single_vol_RAM*prod(output_dimensions(4:rd));
+        
+        opt_struct.parallel_jobs=min(12,floor((useable_RAM-data_in.total_bytes_RAM)/data_work.single_vol_RAM*prod(output_dimensions(4:rd))+data_out.single_vol_RAM*prod(output_dimensions(4:rd))));
+        % cannot have more than 12 parallel jobs in matlab.
         % max_loadable_chunk_size=((data_in.line_points*rays_per_block+load_skip)*ray_blocks*data_in.RAM_bytes_per_sample);
         max_loadable_chunk_size=((data_in.line_points*rays_per_block)*ray_blocks*data_in.RAM_bytes_per_sample);
         min_load_size=data_in.min_load_bytes/(data_in.disk_bit_depth/8); % minimum_load_size in data samples.
@@ -1079,6 +1084,10 @@ elseif true
         chunk_size=   chunk_size_bytes/(data_in.disk_bit_depth/8);       % chunk_size in # of values (eg, 2*complex_points.
     else
         error('not tested with more than one load chunk yet');
+    end
+    if num_chunks>1
+        recon_strategy.work_by_chunk=true;
+        opt_struct.independent_scaling=true;
     end
     clear rd;
 else
@@ -1138,7 +1147,7 @@ if num_chunks>1
     fprintf('\tmemory_required :%0.02fM, split into %d problems\n',memory_space_required/1024/1024,num_chunks);
     pause(3);
 end
-clear maximum_RAM_requirement ;
+clear maximum_RAM_requirement useable_RAM ;
 
 %% mem purging when we expect to fit.
 %%% first just try a purge to free enough space.
@@ -1219,11 +1228,19 @@ clear gui_info gui_dump gui_info_lines l;
 % if regexpi(data_buffer.headfile.S_PSDname, strjoin(data_buffer.headfile.bruker_radial_methods,'|')
 % load_bruker_traj
 % end
-
+%% insert unrecognized fields into headfile
+data_buffer.headfile=combine_struct(data_buffer.headfile,unrecognized_fields);
+clear fnum option value parts;
 %%% last second stuff options into headfile
 data_buffer.headfile=combine_struct(data_buffer.headfile,opt_struct,'rad_mat_option_');
 chunks_to_load=[1];
 % for chunk_num=1:num_chunks
+if opt_struct.matlab_parallel && opt_struct.parallel_jobs>1
+    if matlabpool('size') ~= opt_struct.parallel_jobs && matlabpool('size')>0
+        matlabpool close;
+    end
+    matlabpool(num2str(opt_struct.parallel_jobs));
+end
 for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
     %% reconstruction
     time_chunk=tic;
@@ -1843,12 +1860,22 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
                     
                     warning('90degree rotation and resort all aspect images occurs now')
                     pause(opt_struct.warning_pause);
-                    %             fprintf('permuting...');
-                    %             img=permute(img,[ 1 3 2 ]);
+                    fprintf('permuting...');% permute calculated instead, instead of static % img=permute(img,[ 1 3 2 ]);
+                    permute_code=zeros(size(input_order));
+                    for d_num=1:length(input_order)
+                        permute_code(d_num)=strfind(input_order,opt_struct.output_order(d_num));
+                    end
+                    data_buffer.data=permute(data_buffer.data,permute_code ); % put in image order.
+                    clear d_num permute_code;
+                    
                     fprintf('resorting along z...');
-                    objlist=[d_struct.z/2+1:d_struct.z 1:d_struct.z/2 ];
-                    %img=circshift(img,[ 0 y/2 0 ]);
-                    data_buffer.data(:,:,objlist)=data_buffer.data;
+                    objlistz=[d_struct.z/2+1:d_struct.z 1:d_struct.z/2 ];
+%                     data_buffer.data=circshift(data_buffer.data,[ 0 y/2 0
+%                     ]);.
+%                     objlisty=1:d_struct.y;
+                    objlisty=[d_struct.y/2+1:d_struct.y 1:d_struct.y/2 ];
+
+                    data_buffer.data(:,objlisty,objlistz)=data_buffer.data;
                     fprintf('rotating image by 90...');
                     data_buffer.data=imrotate(data_buffer.data,90);
                     %img=transpose(img());
@@ -1871,9 +1898,9 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
                     %             z=size(it,3);
                     % for SE_ scans these values have been true 1 time(s)
                     if d_struct.z>1 && mod(d_struct.z,2) == 0
-                        objlist=[1:d_struct.z/2;d_struct.z/2+1:d_struct.z];
-                        objlist=objlist(:);
-                        data_buffer.data=data_buffer.data(:,:,objlist);
+                        objlistz=[1:d_struct.z/2;d_struct.z/2+1:d_struct.z];
+                        objlistz=objlistz(:);
+                        data_buffer.data=data_buffer.data(:,:,objlistz);
                     end
                     %             for i=1:64
                     %                 figure(6);
@@ -1881,8 +1908,8 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
                     %                 pause(0.18);
                     %             end
                     %             y=size(it,2);
-                    objlist=[d_struct.y/2+1:d_struct.y 1:d_struct.y/2];
-                    data_buffer.data=data_buffer.data(:,objlist,:);
+                    objlistz=[d_struct.y/2+1:d_struct.y 1:d_struct.y/2];
+                    data_buffer.data=data_buffer.data(:,objlistz,:);
                     %             for i=1:64
                     %                 figure(6);
                     %                 imagesc(log(abs(it2(:,:,i))));
@@ -1980,12 +2007,13 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
             %         savedata(data_buffer,interleave_num,outloc);
             %     end
             %% chunk save
-            if num_chunks>1
-                fprintf('Saving chunk %d...',chunk_num);
-                work_dir_img_path_base=[ data_buffer.headfile.work_dir_path '/C' data_buffer.headfile.U_runno ] ;
-                save_complex(data_buffer.data,[work_dir_img_path_base '_' num2str(chunk_num) '.rp.out']);
-                fprintf('\tComplete\n');
-            end
+            % while chunks are volumes this is entirely unnecessary.
+            %             if num_chunks>1
+            %                 fprintf('Saving chunk %d...',chunk_num);
+            %                 work_dir_img_path_base=[ data_buffer.headfile.work_dir_path '/C' data_buffer.headfile.U_runno ] ;
+            %                 save_complex(data_buffer.data,[work_dir_img_path_base '_' num2str(chunk_num) '.rp.out']);
+            %                 fprintf('\tComplete\n');
+            %             end
         else
            fprintf('Skipped fft');
            if opt_struct.remove_slice
@@ -1997,7 +2025,7 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
            end
         end
         
-    end % end foreachchunk
+    end % end skipload
     %% stich chunks together
     % this is not implimented yet.
     warning('this saving code is temporary it is not designed for chunks');
@@ -2023,7 +2051,7 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
     end
     data_buffer.headfile.F_imgformat=datatype;
     if ~opt_struct.skip_write
-        work_dir_img_path_base=[ data_buffer.headfile.work_dir_path '/' data_buffer.headfile.U_runno ] ;
+        work_dir_img_path_base=[ data_buffer.headfile.work_dir_path '/' runno ] ;
         %% save uncombined channel niis.
         if ~opt_struct.skip_combine_channels && d_struct.c>1 && ~opt_struct.skip_recon && opt_struct.write_unscaled
             if ~exist([work_dir_img_path_base '.nii'],'file') || opt_struct.overwrite
@@ -2038,7 +2066,7 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
             end
         end
         
-        max_mnumber=d_struct.t*d_struct.p;
+        max_mnumber=d_struct.t*d_struct.p-1;
         m_length=length(num2str(max_mnumber));
         if ~opt_struct.skip_combine_channels
             data_buffer.headfile.([data_tag 'volumes'])=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c;
@@ -2061,7 +2089,7 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
             'frames=', num2str(d_struct.t),';\n', ...
             'slices=', num2str(d_struct.z),';\n', ...
             'volumes=', num2str(data_buffer.headfile.([data_tag 'volumes'])),';\n', ...
-            'runno="', data_buffer.headfile.U_runno, '"',';\n', ...
+            'runno="', runno, '"',';\n', ...
             'runno_dir="', data_buffer.engine_constants.engine_work_directory, '/"+runno+""',';\n', ...
             'open_all_output="open";\n',...
             'if(slices==1){ open_all_output=""; }\n',...
@@ -2186,6 +2214,9 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
             end
         end
         %% save volumes
+        % this could be changed to some kind of generic chunk along
+        % dimension, then we could do a chunked dimension lookup using
+        % dim_select.(chunk_d)
         if isfield(data_buffer.headfile,'processing_chunk')
             t_s=data_buffer.headfile.processing_chunk;
             t_e=data_buffer.headfile.processing_chunk;
@@ -2242,8 +2273,12 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
                     else
                         m_code='';
                     end
-                    space_dir_img_name =[ data_buffer.headfile.U_runno channel_code m_code];
+                    space_dir_img_name =[ runno channel_code m_code];
+                    data_buffer.headfile.U_runno=space_dir_img_name;
+                    
                     space_dir_img_folder=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '/' space_dir_img_name 'images' ];
+                    work_dir_img_name_per_vol =[ runno channel_code m_code];
+                    work_dir_img_path_per_vol=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '.work/' space_dir_img_name 'images' ];
                     work_dir_img_path=[work_dir_img_path_base channel_code m_code];
                     
                     if (~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon )||...
@@ -2319,7 +2354,7 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
                     end
                     %%% civmraw save
                     if ~exist(space_dir_img_folder,'dir') || opt_struct.ignore_errors
-                        if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_write_headfile 
+                        if ~opt_struct.skip_write_civm_raw || ~opt_struct.skip_write_headfile 
                             mkdir(space_dir_img_folder);
                         end
                     elseif ~opt_struct.overwrite
@@ -2390,16 +2425,18 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
                         fprintf(ofid,'%f : max voxel value used to construct histogram\n',data_buffer.headfile.group_max_intensity);
                         fprintf(ofid,' rad_mat convert_info_histo dump 2013/11/05\n');
                         fclose(ofid);
-                        complex_to_civmraw(tmp,[ data_buffer.headfile.U_runno channel_code m_code], ...
-                            data_buffer.scanner_constants.scanner_tesla_image_code, ...
-                            space_dir_img_folder,'',outpath,1,datatype)
-                         
+                        if ~recon_strategy.work_by_chunk
+                            complex_to_civmraw(tmp,data_buffer.headfile.U_runno , ...
+                                data_buffer.scanner_constants.scanner_tesla_image_code, ...
+                                space_dir_img_folder,'',outpath,1,datatype)
+                        end
+                        
                     end
                     %%% convenience prompts
 
                     if ~opt_struct.skip_write_civm_raw
                         %write_archive_tag(runno,spacename, slices, projectcode, img_format,civmid)
-                        runnumbers(rindx)={[data_buffer.headfile.U_runno channel_code m_code]};
+                        runnumbers(rindx)={data_buffer.headfile.U_runno};
                         rindx=rindx+1;
                         
                     end
