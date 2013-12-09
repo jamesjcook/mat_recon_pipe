@@ -3,7 +3,8 @@ function res=aspect_gre3d_ext_test(path)
 % path=path image directory.
 % will need to edit nfile command in script for alternate sequences.
 % 
-path1=[path,'/temp.dat'];
+path1=[path,'/temp.dat']; % kl 20131205
+
 %
 %temp.dat contains the current 3-D image file - the current accumulated sum
 % of the previous averages
@@ -29,7 +30,8 @@ dim_Y=recon_variables(2);
 dim_Z=recon_variables(3);
 Nex=recon_variables(4);
 
-nfile=fopen([path,'/aspect_gre3d_FM_SP.tnt']); 
+%nfile=fopen([path,'/aspect_gre3d_FM_SP.tnt']); kl 20131205
+nfile=fopen([path,'/aspect_gre3d_ext_SP.tnt']); 
 % binary_header=fread(nfile,1056,'char');
 fseek(nfile,1056,'bof');
 %% load data
@@ -128,8 +130,8 @@ new_freq=last_f(irep);
 ndata=[dim_X dim_Y dim_Z recon_variables(4) recon_variables(5) recon_variables(6) recon_variables(7) last_f(irep)];
 ndata=ndata';
 %
-filename = [path,'/last_freq.txt'];
-save(filename,'new_freq','-ascii');
+%filename = [path,'/last_freq.txt']; % kl 20131205 what is this?
+%save(filename,'new_freq','-ascii'); kl 20131205
 %save c:\NTNMR\last_freq.txt new_freq -ascii
 
 %
@@ -150,9 +152,9 @@ else
     
     clear image_sum
     %
-    path1=[path,'/recdata.dat'];
+    path1=[path,'/RECDATA.DAT'];
     nfile=fopen(path1,'a');
-    fprintf(nfile,'%d\n',sf);
+    fprintf(nfile,'%d\n',sf); %double precision
     fclose(nfile);
     %
     path2=[path,'/recdata_aspect_freqcor.raw'];

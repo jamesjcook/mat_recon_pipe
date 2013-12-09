@@ -478,9 +478,33 @@ if ~opt_struct.existing_data || ~exist(data_buffer.headfile.work_dir_path,'dir')
         error('puller failed:%s',cmd);
     end
 end
+
 clear cmd s datapath puller_data puller_data work_dir_name p_status;
 %% load data header and combine with other setting files
 data_buffer.input_headfile=load_scanner_header(scanner, data_buffer.headfile.work_dir_path ,opt_struct);
+% clean up fields and options
+if isfield(data_buffer.input_headfile,'S_scanner_tag')
+    data_tag=data_buffer.input_headfile.S_scanner_tag;
+    bad_hf_path = [data_buffer.headfile.work_dir_path '/failed' runno '.headfile'];
+    if exist(bad_hf_path,'file')
+        % this will only happen rarely. but whatever. 
+        delete(bad_hf_path); clear bad_hf_path;
+    end
+else
+    bad_hf_path = [data_buffer.input_headfile.work_dir_path '/failed' runno '.headfile'];
+    write_headfile(bad_hf_path,data_buffer.input_headfile);
+    error('Failed to process scanner header using dump command ( %s )\nWrote partial hf to %s\nGIVE THE OUTPUT OF THIS TO JAMES TO HELP FIX THE PROBLEM. ',data_buffer.headfile.comment{end-1}(2:end),bad_hf_path);
+end
+if opt_struct.U_dimension_order ~=0
+    data_buffer.input_headfile.([data_tag 'dimension_order'])=opt_struct.U_dimension_order;
+end
+if isfield(data_buffer.headfile,'aspect_remove_slice')
+    if data_buffer.headfile.aspect_remove_slice
+        opt_struct.remove_slice=1;
+    else
+        opt_struct.remove_slice=0;
+    end
+end
 
 data_buffer.headfile=combine_struct(data_buffer.headfile,data_buffer.input_headfile,'combine');
 data_buffer.headfile=combine_struct(data_buffer.headfile,data_buffer.scanner_constants,false);
@@ -489,30 +513,6 @@ data_buffer.headfile=combine_struct(data_buffer.headfile,data_buffer.engine_cons
 % this was moved to just before the do_work section so these variables will
 % be "fresher"
 
-if isfield(data_buffer.headfile,'S_scanner_tag')
-    data_tag=data_buffer.headfile.S_scanner_tag;
-    bad_hf_path = [data_buffer.headfile.work_dir_path '/failed' runno '.headfile'];
-    if exist(bad_hf_path,'file')
-        % this will only happen rarely. but whatever. 
-        delete(bad_hf_path); clear bad_hf_path;
-    end
-else
-    bad_hf_path = [data_buffer.headfile.work_dir_path '/failed' runno '.headfile'];
-    write_headfile(bad_hf_path,data_buffer.headfile);
-    error('Failed to process scanner header using dump command ( %s )\nWrote partial hf to %s\nGIVE THE OUTPUT OF THIS TO JAMES TO HELP FIX THE PROBLEM. ',data_buffer.headfile.comment{end-1}(2:end),bad_hf_path);
-end
-
-if opt_struct.U_dimension_order ~=0
-    data_buffer.headfile.([data_tag 'dimension_order'])=opt_struct.U_dimension_order;
-end
-
-if isfield(data_buffer.headfile,'aspect_remove_slice')
-    if data_buffer.headfile.aspect_remove_slice
-        opt_struct.remove_slice=1;
-    else
-        opt_struct.remove_slice=0;
-    end
-end
 clear datapath dirext input input_data puller_data;
 %% read input acquisition type from our header
 % some of this might belong in the load data function we're going to need
