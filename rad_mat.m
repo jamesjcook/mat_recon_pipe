@@ -182,6 +182,7 @@ beta_options={
     'dcf_iterations',         ' set number of iterations for dcf calculation, only used for radial'
     'open_volume_limit',      ' override the maximum number of volumes imagej will open at a time,default is 36. use open_volume_limit=##'
     'warning_pause',          ' length of pause after warnings (default 3). Errors outside matlab from the perl parsers are not effected. use warning_pause=##'
+    'no_navigator',           ''
     '',                       ''
     };
 planned_options={
@@ -197,6 +198,7 @@ planned_options={
     'workspace_doubles',      ' use double precision in the workspace instead of single'
     'chunk_test_max',         ' maximum number of chunks to process before quiting. NOT a production option!'
     'image_return_type',      ' set the return type image from unscaled 32-bit float magnitude to something else.'
+    'no_navigator',           ''
 %     'allow_headfile_override' ' Allow arbitrary options to be passed which will overwrite headfile values once the headfile is created/loaded'
     '',                       ''
     };
@@ -836,10 +838,12 @@ elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
     %     if  strcmp(data_buffer.headfile.([data_prefix 'INTRLV']),'INTRLV')
     %
     %     end
-    if strcmp(data_buffer.headfile.S_PSDname,'SE_')||strcmp(data_buffer.headfile.S_PSDname,'ME_SE_')
-        warning('Aspect SE_ detected!, setting ray_padding value=navigator_length! Does not use navigator data!');
-        data_in.line_points=ray_length+50;
-        data_in.line_pad=50;
+    if ~opt_struct.no_navigator
+        if strcmp(data_buffer.headfile.S_PSDname,'SE_')||strcmp(data_buffer.headfile.S_PSDname,'ME_SE_')
+            warning('Aspect SE_ detected!, setting ray_padding value=navigator_length! Does not use navigator data!');
+            data_in.line_points=ray_length+50;
+            data_in.line_pad=50;
+        end
     end
     data_in.total_points = ray_length*rays_per_block*ray_blocks;
     % because ray_length is number of complex points have to doubled this.
@@ -1894,7 +1898,7 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
                     
                 end
             else
-                if strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
+                if strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')&& ~opt_struct.skip_resort
                     %             z=size(it,3);
                     % for SE_ scans these values have been true 1 time(s)
                     if d_struct.z>1 && mod(d_struct.z,2) == 0
