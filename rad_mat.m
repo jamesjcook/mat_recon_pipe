@@ -173,7 +173,9 @@ beta_options={
     'skip_filter',            ' do not filter data sets.'
     'skip_fft',               ' do not fft data, good short hand when saving kspace files'
     'skip_recon',             ' for re-writing headfiles only, implies skip filter, and existing_data'
-    'skip_resort',            ' for 3D acquisitions we resort after fft, this alows that to be skiped'
+    'skip_resort',            ' for 3D aspect acquisitions we turn by 90 and resort y and z after fft, this alows that to be skiped'
+    'skip_resort_y',          ' for 3D aspect acquisitions we resort z after fft, this alows that to be skiped, other sorting will occur'
+    'skip_resort_z',          ' for 3D aspect acquisitions we resort y after fft, this alows that to be skiped, other sorting will occur'
     'force_ij_prompt',        ' force ij prompt on, it is normally ignored with skip_recon'
     'remove_slice',           ' removes a slice of the acquisition at the end, this is a hack for some acquisition types'
     'new_trajectory',         ' use measured trajectory instead of static one on recon enigne'
@@ -199,6 +201,7 @@ planned_options={
     'chunk_test_max',         ' maximum number of chunks to process before quiting. NOT a production option!'
     'image_return_type',      ' set the return type image from unscaled 32-bit float magnitude to something else.'
     'no_navigator',           ''
+    'force_navigator',        ' Force the navigator selection code on for aspect scans, By default only SE SE classic and ME SE are expected to use navigator.'
 %     'allow_headfile_override' ' Allow arbitrary options to be passed which will overwrite headfile values once the headfile is created/loaded'
     '',                       ''
     };
@@ -630,14 +633,16 @@ rays_per_block       =data_buffer.headfile.rays_per_block;     %number or rays p
 ray_length           =data_buffer.headfile.ray_length;         %number of samples on a ray, or trajectory
 
 % if anything except radial
-if( ~regexp(data_buffer.headfile.([data_tag 'vol_type']),'.*radial.*'))
-    input_dimensions=[d_struct.(input_order(1)) d_struct.(input_order(2))...
-    d_struct.(input_order(3)) d_struct.(input_order(4))...
-    d_struct.(input_order(5)) d_struct.(input_order(6))];
-else
+% if( ~regexp(data_buffer.headfile.([data_tag 'vol_type']),'.*radial.*'))
+if strcmp(data_buffer.headfile.([data_tag 'vol_type']),'radial')
     % if radial
     input_dimensions=[ray_length d_struct.(input_order(2))...
         d_struct.(input_order(3)) rays_per_block ray_blocks];
+else
+    input_dimensions=[d_struct.(input_order(1)) d_struct.(input_order(2))...
+    d_struct.(input_order(3)) d_struct.(input_order(4))...
+    d_struct.(input_order(5)) d_struct.(input_order(6))];
+
 end
 
 output_dimensions=[d_struct.(opt_struct.output_order(1)) d_struct.(opt_struct.output_order(2))...
@@ -838,9 +843,11 @@ elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
     %     if  strcmp(data_buffer.headfile.([data_prefix 'INTRLV']),'INTRLV')
     %
     %     end
-    if ~opt_struct.no_navigator
-        if strcmp(data_buffer.headfile.S_PSDname,'SE_')||strcmp(data_buffer.headfile.S_PSDname,'ME_SE_')
-            warning('Aspect SE_ detected!, setting ray_padding value=navigator_length! Does not use navigator data!');
+    if opt_struct.force_navigator || strcmp(data_buffer.headfile.S_PSDname,'SE_') ...
+            || strcmp(data_buffer.headfile.S_PSDname,'SE_CLASSIC_') 
+%             || strcmp(data_buffer.headfile.S_PSDname,'ME_SE_')
+        if ~opt_struct.no_navigator
+            warning('Navigator per ray on, setting ray_padding value=navigator_length! Does not use navigator data!');
             data_in.line_points=ray_length+50;
             data_in.line_pad=50;
         end
@@ -1245,8 +1252,8 @@ if opt_struct.matlab_parallel && opt_struct.parallel_jobs>1
     end
     matlabpool(num2str(opt_struct.parallel_jobs));
 end
-for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
     %% reconstruction
+for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
     time_chunk=tic;
     if ~opt_struct.skip_load
         %% Load data file
@@ -1864,21 +1871,28 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
                     
                     warning('90degree rotation and resort all aspect images occurs now')
                     pause(opt_struct.warning_pause);
-                    fprintf('permuting...');% permute calculated instead, instead of static % img=permute(img,[ 1 3 2 ]);
-                    permute_code=zeros(size(input_order));
-                    for d_num=1:length(input_order)
-                        permute_code(d_num)=strfind(input_order,opt_struct.output_order(d_num));
-                    end
-                    data_buffer.data=permute(data_buffer.data,permute_code ); % put in image order.
-                    clear d_num permute_code;
-                    
-                    fprintf('resorting along z...');
+%                     fprintf('permuting...');% permute calculated instead, instead of static % img=permute(img,[ 1 3 2 ]);
+%                     permute_code=zeros(size(input_order));
+%                     for d_num=1:length(input_order)
+%                         permute_code(d_num)=strfind(input_order,opt_struct.output_order(d_num));
+%                     end
+%                     data_buffer.data=permute(data_buffer.data,permute_code ); % put in image order.
+%                     clear d_num permute_code;
+                    if ~opt_struct.skip_resort_z
+                    fprintf('setting z resort...');
                     objlistz=[d_struct.z/2+1:d_struct.z 1:d_struct.z/2 ];
+                    else 
+                        objlistz=1:d_struct.z;
+                    end
 %                     data_buffer.data=circshift(data_buffer.data,[ 0 y/2 0
 %                     ]);.
 %                     objlisty=1:d_struct.y;
-                    objlisty=[d_struct.y/2+1:d_struct.y 1:d_struct.y/2 ];
-
+                    if ~opt_struct.skip_resort_y
+                        fprintf('setting y resort...');
+                        objlisty=[d_struct.y/2+1:d_struct.y 1:d_struct.y/2 ];
+                    else 
+                        objlisty=1:d_struct.y;
+                    end
                     data_buffer.data(:,objlisty,objlistz)=data_buffer.data;
                     fprintf('rotating image by 90...');
                     data_buffer.data=imrotate(data_buffer.data,90);
@@ -1912,7 +1926,12 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
                     %                 pause(0.18);
                     %             end
                     %             y=size(it,2);
-                    objlistz=[d_struct.y/2+1:d_struct.y 1:d_struct.y/2];
+                    if ~opt_struct.skip_resort_z
+                        fprintf('setting z resort...');
+                        objlistz=[d_struct.z/2+1:d_struct.z 1:d_struct.z/2 ];
+                    else 
+                        objlistz=1:d_struct.z;
+                    end
                     data_buffer.data=data_buffer.data(:,objlistz,:);
                     %             for i=1:64
                     %                 figure(6);
