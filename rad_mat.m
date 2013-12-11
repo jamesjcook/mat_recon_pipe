@@ -176,6 +176,7 @@ beta_options={
     'skip_resort',            ' for 3D aspect acquisitions we turn by 90 and resort y and z after fft, this alows that to be skiped'
     'skip_resort_y',          ' for 3D aspect acquisitions we resort z after fft, this alows that to be skiped, other sorting will occur'
     'skip_resort_z',          ' for 3D aspect acquisitions we resort y after fft, this alows that to be skiped, other sorting will occur'
+    'skip_rotate',            ' for 3D aspect images skip the 90degree rotation.'
     'force_ij_prompt',        ' force ij prompt on, it is normally ignored with skip_recon'
     'remove_slice',           ' removes a slice of the acquisition at the end, this is a hack for some acquisition types'
     'new_trajectory',         ' use measured trajectory instead of static one on recon enigne'
@@ -1894,8 +1895,10 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
                         objlisty=1:d_struct.y;
                     end
                     data_buffer.data(:,objlisty,objlistz)=data_buffer.data;
+                    if ~opt_struct.skip_rotate
                     fprintf('rotating image by 90...');
                     data_buffer.data=imrotate(data_buffer.data,90);
+                    end
                     %img=transpose(img());
                     fprintf('resort and rotate done!\n');
                 else
