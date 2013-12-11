@@ -54,7 +54,9 @@ Nex=recon_variables(4);
 
 
 %% reshape
+fid=permute(fid,[1,3,2,4,5,6]);
 fid=reshape(fid, dim_X,dim_Z,dim_Y);
+
 
 %% caluclate frequency correction
 % pulls out the last slice of data to calculate frequency.
@@ -96,7 +98,7 @@ zfi=floor(zf/2)+mod(zf,2);
 fid2=zeros(largest_planar_dimension,dim_Z-remove_slice,largest_planar_dimension);
 fid2(:,:,(zfi+1):zfi+dim_Y)=fid;
 
-data_buffer.data=fid2;
+data_buffer.data=permute(fid2,[1,3,2,4,5,6]);
 
 % % clear fid_feq_cor
 % %

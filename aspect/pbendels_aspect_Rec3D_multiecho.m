@@ -1,4 +1,4 @@
-function res = pb_aspect_Rec3D_multiecho(path)
+function res = pbendels_aspect_Rec3D_multiecho(path)
 % path = path image directory
 res=0;
  d=load([path,'/recdata.dat']);
@@ -40,13 +40,15 @@ end
    
         final = im;
    sf=1/morm;
-path1=[path,'\recdata.dat']; 
-nfile=fopen(path1,'a');
+path=[path,'/RECDATA.DAT']; 
+nfile=fopen([path,'a']);
 fprintf(nfile,'%d\n',sf);
+%can't print this file -- why?
+
 fclose(nfile);
-%
+
 %save me3d3
-path=[path,'\recdata.raw']; 
+path=[path,'/RECDATA.RAW']; 
     nfile=fopen(path,'w');
     fwrite(nfile,final,'float');
     fclose(nfile);

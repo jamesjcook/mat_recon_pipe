@@ -501,8 +501,8 @@ end
 if opt_struct.U_dimension_order ~=0
     data_buffer.input_headfile.([data_tag 'dimension_order'])=opt_struct.U_dimension_order;
 end
-if isfield(data_buffer.headfile,'aspect_remove_slice')
-    if data_buffer.headfile.aspect_remove_slice
+if isfield(data_buffer.input_headfile,'aspect_remove_slice')
+    if data_buffer.input_headfile.aspect_remove_slice
         opt_struct.remove_slice=1;
     else
         opt_struct.remove_slice=0;
