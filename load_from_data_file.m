@@ -46,8 +46,12 @@ function load_from_data_file(data_buffer,file_path,header_skip,load_size,load_sk
 
 % filename = fullfile(directory, 'fid');
 load_method='standard';%'experimental'
-if isfield(data_buffer,'load_method')
-    load_method=data_buffer.load_method;
+force_standard=false;
+if isfield(data_buffer.headfile,'load_method')
+    load_method=data_buffer.headfile.load_method;
+    if strcmp(load_method,'standard')
+        force_standard=true;
+    end
 end
 
 if isempty(endian)
@@ -64,7 +68,7 @@ else
     precision_bytes=0;
 end
 loads_per_chunk=chunk_size/load_size;%+load_skip);
-if mod(load_skip,precision_bytes)==0
+if mod(load_skip,precision_bytes)==0 && ~force_standard
     load_skip=load_skip/precision_bytes;
     % modifieds load_skip to be in data values 
     chunk_with_skip=(load_skip+load_size)*loads_per_chunk;
@@ -122,7 +126,7 @@ for c=1:length(chunks_to_load)
         end
     else
         fprintf('Experimental loading, (load_size+load_skip)*nloads\n');
-        [fid_data points_read]= fread(fileid, chunk_with_skip, [data_precision '=>single']);
+        [fid_data, points_read]= fread(fileid, chunk_with_skip, [data_precision '=>single']);
         if  points_read ~= chunk_with_skip
             error('Did not correctly read file');
         end
