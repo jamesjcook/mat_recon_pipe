@@ -205,6 +205,7 @@ else
         % working in complex,raylength,rays_perkey,channels,keys
         data_buffer.radial=permute(data_buffer.radial,[2,1,5,6,3,4]);
     end
+
     % probably will end up in xyzKcp
 %     crop_index_s=d_struct.x*oversample_factor-d_struct.x;
 %     crop_index_e=d_struct.x*oversample_factor-2*d_struct.x;
@@ -281,15 +282,59 @@ else
         end
 %         index_start=data_buffer.headfile.ray_blocks_per_volume*(time_pt-1)+1;
 %         index_end  =data_buffer.headfile.ray_blocks_per_volume*(time_pt-1)+data_buffer.headfile.ray_blocks_per_volume;
-        index_start=time_pt;
-        index_end  =(time_pt-1)+data_buffer.headfile.ray_blocks_per_volume;
-        radial=data_buffer.radial(:,:,:,index_start:index_end,:); % currently  [r,i] x ray_length x rays_per_key x keys x channel x parameters 
+        index_start=time_pt-(floor(data_buffer.headfile.ray_blocks_per_volume/2));
+        index_end  =(index_start-1)+data_buffer.headfile.ray_blocks_per_volume;
+        %%% move the frequency filter for the first and last timepoints where we dont
+        %%% have enough data for centered reconstruction yet
+        % if index_start< ceil(data_buffer.headfile.ray_blocks_per_volume/2)
+        if index_start < 1
+            index_start=1;
+            index_end=(index_start-1)+data_buffer.headfile.ray_blocks_per_volume;
+            f_filter=circshift(data_buffer.cutoff_filter,[0 0 index_start-ceil(data_buffer.headfile.ray_blocks_per_volume/2)]);
+            dcf=   circshift(data_buffer.dcf,       [0 0 floor(data_buffer.headfile.ray_blocks_per_volume/2)-mod(time_pt,data_buffer.headfile.ray_blocks_per_volume)+1]);
+        elseif index_end > size(data_buffer.radial,4)
+            f_filter=circshift(data_buffer.cutoff_filter,[0 0 index_end-size(data_buffer.radial,4)]);
+            index_end=size(data_buffer.radial,4);
+            index_start=size(data_buffer.radial,4)-(data_buffer.headfile.ray_blocks_per_volume-1);
+            dcf=   circshift(data_buffer.dcf,       [0 0 mod(time_pt,data_buffer.headfile.ray_blocks_per_volume)]);
+        else
+            dcf=data_buffer.dcf;
+            f_filter=data_buffer.cutoff_filter;
+        end
+
+        radial=data_buffer.radial(:,:,:,index_start:index_end,:); % currently  [r,i] x ray_length x rays_per_key x keys x timepoints x channel x parameters (and p is normall 1)
 %         traj=  circshift(data_buffer.trajectory,[0 0 0 mod(time_pt,data_buffer.headfile.ray_blocks_per_volume)-1]); 
 %         dcf=   circshift(data_buffer.dcf,       [0 0 0 mod(time_pt,data_buffer.headfile.ray_blocks_per_volume)-1]);
-        traj=  circshift(data_buffer.trajectory,[0 0 0 -mod(time_pt,data_buffer.headfile.ray_blocks_per_volume)+1]);
-        dcf=   circshift(data_buffer.dcf,       [0 0 0 -mod(time_pt,data_buffer.headfile.ray_blocks_per_volume)+1]);
+        traj=  circshift(data_buffer.trajectory,[0 0 0 -mod(index_start,data_buffer.headfile.ray_blocks_per_volume)+1]);
+%         f_filter=circshift(data_buffer.cutoff_filter,[ 0 0 -mod(time_pt,data_buffer.headfile.ray_blocks_per_volume)+1]);
+
         %%%%
+%         %% apply cutoff filter
+        %         nyquist_cutoff
+        % later this should be improved to remove these points.
+%         for r_c=1:size(radial,1)
+%             for t_num=1:size(radial,5)
+%2 
+%                 temp=squeeze(radial(r_c,:,:,:,t_num));
+%                 temp(f_filter==0)=NaN;
+%                 radial(r_c,:,:,:,t_num)=temp;
+%1
+%                 radial(r_c,:,:,:,t_num)=squeeze(radial(r_c,:,:,:,t_num)).*f_filter
+%             end
+%         end
+%         for t_num=1:size(traj,1)
+            %1
+            % traj(t_num,:,:,:,:)=squeeze(traj(t_num,:,:,:,:)).*f_filter;
+%2             
+%             temp=squeeze(traj(t_num,:,:,:,:));
+%             temp(f_filter==0)=[];
+%             traj(t_num,:,:,:,:)=temp;
+%         end
+%         dcf=dcf.*f_filter;
+%         dcf(f_filter==0)=[];
+        
         process_volumes=d_struct.c*d_struct.p;
+        %%
         if strcmp(data_buffer.headfile.rad_mat_option_combine_method,'regrid')
             %%%% make traj/dcf longer by n channels
             % could probably be made cleaner but this should work.
@@ -302,23 +347,57 @@ else
             radial=reshape(radial,[rs(1:3), rs(4)*d_struct.c,d_struct.p]);
             clear ts ds rs;
         end
+
+        %% do regrid
         if true % always use the sepearate channel code, have to investigate how channel combining works out.
             fprintf('Start Grid per channel\n');
 
             fprintf('Serial loop for regrid.\n');
-            rd=size(radial);
+            d_r=size(radial);
+            d_t=size(traj);
+            d_d=size(dcf);
             % Vt=d_struct.c*d_struct.p;
             holding_zone=data_buffer.(output_field);
             data_buffer.(output_field)=[];
-            parfor v=1:process_volumes
+            % perhaps an ungly eval could be used to parfor at the channel
+            % level or some others...
+            % radial(repmat(size(radial,1),f_filter)=[];
+            % repmat(data_buffer.dcf,ones(numel(ds(1:end-1))),d_struct.c
+%             rf=zeros(size(radial));
+            
+%             f_r=repmat(f_filter,[d_r(1),d_r(5)]);% 128,7920,13 =>  [64,2,1920,4,13];
+            f_r=repmat(f_filter,[2,1,1, d_r(5:end)]);% 128,1980,13,4
+            f_r=reshape(f_r,[d_r(2),2,d_r(3)*d_r(4),d_r(5:end)]);
+            f_r=permute(f_r,[2,1,3,4,5]);
+            radial=reshape(radial,[d_r(1:2),d_r(3)*d_r(4),d_r(5:end)]);
+            radial(f_r==0)=[];
+            alenght=numel(radial)/2/d_r(5:end);
+            
+            radial=reshape(radial,[2,alenght,d_r(5:end)]);
+            clear f_r;
+% % %             
+% % %             f_t=repmat(f_filter,[size(traj,1),1]);
+% % %             f_t=reshape(f_t,[d_t(2),d_t(1),d_t(3:end)]);
+% % %             f_t=permute(f_t,[2,1,3,4]);
+% % % %             f_t=reshape(f_t,[3,d_f(1),prod(d_f(2:3))]);
+% % %             traj=reshape(traj,[d_t(1:2),prod(d_t(3:end))]);
+% % %             traj(f_t==0)=[]; 
+% % %             traj=reshape(traj,[3,numel(traj)/3]);
+% % %             clear f_t;
+% % %             
+% % %             f_d=reshape(f_filter,[d_d(1),prod(d_d(2:end))]);
+% % %             dcf=reshape(dcf,[d_d(1),prod(d_d(2:end))]);
+% % %             dcf(f_d==0)=[];
+% % %             clear f_d;
+            
+            for v=1:process_volumes
                 temp=...
-                    grid3_MAT(double(reshape(squeeze(radial(:,:,:,:,v)),[rd(1:2),rd(3)*rd(4)])),...
-                    reshape(traj,[3,rd(2),rd(3)*rd(4)]),...
-                    reshape(dcf,[rd(2),rd(3)*rd(4)]),oversample_factor*d_struct.x,8);
+                    grid3_MAT(double(radial(:,:,v)),...
+                    traj,...
+                    dcf,oversample_factor*d_struct.x,8);
 %                 data_buffer.(output_field)(:,:,:,v)=complex(single(temp(1,:,:,:)),single(temp(2,:,:,:)));
                 holding_zone(:,:,:,v)=complex(single(temp(1,:,:,:)),single(temp(2,:,:,:)));
-
-
+                imagesc(log(abs(holding_zone(:,:,192,v))))
             end
             data_buffer.(output_field)=holding_zone;
             clear holding_zone;
