@@ -87,10 +87,6 @@ end
 img=0;
 success_status=false;
 data_buffer=large_array;
-
-if ~isprop(data_buffer,'data')
-    data_buffer.addprop('data');
-end
 % if ~isprop(data_buffer,'data')
 %     data_buffer.addprop('data');
 % else
@@ -183,6 +179,7 @@ beta_options={
     'dcf_by_key',             ' calculate dcf by the key in acq'
     'dcf_recalculate',        ' do not use the saved dcf file'
     'dcf_iterations',         ' set number of iterations for dcf calculation, only used for radial'
+    'radial_filter_method',   ' UFC or VFC, if blank uses none.'
     'open_volume_limit',      ' override the maximum number of volumes imagej will open at a time,default is 36. use open_volume_limit=##'
     'warning_pause',          ' length of pause after warnings (default 3). Errors outside matlab from the perl parsers are not effected. use warning_pause=##'
     'no_navigator',           ''
@@ -200,6 +197,7 @@ planned_options={
     'independent_scaling',    ' scale output images independently'
     'workspace_doubles',      ' use double precision in the workspace instead of single'
     'chunk_test_max',         ' maximum number of chunks to process before quiting. NOT a production option!'
+    'chunk_test_min',         ' first chunks to process before. NOT a production option!'
     'image_return_type',      ' set the return type image from unscaled 32-bit float magnitude to something else.'
     'no_navigator',           ''
     'force_navigator',        ' Force the navigator selection code on for aspect scans, By default only SE SE classic and ME SE are expected to use navigator.'
@@ -373,6 +371,9 @@ end
 %% option sanity checks and cleanup
 if ~opt_struct.chunk_test_max
     opt_struct.chunk_test_max=Inf;
+end
+if ~opt_struct.chunk_test_min
+    opt_struct.chunk_test_min=1;
 end
 if isnumeric(opt_struct.kspace_shift)
     opt_struct.kspace_shift=num2str(opt_struct.kspace_shift);
@@ -795,6 +796,7 @@ data_in.min_load_bytes= 2*data_in.line_points*rays_per_block*(data_in.disk_bit_d
 % minimum amount of bytes of data we can load at a time
 %%   determine padding
 % block_factors=factor(ray_blocks);
+alt_agilent_channel_code=true;
 if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
     %% calculate padding for bruker
     if ( strcmp(data_buffer.headfile.([data_prefix 'GS_info_dig_filling']),'Yes')...
@@ -862,9 +864,20 @@ elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
     display('Agilent scan, data size uncertain');
     % agilent multi-channels handleing.... so far they acquire in xyc ...
     % order. 
+    %%%%
+    % this is only true for some multi channel agilent runs, REQUIRES MORE
+    % TESTING alt_agilent_channel_code set just above open of this if else
+    % chain
+    if alt_agilent_channel_code
+    data_in.line_points  = ray_length;
+    ray_blocks=d_struct.c*ray_blocks;
+    end
+    % this is the only change to revert behavior
+    %%%%%%
     data_in.total_points = ray_length*rays_per_block*d_struct.c*ray_blocks;
     % because ray_length is doubled, this is doubled too.
-    data_in.min_load_bytes= 2*data_in.line_points*rays_per_block*(data_in.disk_bit_depth/8);
+    data_in.min_load_bytes=2*data_in.line_points*rays_per_block*...
+        (data_in.disk_bit_depth/8);
     % minimum amount of bytes of data we can load at a time,
 else
     error('Stopping for unrecognized scanner_vendor, not sure if how to calculate the memory size.');
@@ -879,9 +892,11 @@ end
 % we're loading, and therefore we would fail to reconstruct.
 kspace_header_bytes  =binary_header_size+load_skip*(ray_blocks-1); 
 % total bytes used in headers spread throughout the kspace data
-if strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
-    kspace_header_bytes  =binary_header_size+load_skip*ray_blocks*d_struct.c; 
+if strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')&&alt_agilent_channel_code
+    kspace_header_bytes  =binary_header_size+load_skip*(ray_blocks); 
     %%% TEMPORARY HACK TO FIX ISSUES WITH AGILENT
+elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
+    kspace_header_bytes  =binary_header_size+load_skip*ray_blocks*d_struct.c; 
 end
 kspace_data=2*(data_in.line_points*rays_per_block)*ray_blocks*(data_in.disk_bit_depth/8); % data bytes in file (not counting header bytes)
 % kspace_data          =min_load_size*max_loads_per_chunk;
@@ -1245,7 +1260,7 @@ data_buffer.headfile=combine_struct(data_buffer.headfile,unrecognized_fields);
 clear fnum option value parts;
 %%% last second stuff options into headfile
 data_buffer.headfile=combine_struct(data_buffer.headfile,opt_struct,'rad_mat_option_');
-chunks_to_load=[1];
+chunks_to_load=1:num_chunks;
 % for chunk_num=1:num_chunks
 if opt_struct.matlab_parallel && opt_struct.parallel_jobs>1
     if matlabpool('size') ~= opt_struct.parallel_jobs && matlabpool('size')>0
@@ -1254,7 +1269,7 @@ if opt_struct.matlab_parallel && opt_struct.parallel_jobs>1
     matlabpool(num2str(opt_struct.parallel_jobs));
 end
     %% reconstruction
-for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
+for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,num_chunks)
     time_chunk=tic;
     if ~opt_struct.skip_load
         %% Load data file
@@ -1274,10 +1289,13 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
         %             num_chunks=1;
         %             chunk_size=temp_size*temp_chunks;
         %         end
-        if  chunk_num==1 || (  load_chunks>1 ) %~recon_strategy.load_whole &&
+
+        if  chunk_num==1 || (  load_chunks>1 ) ||  ~isprop(data_buffer,'data') %~recon_strategy.load_whole &&
             % we load the data for only the first chunk of a load_whole, 
             % or for each/any chunk when num_chunks  > 1
-            
+            if ~isprop(data_buffer,'data')
+                data_buffer.addprop('data');
+            end
             load_from_data_file(data_buffer, data_buffer.headfile.kspace_data_path, ....
                 binary_header_size, min_load_size, load_skip, data_in.precision_string, load_chunk_size, ...
                 load_chunks,chunks_to_load(chunk_num),...
@@ -1400,12 +1418,43 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
             data_buffer.trajectory=reshape(data_buffer.trajectory,...
                 [3,  data_buffer.headfile.ray_length,...
                 data_buffer.headfile.rays_per_volume]);
-                %% Calculate/load dcf
+            %% create a key centered frequencey cutoff filter,
+            % when we dont have enough data to be centered we will circ shift
+            % appropriatly
+            opt_struct.radial_filter_postfix='';
+            radial_filter_modifier=1;
+            if ~isprop(data_buffer,'cutoff_filter')
+                nyquist_cutoff=25;
+                data_buffer.addprop('cutoff_filter');
+                cutoff_filter=ones(data_buffer.headfile.ray_length,...
+                    data_buffer.headfile.rays_per_block,...
+                    data_buffer.headfile.ray_blocks_per_volume);
+                if ischar(opt_struct.radial_filter_method)                
+                    if strcmp(opt_struct.radial_filter_method,'UFC')
+                        %%% UFC equivalent
+                        cut_key_indices=[1:floor(data_buffer.headfile.ray_blocks_per_volume/2) ceil(data_buffer.headfile.ray_blocks_per_volume/2)+1:data_buffer.headfile.ray_blocks_per_volume];
+                        opt_struct.radial_filter_postfix='_UFC';
+                    elseif strcmp(opt_struct.radial_filter_method,'VFC')
+                        %%% VCF equilvalent missing.
+                        warning('VFC not implimented, using none.');
+                        %cut_key_indices=[1:floor(data_buffer.headfile.ray_blocks_per_volume/2) ceil(data_buffer.headfile.ray_blocks_per_volume/2)+1:data_buffer.headfile.ray_blocks_per_volume];
+                        opt_struct.radial_filter_postfix='_UFC';
+                    else
+                        error('Unrecognized radial filter method UFC and VFC supported');
+                    end
+                    radial_filter_modifier=data_buffer.headfile.ray_blocks_per_volume;
+                    cutoff_filter(1:nyquist_cutoff,:,cut_key_indices)=0;
+                end
+                data_buffer.cutoff_filter=logical(cutoff_filter);
+                %         data_buffer.cutoff_filter=reshape(data_buffer.trajectory,);
+                clear cutoff_filter;
+            end
+            %% Calculate/load dcf
             % data_buffer.dcf=sdc3_MAT(data_buffer.trajectory, opt_struct.iter, x, 0, 2.1, ones(ray_length, data_buffer.headfile.rays_acquired_in_total));
             iter=data_buffer.headfile.radial_dcf_iterations;
-            dcf_file_path=[trajectory_file_path '_dcf_I' num2str(iter) '.mat' ];
-
+          
             if ~isprop(data_buffer,'dcf')
+                dcf_file_path=[trajectory_file_path '_dcf_I' num2str(iter) opt_struct.radial_filter_postfix '.mat' ];
                 if opt_struct.dcf_by_key
                     data_buffer.trajectory=reshape(data_buffer.trajectory,[3,...
                         ray_length,...
@@ -1413,14 +1462,21 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
                         data_buffer.headfile.ray_blocks]);
                     dcf_file_path=[trajectory_file_path '_dcf_by_key_I' num2str(iter) '.mat'];
                 end
-                dcf=zeros(ray_length,data_buffer.headfile.rays_per_volume);
+                dcf=zeros(ray_length,data_buffer.headfile.rays_per_volume,radial_filter_modifier);
                 %             t_struct=struct;
                 %             dcf_struct=struct;
                 %             for k_num=1:data_buffer.header.ray_blocks_per_volume
                 %                 t_struct.(['key_' k_num])=squeeze(data_buffer.trajectory(:,:,k_num,:));
                 %                 dcf_struct.(['key_' k_num])=zeros(data_buffer.headfile.rays_acquired_in_total,rays_length);
                 %             end
-                traj=data_buffer.trajectory;                
+                traj=data_buffer.trajectory;
+                % permute(repmat(data_buffer.cutoff_filter,[1,3]),[4 1 2 3])
+                %                 traj(data_buffer.cutoff_filter==0)=NaN;
+                traj(permute(reshape(repmat(data_buffer.cutoff_filter,[3,1,1,1]),[ray_length,...
+                    3, data_buffer.headfile.rays_per_block,...
+                    data_buffer.headfile.ray_blocks]),[2 1 3 4])==0)=NaN;
+                % for filter_key=1:radial_filter_modifier
+
                 if exist(dcf_file_path,'file')&& ~opt_struct.dcf_recalculate
                     fprintf('Loading dcf to save effort.\n');
                     t_ldcf=tic;
@@ -1452,11 +1508,12 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
                             warning('Matlab pool failed to open with message, %s',err_m);
                         end
                     end
+                    
                     clear e err err_m;
                     fprintf('Calculating DCF per key...\n');
                     dcf_times=zeros(1,data_buffer.headfile.ray_blocks_per_volume);
                     try
-                        parfor k_num=1:data_buffer.headfile.ray_blocks_per_volume
+                        for k_num=1:data_buffer.headfile.ray_blocks_per_volume
                             t_kdcf=tic;
                             dcf(:,:,k_num)=sdc3_MAT(squeeze(traj(:,:,:,k_num)), iter, d_struct.x, 0, 2.1, ones(ray_length,data_buffer.headfile.rays_per_block));
                             %                     dcf(:,:,k_num)=reshape(temp,[ray_length,...
@@ -1484,7 +1541,6 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
                     fprintf('DCF saved in %f seconds\n',toc(t_sdcf));
                     clear t_sdcf;
                 end
-                data_buffer.trajectory=reshape(data_buffer.trajectory,[3,ray_length,rays_per_block*data_buffer.headfile.ray_blocks_per_volume]);
                 data_buffer.addprop('dcf');
                 data_buffer.dcf=dcf;
                 clear save_dcf temp k_num dcf traj err;
@@ -1492,8 +1548,9 @@ for chunk_num=1:min(opt_struct.chunk_test_max,num_chunks)
                 %             data_buffer.dcf=reshape(data_buffer.dcf,[data_buffer.headfile.ray_acquired_in_total,ray_length]);
             else
                 fprintf('\tdcf in memory.\n');
-                data_buffer.dcf=reshape(data_buffer.dcf,[ray_length,rays_per_block*data_buffer.headfile.ray_blocks_per_volume]);
             end
+            data_buffer.trajectory=reshape(data_buffer.trajectory,[3,ray_length,rays_per_block,data_buffer.headfile.ray_blocks_per_volume]);
+            data_buffer.dcf=reshape(data_buffer.dcf,[ray_length,rays_per_block,data_buffer.headfile.ray_blocks_per_volume]);
         end
         %% prep keyhole trajectory
         if ( regexp(scan_type,'keyhole'))
@@ -2509,4 +2566,4 @@ end
 %%% option, for now we're just going to magnitude. 
 img=abs(data_buffer.data);
 success_status=true;
-fprintf('Total rad_mat time is %f second\n',toc(rad_start));
+fprintf('\nTotal rad_mat time is %f second\n',toc(rad_start));
