@@ -1,5 +1,5 @@
-function [RE,IM, NP,NB,NT,HDR] = load_fid(name)
-% function [COM,NP,NB,NT,HDR] = load_fid(name)
+function [RE,IM,NP,NB,NT,HDR] = load_fid(name)
+% function [RE,IM,NP,NB,NT,HDR] = load_fid(name)
 %----------------------------------------
 %function load_fid
 %Reads a Vnmr fid file
