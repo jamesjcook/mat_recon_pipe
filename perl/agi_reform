@@ -35,6 +35,7 @@ require Headfile;
 require pipeline_utilities;
 use English;
 use Getopt::Std;
+use File::Basename;
 #use civm_simple_util qw(load_file_to_array);
 my $debug_val=0;
 my $VERSION = "20121128_james";
@@ -143,7 +144,9 @@ open_log($work_dir);
 
 my $args="\'$file_path\',\'$work_dir\',$divisor,[$x $y $z],\'$basename\',\'$sysid\',1,\'.raw\'"; 
 # the integer 1  says we're running command line to agilent_recon.m
-
+# our work dir in this context is the "images" directory most of the time, but we dont want that here, we want it to be the standard work dir so our make_matlab_command file will perform as expected.
+my ($f_name,$f_suffix);
+($f_name,$work_dir,$f_suffix)=fileparse($file_path);
 #passing empty string to nohf at end of args so destination will be cmdline
 my $mat_cmd=make_matlab_command_nohf($function_m_name, $args, $short_unique_purpose, $work_dir, $matlab_app,"${basename}_reform.log"); 
 # calls make_matlab_m_file();
