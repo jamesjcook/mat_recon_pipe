@@ -2460,8 +2460,10 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,num_chunks
                     end
                     
                     if ~opt_struct.skip_write_headfile
-                        fprintf('\twrite_headfile save \n');
-                        write_headfile([space_dir_img_folder '/' space_dir_img_name '.headfile'],data_buffer.headfile);
+                        
+                        dest=[space_dir_img_folder '/' space_dir_img_name '.headfile'];
+                        fprintf('\twrite_headfile save \n\t\t%s\n',dest);
+                        write_headfile(dest,data_buffer.headfile,0);
                         % insert validate_header perl script check here?
                     end
                     if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon
