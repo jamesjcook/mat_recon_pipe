@@ -85,7 +85,7 @@ if ( nargin<3)
 end
 %% data refernece setup
 img=0;
-success_status=false;
+% success_status=false;
 data_buffer=large_array;
 % if ~isprop(data_buffer,'data')
 %     data_buffer.addprop('data');
@@ -1232,9 +1232,17 @@ for l=1:length(gui_info_lines)
     gui_info=strsplit(gui_info_lines{l},':::');
     if length(gui_info)==2
         data_buffer.headfile.(['U_' gui_info{1}])=gui_info{2};
+        data_buffer.input_headfile.(['U_' gui_info{1}])=gui_info{2};
         fprintf('adding meta line %s=%s\n', ['U_' gui_info{1}],data_buffer.headfile.(['U_' gui_info{1}]));
     else
         fprintf('ignoring line %s\n',gui_info_lines{l});
+    end
+end
+
+if isfield(data_buffer.headfile,'U_specid')
+    if regexp(data_buffer.headfile.U_specid,'.*;.*')
+        fprintf('Mutliple specids entered in gui, forcing combine channels off! %s\n',data_buffer.headfile.U_specid);
+        opt_struct.skip_combine_channels=true;
     end
 end
 if isempty(gui_info_lines) && ~opt_struct.ignore_errors
@@ -2347,6 +2355,25 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,num_chunks
                     %%%set channel and mnumber codes for the filename
                     if d_struct.c>1
                         channel_code=opt_struct.channel_alias(cn);
+                        if isfield(data_buffer.headfile,'U_specid')
+                            s_exp='[0-9]{6}-[0-9]+:[0-9]+(;|)';
+                            m_s_exp=cell(1,d_struct.c);
+                            for rexp_c=1:d_struct.c
+                                m_s_exp{rexp_c}=s_exp;
+                            end
+                            m_exp=strjoin(m_s_exp,';');
+                            m_exp=['^' m_exp '$'];
+                            if regexp(data_buffer.input_headfile.U_specid,m_exp)
+                                specid_s=strsplit(data_buffer.input_headfile.U_specid,';');
+                                data_buffer.headfile.U_specid=specid_s{cn};
+                                data_buffer.headfile.U_specid_list=data_buffer.input_headfile.U_specid;
+                                fprintf('Multi specid found in multi channel, assigning singular specid on output %s <= %s\n',data_buffer.headfile.U_specid,data_buffer.input_headfile.U_specid);
+                            elseif regexp(data_buffer.headfile.U_specid,'.*;.*')
+                                warning('Multi specid found in multi channel, but not the right number for the number of channels, \n\ti.e %s did not match regex. %s\n',data_buffer.input_headfile.U_specid,m_exp);
+
+                            end
+                            clear s_exp m_s_exp;
+                        end
                     else
                         channel_code='';
                     end
@@ -2446,6 +2473,7 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,num_chunks
                         error('Output directory existed! NOT OVERWRITING SOMEONE ELSES DATA UNLESS YOU TELL ME!, use overwrite option.');
                     end
                     %%% set param value in output
+                    
                     % if te
                     if isfield(data_buffer.headfile,'te_sequence')
                         data_buffer.headfile.te=data_buffer.headfile.te_sequence(pn);
