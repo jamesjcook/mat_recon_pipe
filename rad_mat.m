@@ -293,6 +293,9 @@ for o_num=1:length(options)
         if opt_struct.unrecognized_ok  % allows unrecognized options to pass through.
             w=true;
             e=false;
+            if ~isempty(str2double(value))
+                value=str2double(value);
+            end
             unrecognized_fields.(option)=value;
             specific_text=sprintf('%s Maybe it is used in some secondary code which did not update the allowed options here.\n continuing.',specific_text);
         end
@@ -326,6 +329,7 @@ if opt_struct.help
     error('help display stop.');
 end
 clear all_options beta_options beta_options_string e err_string o_num option parts planned_options planned_options_string specific_text standard_options standard_options_string value w warn_string;
+
 %% set implied options
 % output implication
 if opt_struct.skip_write_civm_raw &&...
@@ -483,10 +487,14 @@ if ~opt_struct.existing_data || ~exist(data_buffer.headfile.work_dir_path,'dir')
         error('puller failed:%s',cmd);
     end
 end
-
 clear cmd s datapath puller_data puller_data work_dir_name p_status;
-%% load data header and combine with other setting files
+
+%% load data header and insert unrecognized fields into headfile
 data_buffer.input_headfile=load_scanner_header(scanner, data_buffer.headfile.work_dir_path ,opt_struct);
+data_buffer.headfile=combine_struct(data_buffer.headfile,unrecognized_fields);
+data_buffer.input_headfile=combine_struct(data_buffer.input_headfile,unrecognized_fields);
+
+%% combine with other setting files
 % clean up fields and options
 if isfield(data_buffer.input_headfile,'S_scanner_tag')
     data_tag=data_buffer.input_headfile.S_scanner_tag;
@@ -498,7 +506,7 @@ if isfield(data_buffer.input_headfile,'S_scanner_tag')
 else
     bad_hf_path = [data_buffer.input_headfile.work_dir_path '/failed' runno '.headfile'];
     write_headfile(bad_hf_path,data_buffer.input_headfile);
-    error('Failed to process scanner header using dump command ( %s )\nWrote partial hf to %s\nGIVE THE OUTPUT OF THIS TO JAMES TO HELP FIX THE PROBLEM. ',data_buffer.headfile.comment{end-1}(2:end),bad_hf_path);
+    error('Failed to process scanner header from dump command ( %s )\nWrote partial hf to %s\nGIVE THE OUTPUT OF THIS TO JAMES TO HELP FIX THE PROBLEM. ',data_buffer.headfile.comment{end-1}(2:end),bad_hf_path);
 end
 if opt_struct.U_dimension_order ~=0
     data_buffer.input_headfile.([data_tag 'dimension_order'])=opt_struct.U_dimension_order;
@@ -1276,6 +1284,39 @@ if opt_struct.matlab_parallel && opt_struct.parallel_jobs>1
     end
     matlabpool(num2str(opt_struct.parallel_jobs));
 end
+%% give user last second feed back of what we're going to try to do. 
+% print d_struct
+% print dimension orders for input and output
+% print expected load data size. 
+% print load parameters, maybe explain what they mean
+dim_order=data_buffer.input_headfile.([data_tag 'dimension_order' ]);
+ds='';
+for d_num=1:length(dim_order)
+   ds=sprintf('%s %d',ds,d_struct.(dim_order(d_num)));
+end
+%  load_from_data_file(data_buffer, data_buffer.headfile.kspace_data_path, ....
+%                 data_buffer.headfile.kspace_data_path, min_load_size, load_skip, data_in.precision_string, load_chunk_size, ...
+%                 load_chunks,chunks_to_load(chunk_num),...
+%                 data_in.disk_endian);
+fprintf(['recon proceding of file at %s\n'...
+    '\twith input order %s and sizes %s\n'...
+    '\theader is %d bytes,\n'...
+    '\tblock size is %d bytes,\n '...
+    '\tloading %d blocks,\n',...
+    '\tblock to block skip is %d bytes,\n'...
+    '\tdata precision is %s, endian is %s.\n'],...
+    data_buffer.headfile.kspace_data_path, ....
+    dim_order, ds,...
+    binary_header_size,...
+    min_load_size,...
+    chunk_size/min_load_size,...
+    load_skip,...    
+    data_in.precision_string,...
+    data_in.disk_endian);
+
+clear dim_order ds ;
+
+
     %% reconstruction
 for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,num_chunks)
     time_chunk=tic;

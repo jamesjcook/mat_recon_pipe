@@ -103,7 +103,7 @@ for c=1:length(chunks_to_load)
             lpos=ftell(fileid);
             if strcmp(load_method,'standard')
                 fseek(fileid,load_skip,'cof');
-                [fid_data points_read]= fread(fileid, load_size, [data_precision '=>single']);
+                [fid_data, points_read]= fread(fileid, load_size, [data_precision '=>single']);
                 if points_read ~= load_size
                     error('Data file contained less data than expected.');
                 end
