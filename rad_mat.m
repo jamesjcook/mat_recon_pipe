@@ -293,7 +293,7 @@ for o_num=1:length(options)
         if opt_struct.unrecognized_ok  % allows unrecognized options to pass through.
             w=true;
             e=false;
-            if ~isempty(str2double(value))
+            if ~isempty(str2double(value)) && ~isnan(str2double(value))
                 value=str2double(value);
             end
             unrecognized_fields.(option)=value;
@@ -491,7 +491,7 @@ clear cmd s datapath puller_data puller_data work_dir_name p_status;
 
 %% load data header and insert unrecognized fields into headfile
 data_buffer.input_headfile=load_scanner_header(scanner, data_buffer.headfile.work_dir_path ,opt_struct);
-data_buffer.headfile=combine_struct(data_buffer.headfile,unrecognized_fields);
+% data_buffer.headfile=combine_struct(data_buffer.headfile,unrecognized_fields);
 data_buffer.input_headfile=combine_struct(data_buffer.input_headfile,unrecognized_fields);
 
 %% combine with other setting files
@@ -1651,6 +1651,22 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,num_chunks
             d_struct.z=d_struct.z-1;
             data_buffer.headfile.dim_Z=d_struct.z;
             data_buffer.input_headfile.dim_Z=d_struct.z;
+            dim_text='';
+            for i=1:length(opt_struct.output_order)
+                
+                if ~strcmp(opt_struct.output_order(i),'z')
+                    dim_text=[dim_text ':,'];
+                else
+                    dim_text=[dim_text '1:end-1,'];
+                end
+            end
+%             dims=size(data_buffer.data);
+dim_text=dim_text(1:end-1);
+%%% this eval is an ugly way to handle our remove slice problem, a good
+%%% solution should be found in the future. 
+            data_buffer.data=eval([ 'data_buffer.data(' dim_text ')']);
+%             dims(strfind(opt_struct.output_order,'z'))=dims(strfind(opt_struct.output_order,'z'))-1;
+%             data_buffer.data=reshape(data_buffer.data,dims);
         end
         %% handle echo asymmetry
         if isfield(data_buffer.headfile,'echo_asymmetry')
@@ -2000,7 +2016,7 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,num_chunks
                     else 
                         objlisty=1:d_struct.y;
                     end
-                    data_buffer.data(:,objlisty,objlistz)=data_buffer.data;
+                    data_buffer.data(:,objlisty,objlistz,:,:,:,:)=data_buffer.data;
                     if ~opt_struct.skip_rotate
                     fprintf('rotating image by 90...');
                     data_buffer.data=imrotate(data_buffer.data,90);
