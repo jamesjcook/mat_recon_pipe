@@ -158,6 +158,8 @@ beta_options={
     'vol_type_override',      ' if the processing script fails to guess the proper acquisition type(2D|3D|4D|radial) it can be specified.'
     'kspace_shift',           ' x:y:z shift of kspace, use kspace_shift=##:##:##' 
     'ignore_kspace_oversize', ' when we do our sanity checks on input data ignore kspace file being bigger than expected, this currently must be on for aspect data'
+    'integrated_rolling',     ' use integrated image rolling, rolls images per channel of output PRIOR to saving. behavior likely bad with single specimen multi-coil images. '
+    'post_rolling',           ' calculate roll post save to be run through roll_3d, if integrated_rolling is on this should calculate to zero(+/-1).'
     'output_order',           ' specify the order of your output dimensions. Default is xyzcpt. use output_oder=xyzcpt.'
     'channel_alias',          ' list of values for aliasing channels to letters, could be anything using this'
     'combine_method',         ' specify the method used for combining multi-channel data. supported modes are square_and_sum, or mean, use  combine_method=text'
@@ -201,6 +203,7 @@ planned_options={
     'image_return_type',      ' set the return type image from unscaled 32-bit float magnitude to something else.'
     'no_navigator',           ''
     'force_navigator',        ' Force the navigator selection code on for aspect scans, By default only SE SE classic and ME SE are expected to use navigator.'
+    'roll_with_centroid',     ' calculate roll value using centroid(regionprops) method instead of by the luke/russ handy quick way'
 %     'allow_headfile_override' ' Allow arbitrary options to be passed which will overwrite headfile values once the headfile is created/loaded'
     '',                       ''
     };
@@ -473,18 +476,18 @@ end
 if opt_struct.existing_data && exist(data_buffer.headfile.work_dir_path,'dir') %||opt_struct.skip_recon
     opt_struct.puller_option_string=[' -e ' opt_struct.puller_option_string];
 end
-cmd=['puller_simple ' opt_struct.puller_option_string ' ' scanner ' ''' puller_data ''' ' data_buffer.headfile.work_dir_path];
+cmd_list=['puller_simple ' opt_struct.puller_option_string ' ' scanner ' ''' puller_data ''' ' data_buffer.headfile.work_dir_path];
 data_buffer.headfile.comment{end+1}=['# \/ pull cmd ' '\/'];
-data_buffer.headfile.comment{end+1}=['# ' cmd ];
+data_buffer.headfile.comment{end+1}=['# ' cmd_list ];
 data_buffer.headfile.comment{end+1}=['# /\ pull cmd ' '/\'];
 if ~opt_struct.existing_data || ~exist(data_buffer.headfile.work_dir_path,'dir')  %&&~opt_struct.skip_recon
     if ~exist(data_buffer.headfile.work_dir_path,'dir') && opt_struct.existing_data
         warning('You wanted existing data BUT IT WASNT THERE!\n\tContinuing by tring to fetch new.');
         pause(1);
     end
-    p_status =system(cmd);
+    p_status =system(cmd_list);
     if p_status ~= 0 && ~opt_struct.ignore_errors
-        error('puller failed:%s',cmd);
+        error('puller failed:%s',cmd_list);
     end
 end
 clear cmd s datapath puller_data puller_data work_dir_name p_status;
@@ -2290,6 +2293,10 @@ dim_text=dim_text(1:end-1);
             '    }\n', ...
             '}\n', ...
             'run("Tile");\n', ...
+            'if(slices==1){\n',...
+            '    setSlice(round(slices/2);\n',...
+            '}\n',...
+            '\n',...
             '\n');
 %             '        if ( !File.isDirectory(output_dir) ) {\n', ...
 %             '            print("  Imagej: making directory"+output_dir);\n', ...
@@ -2419,7 +2426,7 @@ dim_text=dim_text(1:end-1);
                     else
                         tmp='RECON_DISABLED';
                     end
-                    %%%set channel and mnumber codes for the filename
+                    %%%set channel header settings and mnumber codes for the filename
                     if d_struct.c>1
                         channel_code=opt_struct.channel_alias(cn);
                         if isfield(data_buffer.headfile,'U_specid')
@@ -2441,8 +2448,36 @@ dim_text=dim_text(1:end-1);
                             end
                             clear s_exp m_s_exp;
                         end
+
                     else
                         channel_code='';
+                    end
+                    %%%
+                    %
+                    if opt_struct.integrated_rolling
+                        fprintf('Integrated Rolling code\n');
+                        if ~isfield(data_buffer.headfile, [ 'roll_X' channel_code])
+                            input_center=get_wrapped_volume_center(tmp);
+                            ideal_center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
+                            shift_values=ideal_center-input_center;
+                            for di=1:length(shift_values)
+                                if shift_values(di)<0
+                                    shift_values(di)=shift_values(di)+size(data_buffer.data,di);
+                                end
+                            end
+                            data_buffer.headfile.([ 'roll_' channel_code 'X' ])=shift_values(strfind(opt_struct.output_order,'x'));
+                            data_buffer.headfile.([ 'roll_' channel_code 'Y' ])=shift_values(strfind(opt_struct.output_order,'y'));
+                            data_buffer.headfile.([ 'roll_' channel_code 'Z' ])=shift_values(strfind(opt_struct.output_order,'z'));
+                        else
+                            shift_values=[ data_buffer.headfile.([ 'roll_' channel_code 'X' ])
+                            data_buffer.headfile.([ 'roll_' channel_code 'Y' ])
+                            data_buffer.headfile.([ 'roll_' channel_code 'Z' ])
+                            ];
+                        end
+                        fprintf('\tshift by :');
+                        fprintf('%d,',shift_values);
+                        fprintf('\n');
+                        tmp=circshift(tmp,round(shift_values));
                     end
                     m_number=(tn-1)*d_struct.p+pn-1;
                     if d_struct.t> 1 || d_struct.p >1
@@ -2451,12 +2486,19 @@ dim_text=dim_text(1:end-1);
                         m_code='';
                     end
                     space_dir_img_name =[ runno channel_code m_code];
+                    
+
+                                        
                     data_buffer.headfile.U_runno=space_dir_img_name;
                     
                     space_dir_img_folder=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '/' space_dir_img_name 'images' ];
                     work_dir_img_name_per_vol =[ runno channel_code m_code];
                     work_dir_img_path_per_vol=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '.work/' space_dir_img_name 'images' ];
                     work_dir_img_path=[work_dir_img_path_base channel_code m_code];
+                    if d_struct.c > 1
+                        data_buffer.headfile.work_dir=data_buffer.engine_constants.engine_work_directory;
+                        data_buffer.headfile.runno_base=runno;
+                    end
                     
                     if (~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon )||...
                             ~opt_struct.skip_write_headfile
@@ -2558,6 +2600,7 @@ dim_text=dim_text(1:end-1);
                         
                         dest=[space_dir_img_folder '/' space_dir_img_name '.headfile'];
                         fprintf('\twrite_headfile save \n\t\t%s\n',dest);
+                        data_buffer.headfile.output_image_path=space_dir_img_folder;
                         write_headfile(dest,data_buffer.headfile,0);
                         % insert validate_header perl script check here?
                     end
@@ -2654,14 +2697,86 @@ if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon
         d_struct.z,data_buffer.headfile.U_code,datatype,...
         data_buffer.headfile.U_civmid,false);
     fprintf('initiate archive from a terminal using following command, (should change person to yourself). \n\n\t%s\n\n OR run archiveme in matlab useing \n\tsystem(''%s'');\n',archive_tag_output,archive_tag_output);
-    run_string=strjoin(sort(runnumbers)',' ');
-    xrol=0;
-    yrol=0;
-    zrol=0;
-    cmd=sprintf('roll_3d -x %d -y %d -z %d %s', xrol,yrol, zrol, run_string);
-    fprintf('Use terminal to run roll_3d with command, (Replace the 0''s with your deisred roll)\n\t%s\n', cmd);
-    fprintf('OR run roll_3d in matlab using \n\tsystem(''%s'');\n',cmd);
+    
+    %%% sepearate the runnumberes by channel.
+    %% post recon rolling
+    if ~opt_struct.integrated_rolling || opt_struct.post_rolling
+        %     sorted_runs=runno_group_sort(runnumbers);
+        %     sort_str=strjoin(sorted_runs',' ');
+        %     chan_strings=strsplit(sort_str,'#');
+        chan_strings=cell(1,d_struct.c);
+        
+        %http://www.mathworks.com/help/images/ref/regionprops.html#bqkf8ln
+        cmd_list=cell(1,d_struct.c);
+        
+        
 
+        for c_r=1:d_struct.c
+            run_postexp='';
+            data_postfix='';
+            if d_struct.t > 1 || d_struct.p > 1
+                run_postexp= '_m[0-9]+';
+                data_postfix='_m0' ;
+            end
+            if ( d_struct.c > 1 )
+                data_postfix=[opt_struct.channel_alias(c_r) data_postfix];
+
+                run_regexp=['([^ ]*' opt_struct.channel_alias(c_r) run_postexp ')+'];
+                runs{c_r}=regexp(strjoin(sort(runnumbers)',' '),run_regexp,'tokens');
+                for j=1:length(runs{c_r})
+                    chan_strings{c_r}{j}=runs{c_r}{j}{1};
+                end
+            else
+%                 data_postfix='';
+            end
+            run_string=strjoin(chan_strings{c_r},' ');
+            %%%% not finding c position programatically right now, should fix that.
+            %             new_center=[0,0,0];
+            data_vol=data_buffer.data(:,:,:,c_r,1,1);
+
+            if opt_struct.integrated_rolling && opt_struct.post_rolling
+                disk_path= [ data_buffer.headfile.work_dir '/' ...
+                    data_buffer.headfile.runno_base data_postfix '/' ...
+                    data_buffer.headfile.runno_base data_postfix 'images' '/' ];
+                fprintf('Crazy double roll calculation requested, loading path%s\n',disk_path);
+                data_vol=read_civm_image(disk_path );
+            end
+            if opt_struct.roll_with_centroid
+                new_center=get_volume_centroid(data_vol);
+            else
+                new_center=get_wrapped_volume_center(data_vol);
+            end
+            %%%% could use hist followed by extrema or derivative and find
+            center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
+            diff=new_center-center;
+            %         diff(3)=-diff(3);
+            %         diff(2)=-diff(2);
+            for di=1:length(diff)
+                if diff(di)<0
+                    diff(di)=diff(di)+size(data_buffer.data,di);
+                end
+            end
+            roll.x(c_r)=round(diff(1));
+            roll.y(c_r)=round(diff(2));
+            roll.z(c_r)=round(diff(3));
+            
+            %     xroll=diff(1)+d_struct.x;
+            %     yroll=diff(2)+d_struct.y;
+            %     xroll=round(centroid(1)-d_struct.x/2);
+            %     yroll=d_struct.y-round(centroid(2)-d_struct.y/2);
+            %     zroll=round(centroid(3)-d_struct.z/2);
+            cmd_list{c_r}=sprintf('roll_3d -x %d -y %d -z %d %s;',roll.x(c_r),roll.y(c_r), roll.z(c_r), run_string);
+        end
+        fprintf('Use terminal to run roll_3d with command, (Replace the number''s with your deisred roll, example values are a best guess based on a find minimum calculation.)\n%s\n\n', strjoin(cmd_list,'\n'));
+        fprintf('OR run roll_3d in matlab using \n');
+        
+        roll_prompt='';
+        for cmd_n=1:length(cmd_list)
+            roll_prompt=sprintf('%ssystem(''%s'');\n',roll_prompt,cmd_list{cmd_n});
+        end
+        fprintf('%s',roll_prompt);
+    end
+    
 end
 
 
