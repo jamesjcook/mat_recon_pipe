@@ -2720,16 +2720,21 @@ if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon
             end
             if ( d_struct.c > 1 )
                 data_postfix=[opt_struct.channel_alias(c_r) data_postfix];
-
-                run_regexp=['([^ ]*' opt_struct.channel_alias(c_r) run_postexp ')+'];
-                runs{c_r}=regexp(strjoin(sort(runnumbers)',' '),run_regexp,'tokens');
-                for j=1:length(runs{c_r})
-                    chan_strings{c_r}{j}=runs{c_r}{j}{1};
-                end
-            else
+                run_postexp=[opt_struct.channel_alias(c_r) run_postexp];
 %                 data_postfix='';
             end
-            run_string=strjoin(chan_strings{c_r},' ');
+            %%% need to move the regexp handcling for non channel
+            %%% images here.
+            run_regexp=['([^ ]*'  run_postexp ')+'];
+            runs{c_r}=regexp(strjoin(sort(runnumbers)',' '),run_regexp,'tokens');
+            for j=1:length(runs{c_r})
+                chan_strings{c_r}{j}=runs{c_r}{j}{1};
+            end
+            if length(chan_strings{c_r})>1
+               run_string=strjoin(chan_strings{c_r},' ');
+            else 
+                run_string=chan_strings{c_r}{1};
+            end
             %%%% not finding c position programatically right now, should fix that.
             %             new_center=[0,0,0];
             data_vol=data_buffer.data(:,:,:,c_r,1,1);
