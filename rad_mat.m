@@ -166,6 +166,8 @@ beta_options={
     'skip_combine_channels',  ' do not combine the channel images'
     'write_complex',          ' should the complex output be written to th work directory. Will be written as rp(or near rp file) format.'
     'do_aspect_freq_correct', ' perform aspect frequency correction.'
+    'pre_defined_headfile',   ' instead of loading the scanner data header load a pre-generated one.'
+    'no_scanner_header',      ' the scanner header is invalid un-loadable or misisng for some reason, all required hf keys would need to be specified as options following the unrecognized_ok option. '
     'skip_load'               ' do not load data, implies skip regrid, skip filter, skip recon and skip resort'
     'skip_regrid',            ' do not regrid'
     'skip_filter',            ' do not filter data sets.'
@@ -419,6 +421,12 @@ if length(opt_struct.U_dimension_order)<length(possible_dimensions)
         end
     end
 end
+if islogical(opt_struct.pre_defined_headfile)
+%     if opt_struct.pre_defined_headfile
+%         error('You wanted a pre_defined_headfile but you forgot to specify one');
+%     end
+%     opt_struct.pre_defined_headfile='';
+end
 clear possible_dimensions warn_string err_string char ks e o_num parts all_options beta_options beta_options_string planned_options planned_options_string standard_options standard_options_string temp test value w
 %% dependency loading
 rad_start=tic;
@@ -493,7 +501,24 @@ end
 clear cmd s datapath puller_data puller_data work_dir_name p_status;
 
 %% load data header and insert unrecognized fields into headfile
-data_buffer.input_headfile=load_scanner_header(scanner, data_buffer.headfile.work_dir_path ,opt_struct);
+if ~opt_struct.no_scanner_header
+    data_buffer.input_headfile=load_scanner_header(scanner, data_buffer.headfile.work_dir_path ,opt_struct);
+end
+if ~isempty(opt_struct.pre_defined_headfile)||opt_struct.pre_defined_headfile==1
+    if islogical(opt_struct.pre_defined_headfile)
+        warning('Loading manual header from work directory manual.headfile');
+        opt_struct.pre_defined_headfile=[data_buffer.headfile.work_dir_path '/manual.headfile' ];
+    end
+    
+    if exist(opt_struct.pre_defined_headfile,'file')
+        data_buffer.input_headfile=read_headfile(opt_struct.pre_defined_headfile);
+    else
+%             if opt_struct.pre_defined_headfile
+        error('You wanted a pre_defined_headfile but you forgot to specify one');
+%     end
+    end
+    
+end
 % data_buffer.headfile=combine_struct(data_buffer.headfile,unrecognized_fields);
 data_buffer.input_headfile=combine_struct(data_buffer.input_headfile,unrecognized_fields);
 
@@ -507,7 +532,7 @@ if isfield(data_buffer.input_headfile,'S_scanner_tag')
         delete(bad_hf_path); clear bad_hf_path;
     end
 else
-    bad_hf_path = [data_buffer.input_headfile.work_dir_path '/failed' runno '.headfile'];
+    bad_hf_path = [data_buffer.headfile.work_dir_path '/failed' runno '.headfile'];
     write_headfile(bad_hf_path,data_buffer.input_headfile);
     error('Failed to process scanner header from dump command ( %s )\nWrote partial hf to %s\nGIVE THE OUTPUT OF THIS TO JAMES TO HELP FIX THE PROBLEM. ',data_buffer.headfile.comment{end-1}(2:end),bad_hf_path);
 end

@@ -24,7 +24,7 @@ if exist('data_buffer','var')
     recon_variables(1)=data_buffer.input_headfile.dim_X;
     recon_variables(2)=data_buffer.input_headfile.dim_Y;
     recon_variables(3)=data_buffer.input_headfile.dim_Z;
-    recon_variables(4)=data_buffer.input_headfile.nex;
+%     recon_variables(4)=data_buffer.input_headfile.nex;
     recon_variables(5)=data_buffer.input_headfile.z_Aspect_DWEL_TIME;
     recon_variables(6)=data_buffer.input_headfile.te*1000;
     recon_variables(7)=0;
@@ -50,7 +50,7 @@ end
 dim_X=recon_variables(1);
 dim_Y=recon_variables(2);
 dim_Z=recon_variables(3);
-Nex=recon_variables(4);
+% Nex=recon_variables(4);
 
 
 %% reshape
