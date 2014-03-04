@@ -2,7 +2,7 @@ function aspect_freq_correct(data_buffer,opt_struct)
 % ASPECT_FREQ_CORRECT(data_buffer)
 % data_buffer is a large_array object with a data element and an
 % input_headfile element
-% relefvent info shoul dbe pulled from the input_headfile.
+% relefvent info should be pulled from the input_headfile.
 % this function is very experimental at current. It is largly taken from
 % the aspect gre3d code from peterbenel given to jamescook
 
@@ -18,6 +18,10 @@ noise_border=4;
 signal_mul=3;
 nrec=1;
 remove_slice=opt_struct.remove_slice;
+
+if numel(size(data_buffer.data))>3
+    error('Frequency correction never fixed to work with more than 3 dimensions');
+end
 %% load  meta(header) info
 
 if exist('data_buffer','var')
@@ -65,7 +69,8 @@ echo_ass=recon_variables(8);%50 in usual case
 bw=1/tsample;
 pix_bw=1/tsample/(dim_X*zero_pad);
 
-fid_FM=squeeze(fid(:,dim_Z,:));
+fid_FM=squeeze(fid(:,dim_Z,:,1,1,1,1));%%%% this doesnt handle more than 3 dimensions! what junk!
+
 FM_mag=abs(fftshift(fft(fid_FM,dim_X*zero_pad,1),1));
 
 [dummy,pos]=max(FM_mag);

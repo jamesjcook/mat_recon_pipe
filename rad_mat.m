@@ -602,7 +602,7 @@ end
 data_in.precision_string=[data_in.disk_data_type num2str(data_in.disk_bit_depth)];
 % end
 % if regexp(scan_type,'echo')
-%     volumes=data_buffer.headfile.([data_tag 'echos']);
+%     volumes=data_buffer.headfile.([data_tag 'echoes']);
 %     if regexp(scan_type,'non_interleave')
 %         interleave=false;
 %     else
@@ -631,7 +631,7 @@ if isfield (data_buffer.headfile,[data_tag 'varying_parameter'])
 else
     varying_parameter='';
 end
-if strcmp(varying_parameter,'echos')
+if strcmp(varying_parameter,'echos') || strcmp(varying_parameter,'echoes')
     d_struct.p=data_buffer.headfile.ne;
 elseif strcmp(varying_parameter,'alpha')
     d_struct.p=length(data_buffer.headfile.alpha_sequence);
@@ -665,7 +665,7 @@ input_order=data_buffer.headfile.([data_tag 'dimension_order' ]);
 % will set input to in=[x z y];
 % and output to out=[x y z];
 binary_header_size   =data_buffer.headfile.binary_header_size; %distance to first data point in bytes-standard block header.
-load_skip            =data_buffer.headfile.block_header_size;  %distance between blocks of rays in file
+load_skip            =data_buffer.headfile.block_header_size;  %distance between blocks of rays in file in bytes
 ray_blocks           =data_buffer.headfile.ray_blocks;         %number of blocks of rays total, sometimes nvolumes, sometimes nslices, somtimes nechoes, ntrs nalphas
 rays_per_block       =data_buffer.headfile.rays_per_block;     %number or rays per block of input data,
 ray_length           =data_buffer.headfile.ray_length;         %number of samples on a ray, or trajectory
@@ -774,11 +774,12 @@ if opt_struct.write_unscaled || opt_struct.write_unscaled_nD || opt_struct.write
     data_work.RAM_bytes_per_voxel=data_work.RAM_bytes_per_voxel+data_work.precision_bytes;
 end
 %% calculate expected disk usage and check free disk space.
-data_out.volumes=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c;
-if opt_struct.skip_combine_channels
+% data_out.volumes=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c;
+data_work.volumes=data_buffer.headfile.([data_tag 'volumes']); % initalize to worst case before we run through possibilities below.
+data_out.volumes=data_buffer.headfile.([data_tag 'volumes']);
+if opt_struct.skip_combine_channels % while we're using the max n volumes this is unnecessary.
     data_out.volumes=data_buffer.headfile.([data_tag 'volumes']);
 end
-data_work.volumes=data_buffer.headfile.([data_tag 'volumes']); % initalize to worst case before we run through possibilities below.
 
 data_out.volume_voxels=...
     d_struct.x*...
@@ -948,6 +949,15 @@ measured_filesize    =fileInfo.bytes;
 if kspace_file_size~=measured_filesize
     if (measured_filesize>kspace_file_size && opt_struct.ignore_kspace_oversize) || opt_struct.ignore_errors % measured > expected provisional continue
         warning('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=\t%d\nCalculated=\t%d\n',measured_filesize,kspace_file_size);
+        % extra warning when acaual is greater than 10% of exptected
+        remainder=measured_filesize-kspace_file_size;
+        aspect_remainder=138443;
+        if remainder/kspace_file_size> 0.1 && remainder~=aspect_remainder
+            error(sprintf('Big difference between measured and calculated!\n\tSUCCESS UNLIKELY!'));
+            pause( 2*opt_struct.warning_pause ) ;
+        end
+        
+        
     else %if measured_filesize<kspace_file_size    %if measured < exected fail.
         error('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=\t%d\nCalculated=\t%d\n',measured_filesize,kspace_file_size);
     end
@@ -1381,7 +1391,7 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,num_chunks
             if data_in.line_pad>0  %remove extra elements in padded ray,
                 % lenght of full ray is spatial_dim1*nchannels+pad
                 %         reps=ray_length;
-                % account for number of channels and echos here as well .
+                % account for number of channels and echoes here as well .
                 if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
                     % padd beginning code
                     logm=zeros(data_in.line_points,1);
@@ -2481,7 +2491,8 @@ dim_text=dim_text(1:end-1);
                     %
                     if opt_struct.integrated_rolling
                         fprintf('Integrated Rolling code\n');
-                        if ~isfield(data_buffer.headfile, [ 'roll_X' channel_code])
+                        channel_code_r=[channel_code '_'];
+                        if ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X' ])
                             input_center=get_wrapped_volume_center(tmp);
                             ideal_center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
                             shift_values=ideal_center-input_center;
@@ -2490,13 +2501,13 @@ dim_text=dim_text(1:end-1);
                                     shift_values(di)=shift_values(di)+size(data_buffer.data,di);
                                 end
                             end
-                            data_buffer.headfile.([ 'roll_' channel_code 'X' ])=shift_values(strfind(opt_struct.output_order,'x'));
-                            data_buffer.headfile.([ 'roll_' channel_code 'Y' ])=shift_values(strfind(opt_struct.output_order,'y'));
-                            data_buffer.headfile.([ 'roll_' channel_code 'Z' ])=shift_values(strfind(opt_struct.output_order,'z'));
+                            data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' ])=shift_values(strfind(opt_struct.output_order,'x'));
+                            data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' ])=shift_values(strfind(opt_struct.output_order,'y'));
+                            data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' ])=shift_values(strfind(opt_struct.output_order,'z'));
                         else
-                            shift_values=[ data_buffer.headfile.([ 'roll_' channel_code 'X' ])
-                            data_buffer.headfile.([ 'roll_' channel_code 'Y' ])
-                            data_buffer.headfile.([ 'roll_' channel_code 'Z' ])
+                            shift_values=[ data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' ])
+                            data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' ])
+                            data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' ])
                             ];
                         end
                         fprintf('\tshift by :');
@@ -2716,7 +2727,7 @@ if ~isempty(ij_prompt)&& ~opt_struct.skip_write_civm_raw
     fprintf('  (it may only open the first and last in large sequences).\n');
     fprintf('\n%s\n\n',mat_ij_prompt);
 end
-if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon
+if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon && isfield(data_buffer.headfile,'U_code')
     archive_tag_output=write_archive_tag(runnumbers,...
         data_buffer.engine_constants.engine_work_directory,...
         d_struct.z,data_buffer.headfile.U_code,datatype,...
