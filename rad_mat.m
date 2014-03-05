@@ -504,7 +504,7 @@ clear cmd s datapath puller_data puller_data work_dir_name p_status;
 if ~opt_struct.no_scanner_header
     data_buffer.input_headfile=load_scanner_header(scanner, data_buffer.headfile.work_dir_path ,opt_struct);
 end
-if ~isempty(opt_struct.pre_defined_headfile)||opt_struct.pre_defined_headfile==1
+if ~islogical(opt_struct.pre_defined_headfile)||opt_struct.pre_defined_headfile==1
     if islogical(opt_struct.pre_defined_headfile)
         warning('Loading manual header from work directory manual.headfile');
         opt_struct.pre_defined_headfile=[data_buffer.headfile.work_dir_path '/manual.headfile' ];
@@ -1231,8 +1231,8 @@ end
 %%% now prompt for program close and purge and update available mem.
 while meminfo.AvailPhys<memory_space_required
     fprintf('%0.2fM/%0.2fM you have too many programs open.\n ',meminfo.AvailPhys/1024/1024,memory_space_required/1024/1024);
-    reply=data_in('close some programs and then press enter >> (press c to ignore mem limit, NOT RECOMMENDED)','s');
-    if strcmp(reply,'c')
+    user_response=input('close some programs and then press enter >> (press c to ignore mem limit, NOT RECOMMENDED)','s');
+    if strcmp(user_response,'c')
         meminfo.AvailPhys=memory_space_required;
     else
         system('purge');
@@ -1241,7 +1241,7 @@ while meminfo.AvailPhys<memory_space_required
 end
 fprintf('    ... Proceding doing recon with %d chunk(s)\n',num_chunks);
 
-clear ray_length2 ray_length3 fileInfo bytes_per_vox copies_in_memory kspace.bit_depth kspace.data_type min_chunks system_reserved_memory total_memory_required memory_space_required meminfo measured_filesize kspace_file_size kspace_data kspace_header_bytes F mul ;
+clear ray_length2 ray_length3 fileInfo bytes_per_vox copies_in_memory kspace.bit_depth kspace.data_type min_chunks system_reserved_memory total_memory_required memory_space_required meminfo measured_filesize kspace_file_size kspace_data kspace_header_bytes F mul user_response ;
 %% collect gui info (or set testmode)
 %check civm runno convention
 % add loop while gui has not run successfully,
