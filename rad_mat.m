@@ -2504,11 +2504,13 @@ dim_text=dim_text(1:end-1);
                             data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' ])=shift_values(strfind(opt_struct.output_order,'x'));
                             data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' ])=shift_values(strfind(opt_struct.output_order,'y'));
                             data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' ])=shift_values(strfind(opt_struct.output_order,'z'));
+                            fprintf('\tSet Roll value\n');
                         else
                             shift_values=[ data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' ])
                             data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' ])
                             data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' ])
                             ];
+                            fprintf('\tExisting Roll value\n');
                         end
                         fprintf('\tshift by :');
                         fprintf('%d,',shift_values);
@@ -2592,6 +2594,18 @@ dim_text=dim_text(1:end-1);
                     %%% unscaled_nii_save
                     if ( opt_struct.write_unscaled && ~opt_struct.skip_recon ) %|| opt_struct.skip_write_civm_raw
                         fprintf('\twrite_unscaled save\n');
+                        if ~isfield(data_buffer.headfile,'fovx')
+                            warning('No fovx');
+                            data_buffer.headfile.fovx=data_buffer.headfile.dim_X;
+                        end
+                        if ~isfield(data_buffer.headfile,'fovy')
+                            warning('No fovy');
+                            data_buffer.headfile.fovy=data_buffer.headfile.dim_Y;
+                        end
+                        if ~isfield(data_buffer.headfile,'fovz')
+                            warning('No fovz');
+                            data_buffer.headfile.fovz=data_buffer.headfile.dim_Z;
+                        end
                         nii=make_nii(abs(tmp), [ ...
                             data_buffer.headfile.fovx/d_struct.x ...
                             data_buffer.headfile.fovy/d_struct.y ...
