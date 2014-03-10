@@ -7,7 +7,7 @@ function rad_regid(data_buffer,c_dims)
 %                           or xcpyzt
 % channels might be reversed
 % c=channels,
-% p=echos,(could also be alphas?)
+% p=echoes,(could also be alphas?)
 % t=time
 
 %% get dimensions and dimension codes. 
@@ -22,7 +22,7 @@ if isfield (data_buffer.input_headfile,[data_tag 'varying_parameter'])
 else
     varying_parameter='';
 end
-if strcmp(varying_parameter,'echos')
+if regexpi(varying_parameter,'.*echo.*')% strcmp(varying_parameter,'echos') || strcmp(varying_parameter,'echoes')
     params=data_buffer.input_headfile.ne;
 elseif strcmp(varying_parameter,'alpha')
     params=length(data_buffer.input_headfile.alpha_sequence);
@@ -126,14 +126,16 @@ if( ~strcmp(data_buffer.headfile.([data_tag 'vol_type']),'radial'))
     %     data_buffer.data=permute(data_buffer.data,permute_code_with_rare);
     % else
     data_buffer.data=reshape(data_buffer.data,input_dimensions);
-    data_buffer.data=permute(data_buffer.data,permute_code ); % put in image order.
+    data_buffer.data=permute(data_buffer.data,permute_code ); % put in image order(or at least in fft order).
     % end
     data_buffer.data=reshape(data_buffer.data,output_dimensions);% x yr z c
     
+    encoding_sort=false;
     if isfield(data_buffer.input_headfile,'dim_X_encoding_order')
         fprintf('Found X encoding order\n');
         xenc=data_buffer.input_headfile.dim_X_encoding_order;
         xenc=xenc+min(xenc)+1;
+        encoding_sort=true;
     else
         xenc=':';
     end
@@ -141,6 +143,7 @@ if( ~strcmp(data_buffer.headfile.([data_tag 'vol_type']),'radial'))
         fprintf('Found Y encoding order\n');
         yenc=data_buffer.input_headfile.dim_Y_encoding_order;
         yenc=yenc-min(yenc)+1;
+        encoding_sort=true;
     else
         yenc=':';
     end
@@ -148,10 +151,13 @@ if( ~strcmp(data_buffer.headfile.([data_tag 'vol_type']),'radial'))
         fprintf('Found Z encoding order\n');
         zenc=data_buffer.input_headfile.dim_Z_encoding_order;
         zenc=zenc-min(zenc)+1;
+        encoding_sort=true;
     else
         zenc=':';
     end
-    data_buffer.data(xenc,yenc,zenc,:,:,:)=data_buffer.data;
+    if encoding_sort
+        data_buffer.data(xenc,yenc,zenc,:,:,:)=data_buffer.data;
+    end
 else
     %% radial regridding.
     warning('Radial regridding! Still very experimental.')

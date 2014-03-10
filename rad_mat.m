@@ -631,7 +631,7 @@ if isfield (data_buffer.headfile,[data_tag 'varying_parameter'])
 else
     varying_parameter='';
 end
-if strcmp(varying_parameter,'echos') || strcmp(varying_parameter,'echoes')
+if regexpi(varying_parameter,'.*echo.*')% strcmp(varying_parameter,'echos') || strcmp(varying_parameter,'echoes')
     d_struct.p=data_buffer.headfile.ne;
 elseif strcmp(varying_parameter,'alpha')
     d_struct.p=length(data_buffer.headfile.alpha_sequence);
@@ -947,19 +947,25 @@ end
 measured_filesize    =fileInfo.bytes;
 
 if kspace_file_size~=measured_filesize
+    aspect_remainder=138443;
+    remainder=measured_filesize-kspace_file_size;
     if (measured_filesize>kspace_file_size && opt_struct.ignore_kspace_oversize) || opt_struct.ignore_errors % measured > expected provisional continue
         warning('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=\t%d\nCalculated=\t%d\n',measured_filesize,kspace_file_size);
         % extra warning when acaual is greater than 10% of exptected
-        remainder=measured_filesize-kspace_file_size;
-        aspect_remainder=138443;
+        
         if remainder/kspace_file_size> 0.1 && remainder~=aspect_remainder
-            error(sprintf('Big difference between measured and calculated!\n\tSUCCESS UNLIKELY!'));
+            fprintf('Big difference between measured and calculated!\n\tSUCCESS UNLIKELY!');
             pause( 2*opt_struct.warning_pause ) ;
+            error('Mem skip enabled, but more than 10% data will be ignored');
         end
         
         
     else %if measured_filesize<kspace_file_size    %if measured < exected fail.
-        error('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=\t%d\nCalculated=\t%d\n',measured_filesize,kspace_file_size);
+        if strcmp(scanner_vendor,'aspect') && remainder==aspect_remainder
+            warning('Measured data file size and calculated dont match. However this is Aspect data, and we match our expected remainder! \nMeasured=\t%d\nCalculated=\t%d\n\tAspect_remainder=%d\n',measured_filesize,kspace_file_size,aspect_remainder);
+        else
+            error('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=\t%d\nCalculated=\t%d\n',measured_filesize,kspace_file_size);
+        end
     end
 else
     fprintf('\t... Proceding with good file size.\n');
@@ -1281,7 +1287,7 @@ for l=1:length(gui_info_lines)
         data_buffer.input_headfile.(['U_' gui_info{1}])=gui_info{2};
         fprintf('adding meta line %s=%s\n', ['U_' gui_info{1}],data_buffer.headfile.(['U_' gui_info{1}]));
     else
-        fprintf('ignoring line %s\n',gui_info_lines{l});
+        fprintf('ignoring gui input line:%s\n',gui_info_lines{l});
     end
 end
 
@@ -1663,7 +1669,7 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,num_chunks
             if num_chunks>1
                 data_buffer.headfile.processing_chunk=chunk_num;
             end
-            rad_regid(data_buffer,c_dims);
+            rad_regrid(data_buffer,c_dims);
             if  regexp(vol_type,'.*radial.*')
                 if num_chunks==1
                     fprintf('Clearing traj,dcf and radial kspace data\n');
@@ -1817,6 +1823,8 @@ dim_text=dim_text(1:end-1);
             end
         end
         %% preserve original kspace
+        % should modify this to handle any of the reasons to preserve here
+        % instead of taking up additional memory. 
         if opt_struct.write_kimage_unfiltered
             data_buffer.addprop('kspace_unfiltered');
             data_buffer.kspace_unfiltered=data_buffer.data;
@@ -1883,14 +1891,14 @@ dim_text=dim_text(1:end-1);
         else
             fprintf('skipping fermi filter\n');
         end
-        if opt_struct.write_kimage
+        if opt_struct.write_kimage%%% should move the kspace writing code to here with a check if it already exists, in the case we're iterating over it for some reason. 
             data_buffer.addprop('kspace');
             data_buffer.kspace=data_buffer.data;
         end
         %% fft, resort, cut bad data, and display
         if ~opt_struct.skip_fft
             %% fft
-            fprintf('Performing FFT on');
+            fprintf('Performing FFT on ');
             if strcmp(vol_type,'2D')
                 fprintf('%s volumes\n',vol_type);
                 if ~exist('img','var') || numel(img)==1;
@@ -1941,7 +1949,7 @@ dim_text=dim_text(1:end-1);
                 end
                 data_buffer.data=img;
                 clear img;
-            elseif regexp(vol_type,'.*radial.*')
+             elseif regexp(vol_type,'.*radial.*')
                 fprintf('%s volumes\n',vol_type);
                 fprintf('Radial fft optimizations\n');
                 %% timepoints
@@ -2061,6 +2069,40 @@ dim_text=dim_text(1:end-1);
                     end
                     %img=transpose(img());
                     fprintf('resort and rotate done!\n');
+                elseif(strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent') )
+                    
+                    if isfield(data_buffer.input_headfile,'alternate_echo_reverse' )
+                        objlistx=1:d_struct.x;
+                        objlisty=1:d_struct.y;
+                        objlistz=1:d_struct.z;
+                        if data_buffer.input_headfile.alternate_echo_reverse >= 1 && data_buffer.input_headfile.ne>1
+                            objlistx=d_struct.x:-1:1;
+                            fprintf('performing echo dimorder swapping ...');
+
+                            if data_buffer.input_headfile.alternate_echo_reverse==3
+                                param_swap_start=1;
+                                param_swap_step=2;
+                            elseif data_buffer.input_headfile.alternate_echo_reverse==4
+                                param_swap_start=1;
+                                param_swap_step=1;
+                            else
+                                param_swap_start=2;
+                                param_swap_step=2;
+                            end
+                            dind=strfind(opt_struct.output_order,'p');
+                            if dind~=5 %output_order
+                                warning('THIS CODE WAS NOT SET UP TO ALLOW A CHANGE TO DEFAULT DIMENSION OUTPUT ORDER');
+                            end
+                            for tsn=1:d_struct.t
+                                for csn=1:d_struct.c
+                                    for psn=param_swap_start:param_swap_step:d_struct.p
+                                        data_buffer.data(objlistx,objlisty,objlistz,csn,psn,tsn)=data_buffer.data(:,:,:,csn,psn,tsn);
+                                    end
+                                end
+                            end
+                            clear csn tsn psn param_swap_start param_swap_end;
+                        end
+                    end
                 else
                     fprintf('Non-aspect data is not rotated or flipped, unsure what settings should be used\n');
                     %imagejmacro commands for drawing centerline.
