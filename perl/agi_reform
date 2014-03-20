@@ -148,7 +148,7 @@ my $args="\'$file_path\',\'$work_dir\',$divisor,[$x $y $z],\'$basename\',\'$sysi
 my ($f_name,$f_suffix);
 ($f_name,$work_dir,$f_suffix)=fileparse($file_path);
 #passing empty string to nohf at end of args so destination will be cmdline
-my $mat_cmd=make_matlab_command_nohf($function_m_name, $args, $short_unique_purpose, $work_dir, $matlab_app,"${basename}_reform.log"); 
+my $mat_cmd=make_matlab_command_nohf($function_m_name, $args, $short_unique_purpose, $work_dir, $matlab_app,"${file_path}_reform.log"); 
 # calls make_matlab_m_file();
 #   my ($function_m_name, $args, $short_unique_purpose, $work_dir, $matlab_app) = @_;
 my $rc=execute(1,"",$mat_cmd);
