@@ -261,6 +261,9 @@ if length(runno)>16
 end
 for o_num=1:length(options)
     option=options{o_num};
+    if isempty(option)
+        continue;
+    end
     %%% see what kind of option and add to error and warning message if not
     %%% standard/allowed.
     value=true;
