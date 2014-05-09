@@ -1540,6 +1540,9 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,num_chunks
                     end
                     radial_filter_modifier=data_buffer.headfile.ray_blocks_per_volume;
                     cutoff_filter(1:nyquist_cutoff,:,cut_key_indices)=0;
+                else
+                    fprintf('\tNot filtering radial data\n');
+                    % no filtering done.
                 end
                 data_buffer.cutoff_filter=logical(cutoff_filter);
                 %         data_buffer.cutoff_filter=reshape(data_buffer.trajectory,);
@@ -1895,8 +1898,10 @@ dim_text=dim_text(1:end-1);
             fprintf('skipping fermi filter\n');
         end
         if opt_struct.write_kimage%%% should move the kspace writing code to here with a check if it already exists, in the case we're iterating over it for some reason. 
-            data_buffer.addprop('kspace');
-            data_buffer.kspace=data_buffer.data;
+            if  ~isprop(data_buffer,'kspace') 
+                data_buffer.addprop('kspace');
+                data_buffer.kspace=data_buffer.data;
+            end
         end
         %% fft, resort, cut bad data, and display
         if ~opt_struct.skip_fft

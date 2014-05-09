@@ -403,7 +403,7 @@ else
                     dcf,oversample_factor*d_struct.x,8);
 %                 data_buffer.(output_field)(:,:,:,v)=complex(single(temp(1,:,:,:)),single(temp(2,:,:,:)));
                 holding_zone(:,:,:,v)=complex(single(temp(1,:,:,:)),single(temp(2,:,:,:)));
-                imagesc(log(abs(holding_zone(:,:,192,v))))
+%                 imagesc(log(abs(holding_zone(:,:,192,v))))
             end
             data_buffer.(output_field)=holding_zone;
             clear holding_zone;
