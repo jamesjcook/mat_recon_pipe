@@ -184,6 +184,7 @@ beta_options={
     'dcf_recalculate',        ' do not use the saved dcf file'
     'dcf_iterations',         ' set number of iterations for dcf calculation, only used for radial'
     'radial_filter_method',   ' UFC or VFC, if blank uses none.'
+    'display_radial_filter',  ' show the radial filter via imshow'
     'open_volume_limit',      ' override the maximum number of volumes imagej will open at a time,default is 36. use open_volume_limit=##'
     'warning_pause',          ' length of pause after warnings (default 3). Errors outside matlab from the perl parsers are not effected. use warning_pause=##'
     'no_navigator',           ''
@@ -1540,12 +1541,13 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,num_chunks
                     end
                     radial_filter_modifier=data_buffer.headfile.ray_blocks_per_volume;
                     cutoff_filter(1:nyquist_cutoff,:,cut_key_indices)=0;
+                    if opt_struct.display_radial_filter
+                        imagesc(reshape(data_buffer.cutoff_filter,[size(data_buffer.cutoff_filter,1),numel(data_buffer.cutoff_filter)/size(data_buffer.cutoff_filter,1)]))
+                    end
                 else
                     fprintf('\tNot filtering radial data\n');
-                    % no filtering done.
                 end
                 data_buffer.cutoff_filter=logical(cutoff_filter);
-                %         data_buffer.cutoff_filter=reshape(data_buffer.trajectory,);
                 clear cutoff_filter;
             end
             %% Calculate/load dcf
@@ -1844,54 +1846,77 @@ dim_text=dim_text(1:end-1);
             end
             %  dim_string=sprintf('%d ',size(data_buffer.(filter_input),1),size(data_buffer.(filter_input),2),size(data_buffer.(filter_input),3));
             dim_string=sprintf('%d ',size(data_buffer.(filter_input)));
-%             for d_num=4:length(output_dimensions)
-%                 dim_string=sprintf('%s %d ',dim_string,output_dimensions(d_num));
-%             end ; clear d_num;
+            %             for d_num=4:length(output_dimensions)
+            %                 dim_string=sprintf('%s %d ',dim_string,output_dimensions(d_num));
+            %             end ; clear d_num;
             fprintf('Performing fermi filter on volume with size %s\n',dim_string );
             
             if strcmp(vol_type,'2D')
                 % this requires regridding to place volume in same dimensions as the output dimensions
                 % it also requires the first two dimensions of the output to be to be xy.
-                % these asumptions may not always be true. 
+                % these asumptions may not always be true.
                 data_buffer.data=reshape(data_buffer.data,[ output_dimensions(1:2) prod(output_dimensions(3:end))] );
                 data_buffer.data=fermi_filter_isodim2(data_buffer.data,...
                     opt_struct.filter_width,opt_struct.filter_window,true);
                 data_buffer.data=reshape(data_buffer.data,output_dimensions );
-            %elseif strcmp(vol_type,'3D')
+                %elseif strcmp(vol_type,'3D')
             elseif regexpi(vol_type,'3D|4D');
-                 fermi_filter_isodim2_memfix_obj(data_buffer,...
+                fermi_filter_isodim2_memfix_obj(data_buffer,...
                     opt_struct.filter_width,opt_struct.filter_window,false);
-
-%                 data_buffer.data=fermi_filter_isodim2(data_buffer.data,...
-%                     opt_struct.filter_width,opt_struct.filter_window,false);
-%             elseif strcmp(vol_type,'4D')
-%                 data_buffer.data=fermi_filter_isodim2(data_buffer.data,...
-%                     opt_struct.filter_width,opt_struct.filter_window,false);
+                
+                %                 data_buffer.data=fermi_filter_isodim2(data_buffer.data,...
+                %                     opt_struct.filter_width,opt_struct.filter_window,false);
+                %             elseif strcmp(vol_type,'4D')
+                %                 data_buffer.data=fermi_filter_isodim2(data_buffer.data,...
+                %                     opt_struct.filter_width,opt_struct.filter_window,false);
             elseif regexpi(vol_type,'radial');
-                if isfield(data_buffer.headfile,'processing_chunk')
-                    t_s=data_buffer.headfile.processing_chunk;
-                    t_e=data_buffer.headfile.processing_chunk;
-                else
-                    t_s=1;
-                    t_e=d_struct.t;
-                end
-                % for time_pt=1:d_struct.t
-                for time_pt=t_s:t_e
-                    %%%% load per time point radial here .... ?
-%                     if d_struct.t>1
-%                         load(['/tmp/temp_' num2str(time_pt) '.mat' ],'data','-v7.3');
-%                         data_buffer.data=data;
-%                     end
+                mem_efficient_filter=true;
+                if mem_efficient_filter;
                     fermi_filter_isodim2_memfix_obj(data_buffer,...
                         opt_struct.filter_width,opt_struct.filter_window,false);
-%                     if d_struct.t>1
-%                         save(['/tmp/temp_' num2str(time_pt) '.mat' ],'data','-v7.3');
-%                     end
+                else
+                    if isfield(data_buffer.headfile,'processing_chunk')
+                        t_s=data_buffer.headfile.processing_chunk;
+                        t_e=data_buffer.headfile.processing_chunk;
+                        fermi_filter_isodim2_memfix_obj(data_buffer,...
+                            opt_struct.filter_width,opt_struct.filter_window,false);
+                    else
+                        t_s=1;
+                        t_e=d_struct.t;
+                        vol_select.z=':';
+                        vol_select.x=':';
+                        vol_select.y=':';
+                        vol_select.c=':';
+                        vol_select.p=':';
+                        if ~isprop(data_buffer.filter_vol_select)
+                            data_buffer.addprop('filter_vol_select');
+                        end
+                        % for time_pt=1:d_struct.t
+                        dind=strfind(opt_struct.output_order,'t');
+                        for time_pt=t_s:t_e  %xyzcpt
+                            vol_select.t=time_pt;
+                            data_buffer.filter_vol_select=vol_select;
+                            %%%% load per time point radial here .... ?
+                            %                     if d_struct.t>1
+                            %                         load(['/tmp/temp_' num2str(time_pt) '.mat' ],'data','-v7.3');
+                            %                         data_buffer.data=data;
+                            %                     end
+                            
+                            fermi_filter_isodim2_memfix_obj(data_buffer,...
+                                opt_struct.filter_width,opt_struct.filter_window,false);
+                            
+                            
+                            
+                            %                     if d_struct.t>1
+                            %                         save(['/tmp/temp_' num2str(time_pt) '.mat' ],'data','-v7.3');
+                            %                     end
+                        end
+                        clear vol_select;
+                    end
                 end
             else
                 warning('%svol_type not specified, DID NOT PERFORM FILTER. \n can use vol_type_override=[2D|3D] to overcome headfile parse defficiency.',data_tag);
                 pause(opt_struct.warning_pause);
-
             end
             %
         else
@@ -1975,15 +2000,22 @@ dim_text=dim_text(1:end-1);
                 else
                     fft_input='kspace';
                 end
-                for time_pt=t_s:t_e
+                %                 if ~isprop(data_buffer,'kspace')
+                %                     data_buffer.addprop('kspace');
+                %                     fft_input='kspace';
+                %                     data_buffer.kspace=data_buffer.data;
+                %                     data_buffer.data=[];
+                %                 else
+                %                     fft_input='kspace';
+                %                 end
+%                 for time_pt=t_s:t_e %%% this timepoint code only works when we're processing a single timepoint of data.
                     %% multi-channel only
-                    %data_buffer.headfile.radial_grid_oversample_factor;
                     dims=size(data_buffer.(fft_input));
+                    enddims=dims(4:end);
                     [c_s,c_e]=center_crop(dims(1),d_struct.x);
                     if numel(size(data_buffer.(fft_input)))>3
                         data_buffer.(fft_input)=reshape(data_buffer.(fft_input),[dims(1:3) prod(dims(4:end))]);
                     end
-                    % these per volume loops appear to cause a memory double.
                     if numel(data_buffer.data) ~= prod(output_dimensions)
                         data_buffer.data=[];
                         fprintf('Prealocate output data\n');
@@ -1992,11 +2024,15 @@ dim_text=dim_text(1:end-1);
                         data_buffer.data=complex(zeros([ d_struct.x,d_struct.x,d_struct.x  prod(dims(4:end))],'single'));
                     end
                     t_fft=tic;
-                    for v=1:size(data_buffer.kspace,4)
+                    fprintf('\t fft start\n\t');
+                    for v=1:size(data_buffer.(fft_input),4)
+                        fprintf('%d ',v);
                         temp =fftshift(ifftn(data_buffer.(fft_input)(:,:,:,v)));
                         data_buffer.data(:,:,:,v)=temp(c_s:c_e,c_s:c_e,c_s:c_e);
                     end
-                end
+%                 end
+                dims=size(data_buffer.data);
+                data_buffer.data=reshape(data_buffer.data,[ dims(1:3) enddims]);
                 fprintf('FFT finished in %f seconds\n',toc(t_fft));
                 data_buffer.headfile.grid_crop=[c_s,c_e];
                 clear c_s c_e dims temp;
@@ -2182,6 +2218,7 @@ dim_text=dim_text(1:end-1);
                 end
             end
             %% combine channel data
+            % should make collapse dimension function.
             if ~opt_struct.skip_combine_channels && d_struct.c>1
                 if regexp(vol_type,'2D|3D')
                     % To respect the output order we use strfind.
@@ -2200,7 +2237,8 @@ dim_text=dim_text(1:end-1);
                     end
                 else
                     fprintf('Radial channel combine');
-                    dind=4;
+                    tind=strfind(opt_struct.output_order,'t'); 
+                    dind=strfind(opt_struct.output_order,'c'); 
                     if isfield(data_buffer.headfile,'processing_chunk')
                         t_s=data_buffer.headfile.processing_chunk;
                         t_e=data_buffer.headfile.processing_chunk;
@@ -2209,7 +2247,7 @@ dim_text=dim_text(1:end-1);
                         t_e=d_struct.t;
                     end
                     % for time_pt=1:d_struct.t
-                    for time_pt=t_s:t_e
+%                     for time_pt=t_s:t_e
 %                         if d_struct.t>1
 %                             load(['/tmp/temp_img' num2str(time_pt) '.mat' ],'data','-v7.3');
 %                             data_buffer.data=data;
@@ -2228,7 +2266,7 @@ dim_text=dim_text(1:end-1);
 %                             data=reshape(data_buffer.data,dims);
 %                             save(['/tmp/temp_img' num2str(time_pt) '.mat' ],'data','-v7.3');
 %                         end
-                    end
+%                     end
                     fprintf('\tComplete.\n');
                 end
                 clear dind data;

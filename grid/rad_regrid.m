@@ -230,6 +230,15 @@ else
     end
     %%% we need an oversample space to work in to prevent re-allocating all
     %%% the time
+    if isfield(data_buffer.headfile,'processing_chunk')
+        t_s=data_buffer.headfile.processing_chunk;
+        t_e=data_buffer.headfile.processing_chunk;
+        do_not_process_time=1;
+    else
+        t_s=1;
+        t_e=d_struct.t;
+        do_not_process_time=0;
+    end
     if oversample_factor==1
         output_field='data';
     else
@@ -238,9 +247,11 @@ else
             data_buffer.addprop('kspace');
             fprintf('Prealocate regrid data\n');
             if ~strcmp(data_buffer.headfile.rad_mat_option_combine_method,'regrid')
-                data_buffer.(output_field)=complex(zeros([ oversample_factor*d_struct.x,oversample_factor*d_struct.x,oversample_factor*d_struct.x output_dimensions(4:end-1)],'single'));
+                data_buffer.(output_field)=complex(zeros([ oversample_factor*d_struct.x,oversample_factor*d_struct.x,oversample_factor*d_struct.x output_dimensions(4:end-do_not_process_time)],'single'));
             else
-                data_buffer.(output_field)=complex(zeros([ oversample_factor*d_struct.x,oversample_factor*d_struct.x,oversample_factor*d_struct.x output_dimensions(5:end-1)],'single'));
+                %%% double checked this, i've got this if condition
+                %%% correct. We're skipping the channel dimension.
+                data_buffer.(output_field)=complex(zeros([ oversample_factor*d_struct.x,oversample_factor*d_struct.x,oversample_factor*d_struct.x output_dimensions(5:end-do_not_process_time)],'single'));
             end
         end
 
@@ -271,13 +282,7 @@ else
     if numel(rdims>=5)
         data_buffer.radial=reshape(data_buffer.radial,[rdims(1:4)  prod(rdims(5:end))]);
     end
-    if isfield(data_buffer.headfile,'processing_chunk')
-        t_s=data_buffer.headfile.processing_chunk;
-        t_e=data_buffer.headfile.processing_chunk;
-    else
-        t_s=1;
-        t_e=d_struct.t;
-    end
+
     % for time_pt=1:d_struct.t
     for time_pt=t_s:t_e
         %data_buffer.headfile.ray_blocks-(data_buffer.headfile.ray_blocks_per_volume-1)
@@ -292,6 +297,7 @@ else
         index_end  =(index_start-1)+data_buffer.headfile.ray_blocks_per_volume;
         %%% move the frequency filter for the first and last timepoints where we dont
         %%% have enough data for centered reconstruction yet
+        %%% all data is saved centered, so complete data is the first key.
         % if index_start< ceil(data_buffer.headfile.ray_blocks_per_volume/2)
         if index_start < 1
             index_start=1;
@@ -339,7 +345,7 @@ else
 %         dcf=dcf.*f_filter;
 %         dcf(f_filter==0)=[];
         
-        process_volumes=d_struct.c*d_struct.p;
+        process_volumes=d_struct.c*d_struct.p;  %%%%  *(t_e-t_s+1)
         %%
         if strcmp(data_buffer.headfile.rad_mat_option_combine_method,'regrid')
             %%%% make traj/dcf longer by n channels
@@ -381,34 +387,37 @@ else
             
             radial=reshape(radial,[2,alenght,d_r(5:end)]);
             clear f_r;
-% % %             
-% % %             f_t=repmat(f_filter,[size(traj,1),1]);
-% % %             f_t=reshape(f_t,[d_t(2),d_t(1),d_t(3:end)]);
-% % %             f_t=permute(f_t,[2,1,3,4]);
-% % % %             f_t=reshape(f_t,[3,d_f(1),prod(d_f(2:3))]);
-% % %             traj=reshape(traj,[d_t(1:2),prod(d_t(3:end))]);
-% % %             traj(f_t==0)=[]; 
-% % %             traj=reshape(traj,[3,numel(traj)/3]);
-% % %             clear f_t;
-% % %             
-% % %             f_d=reshape(f_filter,[d_d(1),prod(d_d(2:end))]);
-% % %             dcf=reshape(dcf,[d_d(1),prod(d_d(2:end))]);
-% % %             dcf(f_d==0)=[];
-% % %             clear f_d;
-            
+
+            time_cd=time_pt;
+            if  t_s==t_e
+                time_cd=1;
+            elseif t_s>1
+                warning('t_s over 1 but not equal to t_e never tested!');
+                time_cd=time_cd-(t_s-1);
+            end
+
+            %%% process one timepoint worth of data.            
             for v=1:process_volumes
                 temp=...
                     grid3_MAT(double(radial(:,:,v)),...
                     traj,...
                     dcf,oversample_factor*d_struct.x,8);
-%                 data_buffer.(output_field)(:,:,:,v)=complex(single(temp(1,:,:,:)),single(temp(2,:,:,:)));
-                holding_zone(:,:,:,v)=complex(single(temp(1,:,:,:)),single(temp(2,:,:,:)));
+                %(:,:,:,:,time_cd)=(time_cd-1)
+                %time_pt 1, v1-2, time_pt 2, v3-4, time_pt3, 5-6, time_pt 4, 7-8
+                %1 v
+                %(pv*(tp-1))+v
+                hz_idx=v+(time_cd-1)*process_volumes;
+                holding_zone(:,:,:,hz_idx)=complex(single(temp(1,:,:,:)),single(temp(2,:,:,:)));
 %                 imagesc(log(abs(holding_zone(:,:,192,v))))
             end
+            %%% handle time timefoollery in case we did a range of
+            %%% timepoints, or just one that wasnt the first.
+
             data_buffer.(output_field)=holding_zone;
-            clear holding_zone;
+            clear holding_zone hz_idx;
 
         else
+            %% 
             %%% experimental pass extra data to the re-gridder by duplicating
             %%% trajectory and dcf.
             % pushed above data_buffer.radial=reshape([real(data_buffer.radial);imag(data_buffer.radial)],[2,size(data_buffer.radial)]);
@@ -446,6 +455,7 @@ else
     end
     %%% because of reasons we have to permute back on radial scans.
     %%% xyztcp  123564
+    data_buffer.(output_field)=reshape(data_buffer.(output_field),dims);
     data_buffer.(output_field)=permute(data_buffer.(output_field),[1,2,3,5,6,4]);
 %     if oversample_factor~=1
 %         data_buffer.kspace=re_gridded_data;
