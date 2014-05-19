@@ -1,0 +1,62 @@
+there are options to skip the scanner -> civm header conversion step, and I've also added a
+load arbitrary civm header function.
+So, to summarize two new options,
+  no_scanner_header - skips trying to load a header from the machine and
+you have to provide all the necessary recon variables through options, or
+  pre_defined_header loads a file from disk with lines of name=value, to
+use this option you should add
+'pre_defined_header=/path/to/some/file.kellyheader'. If you just specify
+pre_defined_header it will look for manual.headfile in the data directory.
+pre_defined_header still requires no_scanner_header to skip looking for
+the scanner header\
+
+These instructions were written to help a student with a different mri system, 
+but the requirements are the same.
+
+You must add the keyhole, keyhole_window options for this to work.
+
+
+Other new option you may want is integrated_rolling(still requires badly
+named skip_resort).
+
+... It is really not fun to try and do this manually with
+no_scanner_header, but here is my first pass. Part of my trouble is I
+don't know what data I'm looking at when I try to recon.
+This command manages to make images. But I think I did it wrong, I think
+what I wanted was a 2D multi-echo or multi-volume recon.
+
+rad_mat('civmaspect','A14129','010129',{'ignore_kspace_oversize','overwrite
+','U_dimension_order=xpzy','unrecognized_ok','varying_parameters=echos','sk
+ip_rotate','no_scanner_header','S_scanner_tag=A_','A_vol_type=3D','A_vol_ty
+pe_detail=single','A_kspace_bit_depth=32','A_kspace_data_type=Real','dim_X=
+128','dim_Y=128','dim_Z=9','ne=1','A_volumes=1','ray_blocks=1','kspace_endi
+an=little','A_channels=1','binary_header_size=1056','load_skip=0','skip_res
+ort','block_header_size=0','rays_per_block=1152','ray_length=128','U_prefix
+=z_Aspect_','S_PSDname=test','kspace_data_path=/panoramaspace/A14129.work/a
+spect_gre3d_ext_echoes_loop.tnt','display_kspace'});
+
+Here is a 2d multi-echo recon command.... This could be 2D multi slice by
+setting vol_type_detail to multi-volume and ne to 1. I don't know how to
+handle the frequency correction slice in this case..., we might be able to
+play with the loading parameters to 'skip' the frequency correction data.
+rad_mat('civmaspect','A14129','010129',{'ignore_kspace_oversize','overwrite
+','U_dimension_order=xptzy','unrecognized_ok','varying_parameters=echos','s
+kip_rotate','no_scanner_header','S_scanner_tag=A_','A_vol_type=2D','A_vol_t
+ype_detail=multi-echo','A_kspace_bit_depth=32','A_kspace_data_type=Real','d
+im_X=128','dim_Y=128','dim_Z=1','ne=9','A_volumes=9','ray_blocks=9','kspace
+_endian=little','A_channels=1','binary_header_size=1056','load_skip=0','ski
+p_resort','block_header_size=0','rays_per_block=128','ray_length=128','U_pr
+efix=z_Aspect_','S_PSDname=test','kspace_data_path=/panoramaspace/A14129.wo
+rk/aspect_gre3d_ext_echoes_loop.tnt','display_kspace'});
+
+
+This multi-echo recon is unclear what order echoes are in, if this is
+really a multi-echo, it looks the echoes increase in length with time
+starting before the peak(most signal).
+
+I went back and generated a headfile to try the pre_defined_header option
+here is the command, and it is attached.
+rad_mat('civmaspect','A14129','010129',{'ignore_kspace_oversize','overwrite
+',
+'display_kspace','pre_defined_headfile','no_scanner_header','skip_resort'})
+;

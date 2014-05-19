@@ -1,0 +1,28 @@
+The civm operation runs as follows,
+open matlab, run the matlab_startup script appropriate for civm software that the lab maintains,
+type in a rad_mat command.
+ex, rad_mat('brukersystemname','B00000',{'bruker_patient','bruker_scannum'});
+if the bruker_study must be mentioned becuase names all collide,
+use
+rad_mat('brukersystemname','B00000',{'bruker_patient','bruker_scannum'},{'study=bruker_study'});
+
+rad_mat is roughly separated into stages, these stages should be separated into their own matlab functions, but i have not tackled that yet.
+the earlier uglier stages might be easier to separate, including the gui for example.
+
+the stages are,
+-check input arguments
+-load engine/scanner dependency settings
+-get data from scanner
+-estimate required disk/memory space requirments, decide on recon strategy to use
+-get user archive settings via civm gui
+-for each chunk of work
+  +load data according to recon strategy
+  +if radial load trajectory
+  +if radial load appropriate density compensation(this needs work on the filtering code )
+  +regrid/reshape data
+  +apply fermi filiter to data
+  +fft data
+  +if working in chunks save each chunk
+
+-stitch chunks together
+-save desired ouput volumes.
