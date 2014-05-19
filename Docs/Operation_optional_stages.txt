@@ -1,0 +1,4 @@
+
+-engine/scanner depdendency loading,calls on engine_dependency files, with name=value format, with a few specific values of note. 
+-loading scanner header, calls on a perl script called dumpHeader.pl, this script is part of pipeline_utilities, and requires the setup of the dependency files for scanner and engine.
+-civm_gui, calls on an image j macro which reads our recon_menu.txt definition and displays the relevant selections. 
