@@ -187,7 +187,7 @@ beta_options={
     'display_radial_filter',  ' show the radial filter via imshow'
     'open_volume_limit',      ' override the maximum number of volumes imagej will open at a time,default is 36. use open_volume_limit=##'
     'warning_pause',          ' length of pause after warnings (default 3). Errors outside matlab from the perl parsers are not effected. use warning_pause=##'
-    'no_navigator',           ''
+    'no_navigator',           ' aspect spinecho? scans have a navigator of 50 points, this forces that off.'
     '',                       ''
     };
 planned_options={
