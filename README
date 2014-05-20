@@ -29,8 +29,14 @@ loading code should understand chunks and know which chunk to load,
   this code will have to be pretty smart, and may be unique to each scanner input.(maybe unique per scan sequence)
 
 
+Utility Code:
+Automatic code to find what variables are used in the headfile.
+find_used_hfkeys.pl
 
+Automatic code to find where a specified variable is used in the scripts.
+find_hfkey_usage.pl
 
+USAGE,
+./find_used_hfkeys.pl
 
-  
-
+./find_hfkey_usage.pl U_civmid U_runno U_code ray_length 
