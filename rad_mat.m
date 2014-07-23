@@ -1362,7 +1362,15 @@ fprintf(['recon proceding of file at %s\n'...
     data_in.precision_string,...
     data_in.disk_endian);
 
-clear dim_order ds ;
+% if ~opt_struct.skip_write_headfile
+    dest=[data_buffer.headfile.work_dir_path '/' 'rad_mat.headfile'];
+    fprintf('\ttemp headfile save \n\t\t%s\n',dest);
+%     data_buffer.headfile.output_image_path=space_dir_img_folder;
+    write_headfile(dest,data_buffer.headfile,0);
+    % insert validate_header perl script check here?
+% end
+
+clear dim_order ds dest ;
 
 
     %% reconstruction
