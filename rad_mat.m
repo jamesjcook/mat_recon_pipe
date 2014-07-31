@@ -192,6 +192,8 @@ beta_options={
     };
 planned_options={
     '',                       'Options we may want in the future, they might have been started. They could even be finished and very unpolished. '
+    'combine_kspace',         ' combine dimensions in kspace, use combine_kspace=text, text is a string at least one character long. Remember p is used for changing parameters'
+    'combine_kspace_method',  ' mechod to combine kspace, should be comma separated list if there is more than one.'
     'write_phase',            ' write a phase output to the work directory'
     'fp32_magnitude',         ' write fp32 civm raws instead of the normal ones'
     'write_kimage',           ' write the regridded and filtered kspace data to the work directory.'
@@ -398,6 +400,8 @@ if regexp(opt_struct.kspace_shift,'[-]?[0-9]+(:[-]?[0-9]+){0,2}')
     for ks=1:length(temp)
         opt_struct.kspace_shift(ks)=str2double(temp{ks});
     end
+elseif regexpi(opt_struct.kspace_shift,'^AUTO$')
+   warning('kspace_shift set to auto');
 else
     kspace_shift_string='kspace_shift params incorrect. Must be comma separated list of integers, with at most 3 elements.';
     if ~opt_struct.ignore_errors
@@ -507,7 +511,12 @@ clear cmd s datapath puller_data puller_data work_dir_name p_status;
 %% load data header and insert unrecognized fields into headfile
 if ~opt_struct.no_scanner_header
     data_buffer.input_headfile=load_scanner_header(scanner, data_buffer.headfile.work_dir_path ,opt_struct);
+    if isfield(data_buffer.input_headfile,'U_scanner_vendor')
+        data_buffer.scanner_constants.scanner_vendor=data_buffer.input_headfile.U_scanner_vendor;
+    end
 end
+% disp(scanner_vendor);
+
 if ~islogical(opt_struct.pre_defined_headfile)||opt_struct.pre_defined_headfile==1
     if islogical(opt_struct.pre_defined_headfile)
         warning('Loading manual header from work directory manual.headfile');
@@ -921,7 +930,7 @@ elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
         (data_in.disk_bit_depth/8);
     % minimum amount of bytes of data we can load at a time,
 else
-    error('Stopping for unrecognized scanner_vendor, not sure if how to calculate the memory size.');
+    error(['Stopping for unrecognized scanner_vendor:', data_buffer.scanner_constants.scanner_vendor,', not sure if how to calculate the memory size.']); 
 %     % not bruker, no ray padding...
 %     data_input.sample_points = ray_length*rays_per_block*ray_blocks;
 %     % because ray_length is doubled, this is doubled too.
@@ -965,7 +974,7 @@ if kspace_file_size~=measured_filesize
         
         
     else %if measured_filesize<kspace_file_size    %if measured < exected fail.
-        if strcmp(scanner_vendor,'aspect') && remainder==aspect_remainder
+        if strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect') && remainder==aspect_remainder
             warning('Measured data file size and calculated dont match. However this is Aspect data, and we match our expected remainder! \nMeasured=\t%d\nCalculated=\t%d\n\tAspect_remainder=%d\n',measured_filesize,kspace_file_size,aspect_remainder);
         else
             error('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=\t%d\nCalculated=\t%d\n',measured_filesize,kspace_file_size);
@@ -1757,6 +1766,78 @@ dim_text=dim_text(1:end-1);
         end
         %% kspace shifting
         %opt_struct.kspace_shift
+        if ~isnumeric(opt_struct.kspace_shift)
+            if regexpi(opt_struct.kspace_shift,'AUTO')
+                fprintf('AUTO Kspace Centering\n');
+                dim_select.x=':';
+                dim_select.y=':';
+                dim_select.z=':';
+                for tn=1:d_struct.t
+                    dim_select.t=tn;
+                    for cn=1:d_struct.c
+                        dim_select.c=cn;
+                        for pn=1:d_struct.p
+                            dim_select.p=pn;
+                            tmp=squeeze(data_buffer.data(...
+                                dim_select.(opt_struct.output_order(1)),...
+                                dim_select.(opt_struct.output_order(2)),...
+                                dim_select.(opt_struct.output_order(3)),...
+                                dim_select.(opt_struct.output_order(4)),...
+                                dim_select.(opt_struct.output_order(5)),...
+                                dim_select.(opt_struct.output_order(6))...
+                                ));
+                            %                             channel_code=opt_struct.channel_alias(cn);
+                            %                             channel_code_r=[channel_code '_'];
+                            channel_code_r='';
+                            input_center=get_wrapped_volume_center(tmp);
+                            ideal_center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
+                            shift_values=ideal_center-input_center;
+                            for di=1:length(shift_values)
+                                if shift_values(di)<0
+                                    shift_values(di)=shift_values(di)+size(data_buffer.data,di);
+                                end
+                            end
+                            if ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X' ])
+                                data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' ])=shift_values(strfind(opt_struct.output_order,'x'));
+                                data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' ])=shift_values(strfind(opt_struct.output_order,'y'));
+                                data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' ])=shift_values(strfind(opt_struct.output_order,'z'));
+                                fprintf('\tSet Roll value\n');
+                            else
+                                % check that existing values are the same or
+                                % similar. lets set tollerance at 5%.
+                                shift_values2=[ data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' ])
+                                    data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' ])
+                                    data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' ])
+                                    ];
+                                for v=1:length(shift_values) 
+                                    if shift_values(v) ~= shift_values2(v)
+                                        if abs(shift_values2(v)-shift_values(v))>output_dimensions(v)*0.05
+                                            warning('change for shift values, %d over 5%, one %d, two %d.',v,shift_values(v),shift_values2(v));
+                                            pause(opt_struct.warning_pause);
+                                            shift_values(v)=shift_values2(v);
+                                        end
+                                    end
+                                end
+                                fprintf('\tExisting Roll value\n');
+                            end
+                            fprintf('\tshift by :');
+                            fprintf('%d,',shift_values);
+                            fprintf('\n');
+                            tmp=circshift(tmp,round(shift_values));
+                            data_buffer.data(...
+                                dim_select.(opt_struct.output_order(1)),...
+                                dim_select.(opt_struct.output_order(2)),...
+                                dim_select.(opt_struct.output_order(3)),...
+                                dim_select.(opt_struct.output_order(4)),...
+                                dim_select.(opt_struct.output_order(5)),...
+                                dim_select.(opt_struct.output_order(6))...
+                                )=tmp;
+                        end
+                    end
+                end
+                opt_struct.kspace_shift=0;
+            end
+        end
         if min(opt_struct.kspace_shift) <0 || max(opt_struct.kspace_shift) > 0
             warning('Kspace shifting choosen. Very uncertain of consequences. Custom output order not supported! Radial not supported. Multi volume/channel not supported.');
             pause(opt_struct.warning_pause);
@@ -1844,6 +1925,24 @@ dim_text=dim_text(1:end-1);
         if opt_struct.write_kimage_unfiltered
             data_buffer.addprop('kspace_unfiltered');
             data_buffer.kspace_unfiltered=data_buffer.data;
+        end
+        %% combine dimensions in kspace
+        % combine kspace by letter string, 
+        % if more than one letter specified combine in order.
+        if ~islogical(opt_struct.combine_kspace)
+            for ks_d=1:length(opt_struct.combine_kspace)
+                if isnumeric(opt_struct.combine_kspace_method)
+                    data_buffer.data=mean(data_buffer.data,strfind(opt_struct.output_order,opt_struct.combine_kspace(ks_d)));
+                elseif regexpi(opt_struct.combine_kspace_method,'max')
+                    data_buffer.data=max(data_buffer.data,strfind(opt_struct.output_order,opt_struct.combine_kspace(ks_d)));
+                elseif regexpi(opt_struct.combine_kspace_method,'mean')
+                    data_buffer.data=mean(data_buffer.data,strfind(opt_struct.output_order,opt_struct.combine_kspace(ks_d)));
+                elseif regexpi(opt_struct.combine_kspace_method,'sum')
+                    data_buffer.data=sum(data_buffer.data,strfind(opt_struct.output_order,opt_struct.combine_kspace(ks_d)));
+                end
+                
+               d_struct.(opt_struct.combine_kspace(ks_d))=1;
+            end
         end
         %% filter kspace data
         if ~opt_struct.skip_filter
@@ -1936,6 +2035,7 @@ dim_text=dim_text(1:end-1);
                 data_buffer.kspace=data_buffer.data;
             end
         end
+        
         %% fft, resort, cut bad data, and display
         if ~opt_struct.skip_fft
             %% fft
