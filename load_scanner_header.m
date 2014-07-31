@@ -7,7 +7,7 @@ function headfile=load_scanner_header(scanner,directory,name,opt_struct)
 % 
 % input 
 % scanner, scanner name (as we would normally specify on command line)
-% direcyory, directory of data files
+% directory, directory of data files
 % name,    name of temp headfile to save to directory. can be blank and
 % we'll save scanner_vendor.headfile
 % opt_struct option struct from rad mat, can be blank. We're only using it
@@ -18,7 +18,7 @@ function headfile=load_scanner_header(scanner,directory,name,opt_struct)
 % 
 if ~exist('directory','var')
     help load_scanner_header;
-    error('Must specify scanner and direcyory');
+    error('Must specify scanner and directory');
 %     directory=scanner;
 %     scanner='';
 end
