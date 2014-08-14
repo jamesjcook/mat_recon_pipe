@@ -3,7 +3,7 @@
 % script QueuedACQ is used in the acquisition of the data. 1) Data are
 % transferred from the Bruker scanner; 2) Images are reconstructed (no
 % keyhole) 3) T1, M0, E1 are calculated from the reconstructed images.
-
+exit();
 % Ergys Subashi
 % June, 2012
 
@@ -24,7 +24,7 @@ tStart=tic;
 
 
 %% Get data from Bruker scanner
-local_dir='/androsspace'; cd(local_dir);
+local_dir='/nospace'; cd(local_dir);
 T1map_dir=[local_dir '/' T1_runno '.work']; mkdir(T1map_dir);
 T1_ScanRange_string=[num2str(T1_ScanRange(1)) '-' num2str(T1_ScanRange(end))];
 getbruker_command=['/pipe_home/script/bash/getbruker.bash ' T1map_dir ' ' Patient_ID ' ' Study ' ' T1_ScanRange_string];
@@ -66,31 +66,51 @@ for i=T1_ScanRange
     im_name=[T1_runno '_m' num2str(im_indx)];
     cd(T1map_dir);
     if strcmp(RF_coil, '4-element-array')
+        %the function below, "Bruker_recon_3Dradial_4element_array_coil"
+        %does not seem to send back images that are scaled properly. For
+        %example, the image intensity at a 10deg FA is not larger than the
+        %image intensity at a 2deg FA (actually, the function return the
+        %same image amplitude, so it seems that there is a scaling
+        %problem?).
         im=Bruker_recon_3Dradial_4element_array_coil(im_name, kspace_data, kspace_coords, dcf, mat);
         varFAstack(:, im_indx)=im(:);
+        %ADDED BY JOHN BELOW
+        varFAstack(:, im_indx)=varFAstack(:, im_indx)/sin(FAvalues(im_indx)/180*pi);
     elseif strcmp(RF_coil, 'cryocoil')
         im=Bruker_recon_3Dradial_cryocoil(im_name, kspace_data, kspace_coords, dcf, mat);
         varFAstack(:, im_indx)=im(:);
+        %ADDED BY JOHN BELOW
+        varFAstack(:, im_indx)=varFAstack(:, im_indx)/sin(FAvalues(im_indx)/180*pi);
     else
         disp('Select correct RF coil: either "4-element-array" or "cryocoil"');
     end
 end
 
 
-%% Calculate T1map, M0map, and E1map
+%% Calculate T1map, M0map, and E1map. it also saves the different images used to calculate the T1 map.
 [T1map, Mo_map, E1]=calcT1map_3D(TR, FAvalues, varFAstack, mat);
 
-image_name=[T1_runno 'T1.f32'];
+image_name=[T1_runno '_FAFirst.fp32'];
+fid=fopen(image_name, 'w');
+fwrite(fid, varFAstack(:, 1), 'float32', 'l'); %Little-endian ordering (lab convention)
+fclose(fid);
+
+image_name=[T1_runno '_FASecond.fp32'];
+fid=fopen(image_name, 'w');
+fwrite(fid, varFAstack(:, 2), 'float32', 'l'); %Little-endian ordering (lab convention)
+fclose(fid);
+
+image_name=[T1_runno 'T1.fp32'];
 fid=fopen(image_name, 'w');
 fwrite(fid, T1map, 'float32', 'l'); %Little-endian ordering (lab convention)
 fclose(fid);
 
-image_name=[T1_runno 'M0.f32'];
+image_name=[T1_runno 'M0.fp32'];
 fid=fopen(image_name, 'w');
 fwrite(fid, Mo_map, 'float32', 'l'); %Little-endian ordering (lab convention)
 fclose(fid);
 
-image_name=[T1_runno 'E1.f32'];
+image_name=[T1_runno 'E1.fp32'];
 fid=fopen(image_name, 'w');
 fwrite(fid, E1, 'float32', 'l'); %Little-endian ordering (lab convention)
 fclose(fid);
