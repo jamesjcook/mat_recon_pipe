@@ -1947,11 +1947,13 @@ dim_text=dim_text(1:end-1);
                 if islogical(opt_struct.combine_kspace_method)
                     data_buffer.data=mean(data_buffer.data,strfind(opt_struct.output_order,opt_struct.combine_kspace(ks_d)));
                 elseif regexpi(opt_struct.combine_kspace_method,'max')
-                    data_buffer.data=max(data_buffer.data,strfind(opt_struct.output_order,opt_struct.combine_kspace(ks_d)));
+                    data_buffer.data=max(data_buffer.data,strfind(opt_struct.output_order,[],opt_struct.combine_kspace(ks_d)));
                 elseif regexpi(opt_struct.combine_kspace_method,'mean')
                     data_buffer.data=mean(data_buffer.data,strfind(opt_struct.output_order,opt_struct.combine_kspace(ks_d)));
                 elseif regexpi(opt_struct.combine_kspace_method,'sum')
                     data_buffer.data=sum(data_buffer.data,strfind(opt_struct.output_order,opt_struct.combine_kspace(ks_d)));
+                else
+                    error(['combine_kspace_method ' opt_struct.combine_kspace_method ' unrecognized']);
                 end
                 output_dimensions(strfind(opt_struct.output_order,opt_struct.combine_kspace(ks_d)))=1;
                 data_buffer.headfile.([data_tag 'volumes'])=data_buffer.headfile.([data_tag 'volumes'])/d_struct.(opt_struct.combine_kspace(ks_d));
