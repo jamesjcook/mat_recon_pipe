@@ -83,7 +83,7 @@ if ( nargin<3)
     end
     
 end
-%% data refernece setup
+%% data reference setup
 img=0;
 % success_status=false;
 data_buffer=large_array;
@@ -163,6 +163,8 @@ beta_options={
     'output_order',           ' specify the order of your output dimensions. Default is xyzcpt. use output_oder=xyzcpt.'
     'channel_alias',          ' list of values for aliasing channels to letters, could be anything using this'
     'combine_method',         ' specify the method used for combining multi-channel data. supported modes are square_and_sum, or mean, use  combine_method=text'
+    'combine_kspace',         ' combine dimensions in kspace, use combine_kspace=text, text is a string at least one character long. Remember p is used for changing parameters'
+    'combine_kspace_method',  ' mechod to combine kspace, should be comma separated list if there is more than one.'
     'skip_combine_channels',  ' do not combine the channel images'
     'write_complex',          ' should the complex output be written to th work directory. Will be written as rp(or near rp file) format.'
     'do_aspect_freq_correct', ' perform aspect frequency correction.'
@@ -192,8 +194,6 @@ beta_options={
     };
 planned_options={
     '',                       'Options we may want in the future, they might have been started. They could even be finished and very unpolished. '
-    'combine_kspace',         ' combine dimensions in kspace, use combine_kspace=text, text is a string at least one character long. Remember p is used for changing parameters'
-    'combine_kspace_method',  ' mechod to combine kspace, should be comma separated list if there is more than one.'
     'write_phase',            ' write a phase output to the work directory'
     'fp32_magnitude',         ' write fp32 civm raws instead of the normal ones'
     'write_kimage',           ' write the regridded and filtered kspace data to the work directory.'
@@ -873,6 +873,19 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
         % the number of points in kspace that were sampled.
         % this does not include header or padding
         data_in.min_load_bytes= 2*data_in.line_points*rays_per_block*(data_in.disk_bit_depth/8);
+        
+        % somehow for john's rare acquisition the rays_per_block includes
+        % the channel information, This causes my line_points to be off,
+        % which caues my min_load_bytes to be off. We'll set special var
+        % here to fix that.
+        if isfield(data_buffer.headfile,'B_rare_factor')
+            if data_buffer.headfile.B_rare_factor==1
+                data_in.line_points   = ray_length;
+                data_in.total_points = ray_length*rays_per_block*ray_blocks;
+                data_in.min_load_bytes= 2*data_in.line_points*rays_per_block*(data_in.disk_bit_depth/8);
+            end
+        end
+            
         % minimum amount of bytes of data we can load at a time, 
         % this includes our line padding but no our header bytes which 
         % we could theoretically skip.
@@ -1365,7 +1378,7 @@ fprintf(['recon proceding of file at %s\n'...
     data_buffer.headfile.kspace_data_path, ....
     dim_order, ds,...
     binary_header_size,...
-    min_load_size,...
+    min_load_size*(data_in.disk_bit_depth/8),...
     chunk_size/min_load_size,...
     load_skip,...    
     data_in.precision_string,...
@@ -1931,7 +1944,7 @@ dim_text=dim_text(1:end-1);
         % if more than one letter specified combine in order.
         if ~islogical(opt_struct.combine_kspace)
             for ks_d=1:length(opt_struct.combine_kspace)
-                if isnumeric(opt_struct.combine_kspace_method)
+                if islogical(opt_struct.combine_kspace_method)
                     data_buffer.data=mean(data_buffer.data,strfind(opt_struct.output_order,opt_struct.combine_kspace(ks_d)));
                 elseif regexpi(opt_struct.combine_kspace_method,'max')
                     data_buffer.data=max(data_buffer.data,strfind(opt_struct.output_order,opt_struct.combine_kspace(ks_d)));
@@ -1940,8 +1953,9 @@ dim_text=dim_text(1:end-1);
                 elseif regexpi(opt_struct.combine_kspace_method,'sum')
                     data_buffer.data=sum(data_buffer.data,strfind(opt_struct.output_order,opt_struct.combine_kspace(ks_d)));
                 end
-                
-               d_struct.(opt_struct.combine_kspace(ks_d))=1;
+                output_dimensions(strfind(opt_struct.output_order,opt_struct.combine_kspace(ks_d)))=1;
+                data_buffer.headfile.([data_tag 'volumes'])=data_buffer.headfile.([data_tag 'volumes'])/d_struct.(opt_struct.combine_kspace(ks_d));
+                d_struct.(opt_struct.combine_kspace(ks_d))=1;
             end
         end
         %% filter kspace data
