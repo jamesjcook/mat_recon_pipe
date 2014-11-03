@@ -1947,7 +1947,7 @@ dim_text=dim_text(1:end-1);
                 if islogical(opt_struct.combine_kspace_method)
                     data_buffer.data=mean(data_buffer.data,strfind(opt_struct.output_order,opt_struct.combine_kspace(ks_d)));
                 elseif regexpi(opt_struct.combine_kspace_method,'max')
-                    data_buffer.data=max(data_buffer.data,strfind(opt_struct.output_order,[],opt_struct.combine_kspace(ks_d)));
+                    data_buffer.data=max(data_buffer.data,[],strfind(opt_struct.output_order,opt_struct.combine_kspace(ks_d)));
                 elseif regexpi(opt_struct.combine_kspace_method,'mean')
                     data_buffer.data=mean(data_buffer.data,strfind(opt_struct.output_order,opt_struct.combine_kspace(ks_d)));
                 elseif regexpi(opt_struct.combine_kspace_method,'sum')
