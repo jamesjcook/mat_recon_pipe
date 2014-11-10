@@ -63,9 +63,10 @@ system(cmd);
 
 
 %% load list
-list='S65460_01/ser02.fid;S65460_m01, S65460_01/ser03.fid;S65460_m02, S65460_01/ser04.fid;S65460_m03, S65460_01/ser05.fid;S65460_m04, S65460_01/ser06.fid;S65460_m05, S65460_01/ser07.fid;S65460_m06, S65460_01/ser08.fid;S65460_m07';
-list=strsplit(list,', '); 
 %S65460.list
+% list='S65460_01/ser02.fid;S65460_m01, S65460_01/ser03.fid;S65460_m02, S65460_01/ser04.fid;S65460_m03, S65460_01/ser05.fid;S65460_m04, S65460_01/ser06.fid;S65460_m05, S65460_01/ser07.fid;S65460_m06, S65460_01/ser08.fid;S65460_m07';
+list=radish_load_info_stub(sprintf('%s/%s.work/%s',ec.engine_work_directory,base_runno,list_file));
+list=strsplit(list,', '); 
 opts={'debug_mode=0','warning_pause=0','skip_fft=0','skip_write_temp_headfile','write_complex'};
 if exist('rad_options','var')
 opts=[opts,rad_options];
