@@ -1298,11 +1298,13 @@ if islogical(opt_struct.param_file)
         display('Gathering gui info ...');
     end
     data_buffer.engine_constants.engine_recongui_menu_path;
-    [~, gui_dump]=system(['$GUI_APP ' ...
+gui_cmd=sprintf(['$GUI_APP ' ...
         ' ''' data_buffer.engine_constants.engine_constants_path ...
         ' ' data_buffer.engine_constants.engine_recongui_menu_path ...
         ' ' data_buffer.scanner_constants.scanner_tesla ...
         ' ''']);
+fprintf('%s\n',gui_cmd);
+    [~, gui_dump]=system(gui_cmd);
     use_GUI_DUMP=true;
     %opt_struct.param_file
 elseif ~islogical(opt_struct.param_file) 
@@ -1343,9 +1345,6 @@ elseif opt_struct.testmode
 end
 
 if use_GUI_DUMP
-    if isempty(gui_info_lines) && ~opt_struct.ignore_errors
-        error('GUI did not return values!');
-    end
     gui_info_lines=strtrim(strsplit(gui_dump,'\n'));
     for l=1:length(gui_info_lines)
         gui_info=strsplit(gui_info_lines{l},':::');
@@ -1356,6 +1355,9 @@ if use_GUI_DUMP
         else
             fprintf('ignoring gui input line:%s\n',gui_info_lines{l});
         end
+    end
+    if isempty(gui_info_lines) && ~opt_struct.ignore_errors
+        error('GUI did not return values! gui returned %s',gui_dump);
     end
 end
 
