@@ -1289,7 +1289,7 @@ end
 %opt_struct.param_file
 % if not testmode then create headfile
 if islogical(opt_struct.param_file) 
-    if opt_struct.paramfile
+    if opt_struct.param_file
         warn('You tried to specifiy a param file, but forgot to enter it.');
         pause( opt_struct.warning_pause ) ;
     end
