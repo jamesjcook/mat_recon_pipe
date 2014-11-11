@@ -1288,6 +1288,7 @@ if ~regexp(data_buffer.headfile.U_runno,'^[A-Z][0-9]{5-6}.*')
 end
 %opt_struct.param_file
 % if not testmode then create headfile
+gui_info_lines='';
 if islogical(opt_struct.param_file) 
     if opt_struct.param_file
         warn('You tried to specifiy a param file, but forgot to enter it.');
