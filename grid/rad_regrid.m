@@ -1,4 +1,4 @@
-function rad_regid(data_buffer,c_dims)
+function rad_regrid(data_buffer,c_dims)
 % function to turn sampled points into their cartesian grid equivalent.
 % when cartesian its just a reshape operation.
 %
@@ -36,6 +36,9 @@ else
 end
 timepoints=data_buffer.input_headfile.([data_tag 'volumes'])/channels/params;
 dim_order=data_buffer.input_headfile.([data_tag 'dimension_order' ]);
+if numel(c_dims)<numel(dim_order)
+    dim_order=c_dims;
+end
 if  isfield (data_buffer.input_headfile,[data_tag 'rare_factor'])
     r=data_buffer.input_headfile.([data_tag 'rare_factor']);
     % report_order=data_buffer.input_headfile.([data_tag 'axis_report_order']);
@@ -83,6 +86,7 @@ if( ~strcmp(data_buffer.headfile.([data_tag 'vol_type']),'radial'))
     %% cartesian (literally all non-radial, if other sequences come up we'll have to deal)
     permute_code=zeros(size(dim_order));
     for d_num=1:length(dim_order)
+%     for d_num=1:length(c_dims)
         permute_code(d_num)=strfind(dim_order,output_order(d_num));
     end
     
@@ -128,7 +132,7 @@ if( ~strcmp(data_buffer.headfile.([data_tag 'vol_type']),'radial'))
     data_buffer.data=reshape(data_buffer.data,input_dimensions);
     data_buffer.data=permute(data_buffer.data,permute_code ); % put in image order(or at least in fft order).
     % end
-    data_buffer.data=reshape(data_buffer.data,output_dimensions);% x yr z c
+    data_buffer.data=reshape(data_buffer.data,output_dimensions(1:numel(c_dims)));% x yr z c
     
     encoding_sort=false;
     if isfield(data_buffer.input_headfile,'dim_X_encoding_order')

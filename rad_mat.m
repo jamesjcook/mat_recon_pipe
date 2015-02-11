@@ -991,9 +991,9 @@ if kspace_file_size~=measured_filesize
         % extra warning when acaual is greater than 10% of exptected
         
         if remainder/kspace_file_size> 0.1 && remainder~=aspect_remainder
-            msg=['Big difference between measured and calculated!\n' ...
+            msg=sprintf(['Big difference between measured and calculated!\n' ...
                 '\tSUCCESS UNLIKELY!\n' ...
-                'ignore_kspace_oversize enabled, but more than 10% data will be ignored'];
+                'ignore_kspace_oversize enabled, but more than 10%% data will be ignored']);
             if strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
                 error(msg);
             else
@@ -1085,7 +1085,8 @@ if useable_RAM>=maximum_RAM_requirement || opt_struct.skip_mem_checks
     c_dims=[ d_struct.x,...
         d_struct.y,...
         d_struct.z];
-    warning('c_dims set poorly just to volume dimensions for now');
+    c_dims=data_buffer.input_headfile.([data_tag 'dimension_order' ]);
+    warning('c_dims set poorly just to input dimensions for now');
     chunk_size_bytes=max_loadable_chunk_size;
     num_chunks           =kspace_data/chunk_size_bytes;
     if floor(num_chunks)<num_chunks
@@ -1146,14 +1147,16 @@ elseif true
     % of data we can fit in memory, theoretically time will never fit, however
     % it'd be great to get channels, and nice to get any parameter dimension to fit.
     % starting with the last dimension see if  for each dimension see if any will fit with the data loaded.
-    for rd=numel(recon_strategy.dim_string):-1:1
-        if useable_RAM < data_in.total_bytes_RAM...
-                +data_work.single_vol_RAM*prod(output_dimensions(4:rd))...
-                +data_out.single_vol_RAM*prod(output_dimensions(4:rd))
-            recon_strategy.dim_string(rd)=[];
-        end
+    recon_strategy.dim_mask=ones(1,size(input_dimensions,2));
+    rd=numel(recon_strategy.dim_string);
+    while rd>1 && ( useable_RAM < data_in.total_bytes_RAM...
+            +data_work.single_vol_RAM*prod(output_dimensions(4:rd))...
+            +data_out.single_vol_RAM*prod(output_dimensions(4:rd)) ) || ...
+            (output_dimensions(rd)==1)
+        recon_strategy.dim_mask(rd)=0;
+        rd=rd-1;
     end
-    c_dims=output_dimensions(1:rd);
+    recon_strategy.dim_string(recon_strategy.dim_mask==0)=[];
     % if we've removed all except for the first three dimensions do one more
     % check to see if we can fit all input in memory at once with a single
     % recon volume.
@@ -1162,9 +1165,14 @@ elseif true
             %&& useable_RAM < data_work.single_vol_RAM*d_struct.c+data_in.total_bytes_RAM
             recon_strategy.channels_at_once=false;
         end
-        if useable_RAM>=data_in.total_bytes_RAM+data_work.single_vol_RAM+data_out.single_vol_RAM
-            recon_strategy.load_whole=true; 
+        if ( useable_RAM>=data_in.total_bytes_RAM ...
+                + data_work.single_vol_RAM ...
+                + data_out.single_vol_RAM )
+            recon_strategy.load_whole=true;
         else
+            recon_strategy.load_whole=false;
+        end
+        if ~strcmp(data_buffer.headfile.([data_tag 'vol_type']),'radial')
             recon_strategy.load_whole=false;
         end
     end
@@ -1185,13 +1193,18 @@ elseif true
 %         extra_RAM_bytes_required=sample_space_length*3*data_out.RAM_bytes_per_voxel+sample_space_length*data_out.RAM_bytes_per_voxel;
 %     end
 %     vols_or_vols_plus_channels=floor((meminfo.TotalPhys-system_reserved_RAM-data_in.total_bytes_RAM-extra_RAM_bytes_required)/working_space);
-    if recon_strategy.load_whole
-        memory_space_required=data_in.total_bytes_RAM+data_work.single_vol_RAM*prod(output_dimensions(4:rd))+data_out.single_vol_RAM*prod(output_dimensions(4:rd));
+    if recon_strategy.load_whole  %%% this block will only be active for radial right now.
+        memory_space_required=data_in.total_bytes_RAM ...
+            + data_work.single_vol_RAM * prod(output_dimensions(4:rd)) ...
+            + data_out.single_vol_RAM  * prod(output_dimensions(4:rd));
         
-        opt_struct.parallel_jobs=min(12,floor((useable_RAM-data_in.total_bytes_RAM)/data_work.single_vol_RAM*prod(output_dimensions(4:rd))+data_out.single_vol_RAM*prod(output_dimensions(4:rd))));
+        opt_struct.parallel_jobs=min(12,floor((useable_RAM-data_in.total_bytes_RAM)...
+            / data_work.single_vol_RAM*prod(output_dimensions(4:rd)) ...
+            + data_out.single_vol_RAM*prod(output_dimensions(4:rd))));
         % cannot have more than 12 parallel jobs in matlab.
         % max_loadable_chunk_size=((data_in.line_points*rays_per_block+load_skip)*ray_blocks*data_in.disk_bytes_per_sample);
-        max_loadable_chunk_size=((data_in.line_points*rays_per_block)*ray_blocks*data_in.disk_bytes_per_sample);
+        max_loadable_chunk_size=((data_in.line_points*rays_per_block) ...
+            * ray_blocks*data_in.RAM_bytes_per_voxel);
         min_load_size=data_in.min_load_bytes/(data_in.disk_bit_depth/8); % minimum_load_size in data samples.
         
         %this chunk_size only works here because we know that we cut at
@@ -1205,12 +1218,29 @@ elseif true
         num_chunks      =kspace_data/chunk_size_bytes;
         chunk_size=   chunk_size_bytes/(data_in.disk_bit_depth/8);       % chunk_size in # of values (eg, 2*complex_points.
     else
-        error('not tested with more than one load chunk yet');
+        warning('multi chunk not well tested, assumes we can load and recon individual ray_blocks');
+        memory_space_required=data_in.total_bytes_RAM/ray_blocks ...
+            + data_work.single_vol_RAM*prod(output_dimensions(4:rd)) ...
+            + data_out.single_vol_RAM *prod(output_dimensions(4:rd));
+        
+        opt_struct.parallel_jobs=min(12, floor( ...
+        (useable_RAM-data_in.total_bytes_RAM)/data_work.single_vol_RAM ...
+        * prod(output_dimensions(rd:end)) ...
+        + data_out.single_vol_RAM * prod(output_dimensions(rd:end))));
+        % cannot have more than 12 parallel jobs in matlab.
+        % max_loadable_chunk_size=((data_in.line_points*rays_per_block+load_skip)*ray_blocks*data_in.disk_bytes_per_sample);
+        min_load_size=data_in.min_load_bytes/(data_in.disk_bit_depth/8); % minimum_load_size in data samples.
+        
+        chunk_size_bytes=data_in.min_load_bytes;
+        num_chunks=kspace_data/chunk_size_bytes;
+        chunk_size=chunk_size_bytes/(data_in.disk_bit_depth/8);       % chunk_size in # of values (eg, 2*complex_points the 2x points was factored into min_load_bytes).
     end
     if num_chunks>1
         recon_strategy.work_by_chunk=true;
         opt_struct.independent_scaling=true;
+        recon_strategy.load_whole=false;
     end
+    c_dims=recon_strategy.dim_string;
     clear rd;
 else
     min_chunks=ceil(maximum_RAM_requirement/useable_RAM);
@@ -1757,11 +1787,14 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,num_chunks
         %% reformat/regrid kspace to cartesian
         % perhaps my 'regrid' should be re-named to 'reformat' as that is
         % more accurate especially for cartesian. 
+        %%enhance to handle load_whole vs work_by_chunk.
         if ~opt_struct.skip_regrid
-            if num_chunks>1
+            if num_chunks>1 %%%&& ~isempty(regexp(vol_type,'.*radial.*', 'once'))
                 data_buffer.headfile.processing_chunk=chunk_num;
             end
-            rad_regrid(data_buffer,c_dims);
+            if chunk_num==1 || ~recon_strategy.load_whole
+                rad_regrid(data_buffer,c_dims);
+            end
             if  regexp(vol_type,'.*radial.*')
                 if num_chunks==1
                     fprintf('Clearing traj,dcf and radial kspace data\n');
@@ -1943,12 +1976,17 @@ dim_text=dim_text(1:end-1);
             clear xb xe yb ye zb ze mask;
         end 
         %% display kspace
-        if opt_struct.display_kspace==true
+        if opt_struct.display_kspace>=1
             %         kslice=zeros(size(data_buffer.data,1),size(data_buffer.data,2)*2);
             %         kslice=zeros(x,y);
             dim_select.x=':';
             dim_select.y=':';
             figure(1);colormap gray;
+            disp_pause=opt_struct.display_kspace;
+            if disp_pause==1
+                disp_pause=5;
+            end
+            disp_pause=disp_pause/prod(input_dimensions(1:numel(c_dims)));
             for tn=1:d_struct.t
                 dim_select.t=tn;
                 for zn=1:d_struct.z
@@ -1974,15 +2012,25 @@ dim_text=dim_text(1:end-1);
                             %kslice(1:size(data_buffer.data,1),size(data_buffer.data,2)+1:size(data_buffer.data,2)*2)=input_kspace(:,cn,pn,zn,:,tn);
                             imagesc(log(abs(squeeze(kslice)))), axis image;
                             %                             fprintf('.');
-                            pause(4/d_struct.z/d_struct.c/d_struct.p);
+                            pause(disp_pause);
+%                             pause(4/d_struct.z/d_struct.c/d_struct.p);
                             %                         pause(1);
                             %                         imagesc(log(abs(squeeze(input_kspace(:,cn,pn,zn,:,tn)))));
                             %                             fprintf('.');
                             %                         pause(4/z/d_struct.c/d_struct.p);
                             %                         pause(1);
+                            if(strfind(input_order,'p'))>numel(c_dims)
+                                pn=d_struct.p;
+                            end
                         end
                         fprintf('\n');
+                        if(strfind(input_order,'c'))>numel(c_dims)
+                            cn=d_struct.c;
+                        end
                     end
+                end
+                if(strfind(input_order,'t'))>numel(c_dims)
+                    tn=d_struct.t;
                 end
             end
         end
