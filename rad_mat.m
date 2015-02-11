@@ -714,6 +714,9 @@ data_work.RAM_volume_multiplier=1;
 data_work.RAM_bytes_per_voxel=0;
 % volumes_in_memory_at_time=2; % part of the peak memory calculations. Hopefully supplanted with better way of calcultating in future
 data_in.RAM_bytes_per_sample=2*data_in.disk_bit_depth/8; % input samples are always double because complex points are (always?) stored in 2 component vectors.
+% data_in.RAM_bytes_per_sample=2*32/8; 
+% input samples are always double because complex points are (always?) stored in 2 component vectors.
+% also, its always 32bit in memory because must be single precision float(ordouble) for complex numbers. :(
 data_out.disk_bytes_header_per_out_vol=0;
 data_out.disk_bytes_single_header=352; % this way we can do an if nii header switch.
 % precision_bytes is multiplied by 2 because complex data takes one number
@@ -824,7 +827,14 @@ end
 data_out.disk_total_bytes=data_out.total_voxel_count*data_out.disk_bytes_per_voxel;
 fprintf('Required disk space is %0.2fMB\n',data_out.disk_total_bytes/1024/1024);
 % get free space
-[~,local_space_bytes] = unix(['df ',data_buffer.engine_constants.engine_work_directory,' | tail -1 | awk ''{print $4}'' ']);
+if ismac
+    df_field=4;
+elseif isunix
+    df_field=3;
+elseif ispc   
+    df_field=4;
+end
+[~,local_space_bytes] = unix(['df ',data_buffer.engine_constants.engine_work_directory,' | tail -1 | awk ''{print $' num2str(df_field) '}'' ']);
 local_space_bytes=512*str2double(local_space_bytes); %this converts to bytes because default blocksize=512 byte
 fprintf('Available disk space is %0.2fMB\n',local_space_bytes/1024/1024);
 if data_out.disk_total_bytes<local_space_bytes|| opt_struct.ignore_errors
@@ -985,8 +995,12 @@ if kspace_file_size~=measured_filesize
         
         if remainder/kspace_file_size> 0.1 && remainder~=aspect_remainder
             fprintf('Big difference between measured and calculated!\n\tSUCCESS UNLIKELY!');
+            if strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
+                error('Mem skip enabled, but more than 10% data will be ignored');
+            else
+                warning('Mem skip enabled, but more than 10% data will be ignored');
+            end
             pause( 2*opt_struct.warning_pause ) ;
-            error('Mem skip enabled, but more than 10% data will be ignored');
         end
         
         
@@ -2475,7 +2489,6 @@ dim_text=dim_text(1:end-1);
     % anything correctly just now.
     
     %  mag=abs(raw_data(i).data);
-    ij_prompt='';
     if opt_struct.skip_combine_channels
         channel_images=d_struct.c;
     else
@@ -2979,8 +2992,8 @@ dim_text=dim_text(1:end-1);
     end
 end
 %% convenience prompts
-
-if ~opt_struct.skip_recon||opt_struct.force_ij_prompt
+ij_prompt='';
+if (~opt_struct.skip_recon&&exist('openmacro_path','var') )||opt_struct.force_ij_prompt
     % display ij call to examine images.
     [~,txt]=system('echo -n $ijstart');  %-n for no newline i think there is a smarter way to get system variables but this works for now.
     ij_prompt=sprintf('%s -macro %s',txt, openmacro_path);
