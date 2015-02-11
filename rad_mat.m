@@ -713,10 +713,7 @@ data_in.RAM_volume_multiplier=1;
 data_work.RAM_volume_multiplier=1;
 data_work.RAM_bytes_per_voxel=0;
 % volumes_in_memory_at_time=2; % part of the peak memory calculations. Hopefully supplanted with better way of calcultating in future
-data_in.RAM_bytes_per_sample=2*data_in.disk_bit_depth/8; % input samples are always double because complex points are (always?) stored in 2 component vectors.
-% data_in.RAM_bytes_per_sample=2*32/8; 
-% input samples are always double because complex points are (always?) stored in 2 component vectors.
-% also, its always 32bit in memory because must be single precision float(ordouble) for complex numbers. :(
+data_in.disk_bytes_per_sample=2*data_in.disk_bit_depth/8; % input samples are always double because complex points are (always?) stored in 2 component vectors.
 data_out.disk_bytes_header_per_out_vol=0;
 data_out.disk_bytes_single_header=352; % this way we can do an if nii header switch.
 % precision_bytes is multiplied by 2 because complex data takes one number
@@ -726,6 +723,7 @@ if ~opt_struct.workspace_doubles
 else
     data_work.precision_bytes=2*8;   % use double precision workspace
 end
+data_in.RAM_bytes_per_voxel=data_work.precision_bytes;
 if regexp(vol_type,'.*radial.*') % unfortunately radial requires double precision for the grid function for now.
     data_work.precision_bytes=2*8;
     if ~opt_struct.grid_oversample_factor
@@ -743,7 +741,6 @@ if regexp(vol_type,'.*radial.*') % unfortunately radial requires double precisio
         data_buffer.headfile.radial_dcf_iterations=opt_struct.dcf_iterations;
         fprintf('\trad_mat dcf iterations=%d.\n',data_buffer.headfile.radial_dcf_iterations);
     end
-    
 end
 data_out.precision_bytes=4;
 data_work.RAM_bytes_per_voxel=data_work.precision_bytes;
@@ -987,18 +984,20 @@ end
 measured_filesize    =fileInfo.bytes;
 
 if kspace_file_size~=measured_filesize
-    aspect_remainder=138443;
+    aspect_remainder=138443;% a constant amount of bytes that aspect scans have to spare.
     remainder=measured_filesize-kspace_file_size;
     if (measured_filesize>kspace_file_size && opt_struct.ignore_kspace_oversize) || opt_struct.ignore_errors % measured > expected provisional continue
         warning('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=\t%d\nCalculated=\t%d\n',measured_filesize,kspace_file_size);
         % extra warning when acaual is greater than 10% of exptected
         
         if remainder/kspace_file_size> 0.1 && remainder~=aspect_remainder
-            fprintf('Big difference between measured and calculated!\n\tSUCCESS UNLIKELY!');
+            msg=['Big difference between measured and calculated!\n' ...
+                '\tSUCCESS UNLIKELY!\n' ...
+                'ignore_kspace_oversize enabled, but more than 10% data will be ignored'];
             if strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
-                error('Mem skip enabled, but more than 10% data will be ignored');
+                error(msg);
             else
-                warning('Mem skip enabled, but more than 10% data will be ignored');
+                warning(msg);
             end
             pause( 2*opt_struct.warning_pause ) ;
         end
@@ -1018,7 +1017,7 @@ clear kspace_header_bytes kspace_file_size fileInfo measured_filesize;
 %% calculate memory and chunk sizes
 data_in.total_bytes_RAM=...
     data_in.RAM_volume_multiplier...
-    *data_in.RAM_bytes_per_sample...
+    *data_in.RAM_bytes_per_voxel...
     *data_in.total_points;
 data_work.total_bytes_RAM=...
     data_work.RAM_volume_multiplier...
@@ -1029,10 +1028,10 @@ data_out.total_bytes_RAM=...
     *data_out.RAM_bytes_per_voxel...
     *data_out.total_voxel_count;
 % maximum_memory_requirement =...
-%     data_in.RAM_volume_multiplier   *data_in.RAM_bytes_per_sample  *data_in.total_points...
+%     data_in.RAM_volume_multiplier   *data_in.disk_bytes_per_sample  *data_in.total_points...
 %     +data_work.RAM_volume_multiplier*data_work.RAM_bytes_per_voxel *data_work.total_voxel_count...
 %     +data_out.RAM_volume_multiplier *data_out.RAM_bytes_per_voxel  *data_out.total_voxel_count; %...
-%     +volumes_in_memory_at_time*data_in.total_points*d_struct.c*data_in.RAM_bytes_per_sample+data_work.total_voxel_count*data_out.RAM_bytes_per_voxel;
+%     +volumes_in_memory_at_time*data_in.total_points*d_struct.c*data_in.disk_bytes_per_sample+data_work.total_voxel_count*data_out.RAM_bytes_per_voxel;
 maximum_RAM_requirement = data_in.total_bytes_RAM+data_out.total_bytes_RAM+data_work.total_bytes_RAM;
 % system_reserved_memory=2*1024*1024*1024;% reserve 2gb for the system while we work.
 system_reserved_RAM=max(2*1024*1024*1024,meminfo.TotalPhys*0.3); % reserve at least 2gb for the system while we work
@@ -1080,8 +1079,8 @@ if useable_RAM>=maximum_RAM_requirement || opt_struct.skip_mem_checks
 %     if true
     min_chunks=1;
     memory_space_required=maximum_RAM_requirement;
-    % max_loadable_chunk_size=((data_in.line_points*rays_per_block+load_skip)*ray_blocks*data_in.RAM_bytes_per_sample);
-    max_loadable_chunk_size=((data_in.line_points*rays_per_block)*ray_blocks*data_in.RAM_bytes_per_sample);
+    % max_loadable_chunk_size=((data_in.line_points*rays_per_block+load_skip)*ray_blocks*data_in.disk_bytes_per_sample);
+    max_loadable_chunk_size=((data_in.line_points*rays_per_block)*ray_blocks*data_in.disk_bytes_per_sample);
     % the maximum chunk size for an exclusive data per volume reconstruction.
     c_dims=[ d_struct.x,...
         d_struct.y,...
@@ -1101,7 +1100,7 @@ if useable_RAM>=maximum_RAM_requirement || opt_struct.skip_mem_checks
 %         min_chunks=ceil(maximum_RAM_requirement/useable_RAM);
 %         memory_space_required=(maximum_RAM_requirement/min_chunks); % this is our maximum memory requirements
 %         % max_loadable_chunk_size=(data_input.sample_points*d_struct.c*(kspace.bit_depth/8))/min_chunks;
-%         max_loadable_chunk_size=((data_in.line_points*rays_per_block)*ray_blocks*data_in.RAM_bytes_per_sample)...
+%         max_loadable_chunk_size=((data_in.line_points*rays_per_block)*ray_blocks*data_in.disk_bytes_per_sample)...
 %             /min_chunks;
 %         % the maximum chunk size for an exclusive data per volume reconstruction.
 %         
@@ -1191,8 +1190,8 @@ elseif true
         
         opt_struct.parallel_jobs=min(12,floor((useable_RAM-data_in.total_bytes_RAM)/data_work.single_vol_RAM*prod(output_dimensions(4:rd))+data_out.single_vol_RAM*prod(output_dimensions(4:rd))));
         % cannot have more than 12 parallel jobs in matlab.
-        % max_loadable_chunk_size=((data_in.line_points*rays_per_block+load_skip)*ray_blocks*data_in.RAM_bytes_per_sample);
-        max_loadable_chunk_size=((data_in.line_points*rays_per_block)*ray_blocks*data_in.RAM_bytes_per_sample);
+        % max_loadable_chunk_size=((data_in.line_points*rays_per_block+load_skip)*ray_blocks*data_in.disk_bytes_per_sample);
+        max_loadable_chunk_size=((data_in.line_points*rays_per_block)*ray_blocks*data_in.disk_bytes_per_sample);
         min_load_size=data_in.min_load_bytes/(data_in.disk_bit_depth/8); % minimum_load_size in data samples.
         
         %this chunk_size only works here because we know that we cut at
@@ -1217,7 +1216,7 @@ else
     min_chunks=ceil(maximum_RAM_requirement/useable_RAM);
     memory_space_required=(maximum_RAM_requirement/min_chunks); % this is our maximum memory requirements
     % max_loadable_chunk_size=(data_input.sample_points*d_struct.c*(kspace.bit_depth/8))/min_chunks;
-    max_loadable_chunk_size=((data_in.line_points*rays_per_block+load_skip)*ray_blocks*data_in.RAM_bytes_per_sample)...
+    max_loadable_chunk_size=((data_in.line_points*rays_per_block+load_skip)*ray_blocks*data_in.disk_bytes_per_sample)...
         /min_chunks;
     % the maximum chunk size for an exclusive data per volume reconstruction.
     
