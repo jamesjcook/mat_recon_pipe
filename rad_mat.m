@@ -2541,7 +2541,9 @@ dim_text=dim_text(1:end-1);
     else
         channel_images=1;
     end
-    runnumbers=cell(channel_images*d_struct.p*d_struct.t,1);
+    if ~exist('runnumbers','var')
+        runnumbers=cell(channel_images*d_struct.p*d_struct.t,1);
+    end
     rindx=1;
     if (opt_struct.fp32_magnitude==true)
         datatype='fp32';
