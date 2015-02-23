@@ -1146,17 +1146,23 @@ elseif true
     % should work backwards from largest dimensions to see how many dimensions
     % of data we can fit in memory, theoretically time will never fit, however
     % it'd be great to get channels, and nice to get any parameter dimension to fit.
-    % starting with the last dimension see if  for each dimension see if any will fit with the data loaded.
-    recon_strategy.dim_mask=ones(1,size(input_dimensions,2));
+    % starting with the last output dimension see if  for each dimension see if any will fit with the data loaded.
+    recon_strategy.dim_mask=ones(1,size(output_dimensions,2));
     rd=numel(recon_strategy.dim_string);
-    while rd>1 && ( useable_RAM < data_in.total_bytes_RAM...
+    while rd>3 && ( useable_RAM < data_in.total_bytes_RAM...
             +data_work.single_vol_RAM*prod(output_dimensions(4:rd))...
             +data_out.single_vol_RAM*prod(output_dimensions(4:rd)) ) || ...
             (output_dimensions(rd)==1)
+        % strfind lookup here to equate input to output dimensions?
+        % recon_strategy.dim_mask(strfind(input_order,opt_struct.output_order(rd)))=0;
         recon_strategy.dim_mask(rd)=0;
         rd=rd-1;
     end
     recon_strategy.dim_string(recon_strategy.dim_mask==0)=[];
+    if length(recon_strategy.dim_string)<3
+        warning('recon strategy cannot be load whole!')
+        recon_strategy.dim_string='xyz';
+    end
     % if we've removed all except for the first three dimensions do one more
     % check to see if we can fit all input in memory at once with a single
     % recon volume.
@@ -1237,6 +1243,7 @@ elseif true
     end
     if num_chunks>1
         recon_strategy.work_by_chunk=true;
+        opt_struct.write_complex=true;
         opt_struct.independent_scaling=true;
         recon_strategy.load_whole=false;
     end
@@ -1478,7 +1485,7 @@ fprintf(['recon proceding of file at %s\n'...
 
 clear dim_order ds dest ;
 
-
+% runno_list=cell(1,prod(ouput_dimensions(4:end)));
     %% reconstruction
 for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,num_chunks)
     time_chunk=tic;
@@ -2776,6 +2783,9 @@ dim_text=dim_text(1:end-1);
                     else
                         tmp='RECON_DISABLED';
                     end
+                    if numel(tmp)<prod(output_dimensions(1:3))
+                        error('Save file not right, chunking error likly');
+                    end
                     %%%set channel header settings and mnumber codes for the filename
                     if d_struct.c>1
                         channel_code=opt_struct.channel_alias(cn);
@@ -2840,8 +2850,9 @@ dim_text=dim_text(1:end-1);
                     end
                     space_dir_img_name =[ runno channel_code m_code];
                     
-
-                                        
+                    if(num_chunks>1)
+                        out_runnos.(space_dir_img_name)=1; %make a struct of our runnums
+                    end    
                     data_buffer.headfile.U_runno=space_dir_img_name;
                     
                     space_dir_img_folder=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '/' space_dir_img_name 'images' ];
@@ -3040,6 +3051,11 @@ dim_text=dim_text(1:end-1);
         fprintf('chunk_time:%0.2f\n',toc(time_chunk));
     end
 end
+if num_chunks>1
+   system('reform_group' , strjoin(fieldnames(out_runnos)',' '))
+end
+
+
 %% convenience prompts
 ij_prompt='';
 if (~opt_struct.skip_recon&&exist('openmacro_path','var') )||opt_struct.force_ij_prompt
