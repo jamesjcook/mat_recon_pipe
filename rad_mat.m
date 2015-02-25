@@ -2792,12 +2792,13 @@ dim_text=dim_text(1:end-1);
                             dim_select.(opt_struct.output_order(6))...
                             ));% pulls out one volume at a time.
                         %                         end
+                        if numel(tmp)<prod(output_dimensions(1:3))
+                            error('Save file not right, chunking error likly');
+                        end
                     else
                         tmp='RECON_DISABLED';
                     end
-                    if numel(tmp)<prod(output_dimensions(1:3))
-                        error('Save file not right, chunking error likly');
-                    end
+
                     %%%set channel header settings and mnumber codes for the filename
                     if d_struct.c>1
                         channel_code=opt_struct.channel_alias(cn);
@@ -3045,12 +3046,13 @@ dim_text=dim_text(1:end-1);
                     end
                     %%% convenience prompts
 
-                    if ~opt_struct.skip_write_civm_raw||num_chunks>1
+%                     if ~opt_struct.skip_write_civm_raw||num_chunks>1 %
+%                     when wouldnt i want the list of expected run numbers?
                         %write_archive_tag(runno,spacename, slices, projectcode, img_format,civmid)
                         runnumbers(rindx)={data_buffer.headfile.U_runno};
                         rindx=rindx+1;
                         
-                    end
+%                     end
                     
                 end
             end
@@ -3063,8 +3065,17 @@ dim_text=dim_text(1:end-1);
         fprintf('chunk_time:%0.2f\n',toc(time_chunk));
     end
 end
-if num_chunks>1
-   system(['reform_group '  strjoin(runnumbers',' ') ])
+if num_chunks>1&&~opt_struct.skip_write
+    if ~exist('runnumbers','var')
+        error('Run numbers were not defined, cannot reform_group');
+    end
+    if numel(runnumbers) >1
+        if size(runnumbers,2)==1
+            system(['reform_group '  strjoin(runnumbers',' ') ])
+        else 
+            system(['reform_group '  strjoin(runnumbers,' ') ])
+        end
+    end
 end
 
 %% convenience prompts
@@ -3085,7 +3096,7 @@ if ~isempty(ij_prompt)&& ~opt_struct.skip_write_civm_raw
     fprintf('  (it may only open the first and last in large sequences).\n');
     fprintf('\n%s\n\n',mat_ij_prompt);
 end
-if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon && isfield(data_buffer.headfile,'U_code')
+if opt_struct.force_write_archive_tag || (~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon && isfield(data_buffer.headfile,'U_code'))
     archive_tag_output=write_archive_tag(runnumbers,...
         data_buffer.engine_constants.engine_work_directory,...
         d_struct.z,data_buffer.headfile.U_code,datatype,...
