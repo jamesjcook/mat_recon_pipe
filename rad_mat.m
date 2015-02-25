@@ -488,6 +488,9 @@ data_buffer.input_headfile.origin_path=datapath;
 % display(['base runno is ' runno ' based on given inputs']);
 
 %pull the data to local machine
+if ~opt_struct.use_inline_code 
+    puller(data_buffer,opt_struct)
+else
 work_dir_name= [data_buffer.headfile.U_runno '.work'];
 data_buffer.headfile.work_dir_path=[data_buffer.engine_constants.engine_work_directory '/' work_dir_name];
 if opt_struct.overwrite
@@ -511,7 +514,7 @@ if ~opt_struct.existing_data || ~exist(data_buffer.headfile.work_dir_path,'dir')
     end
 end
 clear cmd s datapath puller_data puller_data work_dir_name p_status;
-
+end
 %% load data header and insert unrecognized fields into headfile
 if ~opt_struct.no_scanner_header
     data_buffer.input_headfile=load_scanner_header(scanner, data_buffer.headfile.work_dir_path ,opt_struct);
