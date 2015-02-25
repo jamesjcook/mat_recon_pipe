@@ -1994,8 +1994,20 @@ dim_text=dim_text(1:end-1);
                 disp_pause=5;
             end
             disp_pause=disp_pause/prod(input_dimensions(1:numel(c_dims)));
-            for tn=1:d_struct.t
-                dim_select.t=tn;
+            %             for tn=1:d_struct.t
+            if isfield(data_buffer.headfile,'processing_chunk')
+                t_s=data_buffer.headfile.processing_chunk;
+                t_e=data_buffer.headfile.processing_chunk;
+            else
+                t_s=1;
+                t_e=d_struct.t;
+            end
+            for tn=t_s:t_e
+                if num_chunks>1
+                    dim_select.t=1;
+                else
+                    dim_select.t=tn;
+                end
                 for zn=1:d_struct.z
                     dim_select.z=zn;
                     for cn=1:d_struct.c
@@ -2850,9 +2862,9 @@ dim_text=dim_text(1:end-1);
                     end
                     space_dir_img_name =[ runno channel_code m_code];
                     
-                    if(num_chunks>1)
-                        out_runnos.(space_dir_img_name)=1; %make a struct of our runnums
-                    end    
+%                     if(num_chunks>1)
+%                         out_runnos.(space_dir_img_name)=1; %make a struct of our runnums
+%                     end    
                     data_buffer.headfile.U_runno=space_dir_img_name;
                     
                     space_dir_img_folder=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '/' space_dir_img_name 'images' ];
@@ -3033,7 +3045,7 @@ dim_text=dim_text(1:end-1);
                     end
                     %%% convenience prompts
 
-                    if ~opt_struct.skip_write_civm_raw
+                    if ~opt_struct.skip_write_civm_raw||num_chunks>1
                         %write_archive_tag(runno,spacename, slices, projectcode, img_format,civmid)
                         runnumbers(rindx)={data_buffer.headfile.U_runno};
                         rindx=rindx+1;
@@ -3052,9 +3064,8 @@ dim_text=dim_text(1:end-1);
     end
 end
 if num_chunks>1
-   system('reform_group' , strjoin(fieldnames(out_runnos)',' '))
+   system(['reform_group '  strjoin(runnumbers',' ') ])
 end
-
 
 %% convenience prompts
 ij_prompt='';

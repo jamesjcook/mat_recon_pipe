@@ -97,6 +97,7 @@ for c=1:length(chunks_to_load)
     end
     skip=header_skip; %+load_skip+(load_size+load_skip)*(chunks_to_load(c)-1)*loads_per_chunk;
     fseek(fileid,skip,'bof');
+%     fprintf('filepos after headerskip %d',ftell(fileid));
     if ~strcmp(load_method,'experiental2')
         for n=1:loads_per_chunk
             fprintf('.');
@@ -126,7 +127,10 @@ for c=1:length(chunks_to_load)
         end
     else
         fprintf('Experimental loading, (load_size+load_skip)*nloads\n');
+        fseek(fileid,chunk_with_skip*(chunks_to_load(c)-1)*precision_bytes,'cof');
+%         fprintf('filepos after otherchunk skip %d',ftell(fileid));
         [fid_data, points_read]= fread(fileid, chunk_with_skip, [data_precision '=>single']);
+%         fprintf('filepos after read our chunk %d',ftell(fileid));
         if  points_read ~= chunk_with_skip
             error('Did not correctly read file, chunk_with_skip(%d) ~= points_read(%d)',chunk_with_skip,points_read);
         end
