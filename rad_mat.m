@@ -1,4 +1,4 @@
-function [img, success_status,data_buffer]=rad_mat(scanner,runno,input_data,options)
+function [success_status,img, data_buffer]=rad_mat(scanner,runno,input_data,options)
 % [img, s, buffer]=RAD_MAT(scanner,runno,input,options)
 % Reconstruct All Devices in MATlab
 % rad_mat, a quasi generic reconstruction/reformating scanner to archive
@@ -22,9 +22,10 @@ function [img, success_status,data_buffer]=rad_mat(scanner,runno,input_data,opti
 %          listmaker.
 % option   - for a list and explaination use 'help'.
 %
-% img      - output volume in the output_order
-% s        - status 1 for success, and 0 for failures.
+% status   - status 1 for success, and 0 for failures.
 %            (following matlab boolean, true/false)
+% img      - output volume in the output_order, in chunked recon will only
+%            be the last chunk
 % buffer   - the databuffer, including the headfile writeen to disk any any
 %            other data left inside it. For all at once recons buffer.data 
 %            should be the n-D reconstructed volumes after combining the channels. 
@@ -488,34 +489,9 @@ data_buffer.input_headfile.origin_path=datapath;
 % display(['data path should be omega@' scanner ':' datapath ' based on given inputs']);
 % display(['base runno is ' runno ' based on given inputs']);
 
-%pull the data to local machine
-if ~opt_struct.use_inline_code 
-    puller(data_buffer,opt_struct)
-else
-work_dir_name= [data_buffer.headfile.U_runno '.work'];
-data_buffer.headfile.work_dir_path=[data_buffer.engine_constants.engine_work_directory '/' work_dir_name];
-if opt_struct.overwrite
-    opt_struct.puller_option_string=[' -o ' opt_struct.puller_option_string];
-end
-if opt_struct.existing_data && exist(data_buffer.headfile.work_dir_path,'dir') %||opt_struct.skip_recon
-    opt_struct.puller_option_string=[' -e ' opt_struct.puller_option_string];
-end
-cmd_list=['puller_simple ' opt_struct.puller_option_string ' ' scanner ' ''' puller_data ''' ' data_buffer.headfile.work_dir_path];
-data_buffer.headfile.comment{end+1}=['# \/ pull cmd ' '\/'];
-data_buffer.headfile.comment{end+1}=['# ' cmd_list ];
-data_buffer.headfile.comment{end+1}=['# /\ pull cmd ' '/\'];
-if ~opt_struct.existing_data || ~exist(data_buffer.headfile.work_dir_path,'dir')  %&&~opt_struct.skip_recon
-    if ~exist(data_buffer.headfile.work_dir_path,'dir') && opt_struct.existing_data
-        warning('You wanted existing data BUT IT WASNT THERE!\n\tContinuing by tring to fetch new.');
-        pause(1);
-    end
-    p_status =system(cmd_list);
-    if p_status ~= 0 && ~opt_struct.ignore_errors
-        error('puller failed:%s',cmd_list);
-    end
-end
-clear cmd s datapath puller_data puller_data work_dir_name p_status;
-end
+%% pull the data to local machine
+puller(data_buffer,opt_struct,scanner,puller_data);
+
 %% load data header and insert unrecognized fields into headfile
 if ~opt_struct.no_scanner_header
     data_buffer.input_headfile=load_scanner_header(scanner, data_buffer.headfile.work_dir_path ,opt_struct);
@@ -555,7 +531,7 @@ if isfield(data_buffer.input_headfile,'S_scanner_tag')
 else
     bad_hf_path = [data_buffer.headfile.work_dir_path '/failed' runno '.headfile'];
     write_headfile(bad_hf_path,data_buffer.input_headfile);
-    error('Failed to process scanner header from dump command ( %s )\nWrote partial hf to %s\nGIVE THE OUTPUT OF THIS TO JAMES TO HELP FIX THE PROBLEM. ',data_buffer.headfile.comment{end-1}(2:end),bad_hf_path);
+    error('Failed to process scanner header from dump command ( %s )\nWrote partial hf to %s\nGIVE THE OUTPUT OF THIS TO JAMES TO HELP FIX THE PROBLEM.\nS_scanner_tag not found!\n',data_buffer.headfile.comment{end-1}(2:end),bad_hf_path);
 end
 if opt_struct.U_dimension_order ~=0
     data_buffer.input_headfile.([data_tag 'dimension_order'])=opt_struct.U_dimension_order;
@@ -576,160 +552,12 @@ data_buffer.headfile=combine_struct(data_buffer.headfile,data_buffer.engine_cons
 % be "fresher"
 
 clear datapath dirext input input_data puller_data;
-%% read input acquisition type from our header
-% some of this might belong in the load data function we're going to need
-vol_type=data_buffer.headfile.([data_tag 'vol_type']);
-if opt_struct.vol_type_override~=0
-    vol_type=opt_struct.vol_type_override;
-    warning('Using override volume_type %s',opt_struct.vol_type_override);
-end
-% vol_type can be 2D or 3D or radial.
-scan_type=data_buffer.headfile.([data_tag 'vol_type_detail']);
-% vol_type_detail says the type of volume we're dealing with,
-% this is set in the header parser perl modules the type can be
-% single
-% DTI
-% MOV
-% slab
-% multi-vol
-% multi-echo are normally interleaved, so we cut our chunk size in necho pieces
 
 
-data_in.disk_bit_depth=data_buffer.headfile.([data_tag 'kspace_bit_depth']);
-data_in.disk_data_type=data_buffer.headfile.([data_tag 'kspace_data_type']);
-if strcmp(data_in.disk_data_type,'Real')
-    data_in.disk_data_type='float';
-elseif strcmp(data_in.disk_data_type,'Signed');
-    data_in.disk_data_type='int';
-elseif strcmp(data_in.disk_data_type,'UnSigned');
-    data_in.disk_data_type='uint';
-end
+%% read input dimensions to shorthand structs
+[d_struct,data_in,data_work,data_out]=create_meta_structs(data_buffer,opt_struct);
 
-if isfield(data_buffer.headfile,[ data_tag 'kspace_endian'])
-    data_in.disk_endian=data_buffer.headfile.([ data_tag 'kspace_endian']);
-    if strcmp(data_in.disk_endian,'little')
-        data_in.disk_endian='l';
-    elseif strcmp(data_in.disk_endian,'big');
-        data_in.disk_endian='b';
-    end
-else
-% end
-% if ~exist('kspace.endian','var')
-    warning('Input kspace endian unknown, header parser defficient!');
-    data_in.disk_endian='';
-end
-
-% if kspace.bit_depth==32 || kspace.bit_depth==64
-data_in.precision_string=[data_in.disk_data_type num2str(data_in.disk_bit_depth)];
-% end
-% if regexp(scan_type,'echo')
-%     volumes=data_buffer.headfile.([data_tag 'echoes']);
-%     if regexp(scan_type,'non_interleave')
-%         interleave=false;
-%     else
-%         interleave=true;
-%     end
-% else
-%     volumes=data_buffer.headfile.([data_tag 'volumes']);
-%     if regexp(scan_type,'interleave')
-%         interleave=true;
-%     else
-%         interleave=false;
-%     end
-% end
-% volumes=data_buffer.headfile.([data_tag 'volumes']);
-if regexp(scan_type,'channel')
-    warning('multi-channel support still poor.');
-end
-%% read input dimensions to shorthand struct
-d_struct=struct;
-d_struct.x=data_buffer.headfile.dim_X;
-d_struct.y=data_buffer.headfile.dim_Y;
-d_struct.z=data_buffer.headfile.dim_Z;
-d_struct.c=data_buffer.headfile.([data_tag 'channels'] );
-if isfield (data_buffer.headfile,[data_tag 'varying_parameter'])
-    varying_parameter=data_buffer.headfile.([data_tag 'varying_parameter']);
-else
-    varying_parameter='';
-end
-if regexpi(varying_parameter,'.*echo.*')% strcmp(varying_parameter,'echos') || strcmp(varying_parameter,'echoes')
-    d_struct.p=data_buffer.headfile.ne;
-elseif strcmp(varying_parameter,'alpha')
-    d_struct.p=length(data_buffer.headfile.alpha_sequence);
-elseif strcmp(varying_parameter,'tr')
-    d_struct.p=length(data_buffer.headfile.tr_sequence);
-elseif regexpi(varying_parameter,',')
-    error('MULTI VARYING PARAMETER ATTEMPTED:%s THIS HAS NOT BEEN DONE BEFORE.',varying_parameter);
-else
-    fprintf('No varying parameter\n');
-    d_struct.p=1;
-end
-d_struct.t=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c/d_struct.p;
-% dont need rare factor here, its only used in the regrid section
-% if  isfield (data_buffer.headfile,[data_tag 'rare_factor'])
-%     r=data_buffer.headfile.([data_tag 'rare_factor']);
-% else
-%     r=1;
-% end
-
-input_order=data_buffer.headfile.([data_tag 'dimension_order' ]);
-%% set data acquisition parameters to determine how much to work on at a time and how.
-% permute_code=zeros(size(input_order));
-% for char=1:length(input_order)
-%     permute_code(char)=strfind(opt_struct.output_order,input_order(char));
-% end
-
-% this mess gets the input and output dimensions using char arrays as
-% dynamic structure element names.
-% given the structure s.x, s.y, s.z the input_order='xzy' and
-% outputorder='xyz'
-% will set input to in=[x z y];
-% and output to out=[x y z];
-data_in.binary_header_size   =data_buffer.headfile.binary_header_size; %distance to first data point in bytes-standard block header.
-data_in.load_skip            =data_buffer.headfile.block_header_size;  %distance between blocks of rays in file in bytes
-data_in.ray_blocks           =data_buffer.headfile.ray_blocks;         %number of blocks of rays total, sometimes nvolumes, sometimes nslices, somtimes nechoes, ntrs nalphas
-data_in.rays_per_block       =data_buffer.headfile.rays_per_block;     %number or rays per block of input data,
-data_in.ray_length           =data_buffer.headfile.ray_length;         %number of samples on a ray, or trajectory
-
-% if anything except radial
-% if( ~regexp(data_buffer.headfile.([data_tag 'vol_type']),'.*radial.*'))
-if strcmp(data_buffer.headfile.([data_tag 'vol_type']),'radial')
-    % if radial
-    input_dimensions=[data_in.ray_length d_struct.(input_order(2))...
-        d_struct.(input_order(3)) data_in.rays_per_block data_in.ray_blocks];
-else
-    input_dimensions=[d_struct.(input_order(1)) d_struct.(input_order(2))...
-    d_struct.(input_order(3)) d_struct.(input_order(4))...
-    d_struct.(input_order(5)) d_struct.(input_order(6))];
-
-end
-
-data_out.output_dimensions=[d_struct.(opt_struct.output_order(1)) d_struct.(opt_struct.output_order(2))...
-    d_struct.(opt_struct.output_order(3)) d_struct.(opt_struct.output_order(4))...
-    d_struct.(opt_struct.output_order(5)) d_struct.(opt_struct.output_order(6))];
-%% calculate bytes per voxel for RAM(input,working,output) and disk dependent on settings
-% using our different options settings guess how many bytes of ram we need per voxel
-% of, input, workspace, and output
-data_out.disk_bytes_per_voxel=0;
-data_out.RAM_bytes_per_voxel=0;
-data_out.RAM_volume_multiplier=1;
-data_in.RAM_volume_multiplier=1;
-data_work.RAM_volume_multiplier=1;
-data_work.RAM_bytes_per_voxel=0;
-% volumes_in_memory_at_time=2; % part of the peak memory calculations. Hopefully supplanted with better way of calcultating in future
-data_in.disk_bytes_per_sample=2*data_in.disk_bit_depth/8; % input samples are always double because complex points are (always?) stored in 2 component vectors.
-data_out.disk_bytes_header_per_out_vol=0;
-data_out.disk_bytes_single_header=352; % this way we can do an if nii header switch.
-% precision_bytes is multiplied by 2 because complex data takes one number
-% for real and imaginary
-if ~opt_struct.workspace_doubles
-    data_work.precision_bytes=2*4;   % we try to keep our workspace to single precision complex.
-else
-    data_work.precision_bytes=2*8;   % use double precision workspace
-end
-data_in.RAM_bytes_per_voxel=data_work.precision_bytes;
-if regexp(vol_type,'.*radial.*') % unfortunately radial requires double precision for the grid function for now.
-    data_work.precision_bytes=2*8;
+if regexp(data_in.vol_type,'.*radial.*') % unfortunately radial requires double precision for the grid function for now.
     if ~opt_struct.grid_oversample_factor
         %         opt_struct.grid_oversample_factor=3;
         data_buffer.headfile.radial_grid_oversample_factor=3;
@@ -746,87 +574,7 @@ if regexp(vol_type,'.*radial.*') % unfortunately radial requires double precisio
         fprintf('\trad_mat dcf iterations=%d.\n',data_buffer.headfile.radial_dcf_iterations);
     end
 end
-data_out.precision_bytes=4;
-data_work.RAM_bytes_per_voxel=data_work.precision_bytes;
-% calculate space required on disk and in memory to save the output.
-% 2 bytes for each voxel in civm image, 8 bytes per voxel of complex output
-% 4 bytes for save 32-bit mag, 32-bit phase, unscaled nii, kspace image,
-% unfiltered kspace image etc.
-if ~opt_struct.skip_write_civm_raw
-    if ~opt_struct.fp32_magnitude % if not fp32, then we're short int.
-        data_out.disk_bytes_per_voxel=data_out.disk_bytes_per_voxel+2;
-    else
-        data_out.disk_bytes_per_voxel=data_out.disk_bytes_per_voxel+4;
-    end
-    data_out.RAM_bytes_per_voxel=data_out.RAM_bytes_per_voxel+data_work.precision_bytes;
-end
-if opt_struct.write_unscaled
-    data_out.disk_bytes_per_voxel=data_out.disk_bytes_per_voxel+data_out.precision_bytes;
-    data_out.disk_bytes_header_per_out_vol=data_out.disk_bytes_header_per_out_vol+data_out.disk_bytes_single_header;
-end
-% if opt_struct.write_unscaled
-%     data_out.disk_bytes_per_voxel=data_out.disk_bytes_per_voxel+data_out.precision_bytes;
-% end
-if opt_struct.write_unscaled_nD
-    data_out.disk_bytes_per_voxel=data_out.disk_bytes_per_voxel+data_out.precision_bytes;
-end
-if opt_struct.write_phase
-    data_out.disk_bytes_per_voxel=data_out.disk_bytes_per_voxel+data_out.precision_bytes;
-    data_out.disk_bytes_header_per_out_vol=data_out.disk_bytes_header_per_out_vol+data_out.disk_bytes_single_header;
-end
-if opt_struct.write_complex
-    data_out.disk_bytes_per_voxel=data_out.disk_bytes_per_voxel+data_out.precision_bytes;
-end
 
-if opt_struct.write_kimage
-    data_out.disk_bytes_per_voxel=data_out.disk_bytes_per_voxel+data_out.precision_bytes;
-    data_out.RAM_bytes_per_voxel=data_out.RAM_bytes_per_voxel+data_work.precision_bytes*2;
-    data_out.disk_bytes_header_per_out_vol=data_out.disk_bytes_header_per_out_vol+data_out.disk_bytes_single_header;
-    data_work.RAM_bytes_per_voxel=data_work.RAM_bytes_per_voxel+data_work.precision_bytes;
-end
-if opt_struct.write_kimage_unfiltered
-    data_out.disk_bytes_per_voxel=data_out.disk_bytes_per_voxel+data_out.precision_bytes;
-    data_out.RAM_bytes_per_voxel=data_out.RAM_bytes_per_voxel+data_work.precision_bytes*2;
-    data_work.RAM_bytes_per_voxel=data_work.RAM_bytes_per_voxel+data_work.precision_bytes;
-end
-if opt_struct.write_unscaled || opt_struct.write_unscaled_nD || opt_struct.write_phase|| opt_struct.write_complex 
-%     output_
-    data_out.RAM_bytes_per_voxel=data_out.RAM_bytes_per_voxel+data_work.precision_bytes;
-    data_work.RAM_bytes_per_voxel=data_work.RAM_bytes_per_voxel+data_work.precision_bytes;
-end
-%% calculate expected disk usage and check free disk space.
-% data_out.volumes=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c;
-data_work.volumes=data_buffer.headfile.([data_tag 'volumes']); % initalize to worst case before we run through possibilities below.
-data_out.volumes=data_buffer.headfile.([data_tag 'volumes']);
-if opt_struct.skip_combine_channels % while we're using the max n volumes this is unnecessary.
-    data_out.volumes=data_buffer.headfile.([data_tag 'volumes']);
-end
-
-data_out.volume_voxels=...
-    d_struct.x*...
-    d_struct.y*...
-    d_struct.z;
-data_out.total_voxel_count=...
-    data_out.volume_voxels*...
-    data_out.volumes;
-
-if regexp(vol_type,'.*radial.*')
-    data_work.volume_voxels=data_out.volume_voxels*data_buffer.headfile.radial_grid_oversample_factor^3;
-    data_work.total_voxel_count=...
-        data_work.volume_voxels...
-        *(data_work.volumes+4);
-    % we add 4 to the volumes because we need 3x vols for the trajectory
-    % points, and then an additional 1x for the dcf volume This is a little
-    % imprecise and will probably made totally precise later. The
-    % trajectory is double precision 3 part vector (3x64) for each point of
-    % kspace sampled. DCF is single precision (or at least can be without
-    % noticeable loss in quality).
-else
-    data_work.volume_voxels=data_out.volume_voxels;
-    data_work.total_voxel_count=data_out.total_voxel_count;
-end
-data_out.disk_total_bytes=data_out.total_voxel_count*data_out.disk_bytes_per_voxel;
-fprintf('Required disk space is %0.2fMB\n',data_out.disk_total_bytes/1024/1024);
 % get free space
 if ismac
     df_field=4;
@@ -866,7 +614,7 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
     %% calculate padding for bruker
     if ( strcmp(data_buffer.headfile.([data_prefix 'GS_info_dig_filling']),'Yes')...
             || ~opt_struct.ignore_errors )...
-%             && ~regexp(data_buffer.headfile.([data_tag 'vol_type']),'.*radial.*')  %PVM_EncZfRead=1 for fill, or 0 for no fill, generally we fill( THIS IS NOT WELL TESTED)
+%             && ~regexp(data_in.vol_type,'.*radial.*')  %PVM_EncZfRead=1 for fill, or 0 for no fill, generally we fill( THIS IS NOT WELL TESTED)
         %bruker data is usually padded out to a power of 2 or multiples of
         %powers of 2.
         % 3*2^6 
@@ -965,6 +713,9 @@ else
 %     recon_strategy.min_load_size= data_in.line_points*data_in.rays_per_block*(kspace.bit_depth/8);
 %     % minimum amount of bytes of data we can load at a time,
 end
+
+
+
 %% calculate expected input file size and compare to real size
 % if we cant calcualte the file size its likely we dont know what it is
 % we're loading, and therefore we would fail to reconstruct.
@@ -1005,8 +756,6 @@ if kspace_file_size~=measured_filesize
             end
             pause( 2*opt_struct.warning_pause ) ;
         end
-        
-        
     else %if measured_filesize<kspace_file_size    %if measured < exected fail.
         if strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect') && remainder==aspect_remainder
             warning('Measured data file size and calculated dont match. However this is Aspect data, and we match our expected remainder! \nMeasured=\t%d\nCalculated=\t%d\n\tAspect_remainder=%d\n',measured_filesize,kspace_file_size,aspect_remainder);
@@ -1195,7 +944,7 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,recon_stra
         fprintf('Data loading took %f seconds\n',toc(time_l));
         clear l_time logm temp_chunks temp_size;
         %% load trajectory and do dcf calculation
-        if( regexp(data_buffer.headfile.([data_tag 'vol_type']),'.*radial.*'))
+        if( regexp(data_in.vol_type,'.*radial.*'))
             %% Load trajectory and shape it up.
 
             fprintf('Loading trajectory\n');
@@ -1407,13 +1156,13 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,recon_stra
             data_buffer.dcf=reshape(data_buffer.dcf,[data_in.ray_length,data_in.rays_per_block,data_buffer.headfile.ray_blocks_per_volume]);
         end
         %% prep keyhole trajectory
-        if ( regexp(scan_type,'keyhole'))
+        if ( regexp(data_in.scan_type,'keyhole'))
             % set up a binary array to mask points for the variable cutoff
             % this would be data_in.ray_length*keys*rays_per_key array
             % data_buffer.addprop('vcf_mask');
             % data_buffer.vcf_mask=calcmask;
             % frequency. Just ignoring right now
-            if( ~regexp(data_buffer.headfile.([data_tag 'vol_type']),'.*radial.*'))
+            if( ~regexp(data_in.vol_type,'.*radial.*'))
                 error('Non-radial keyhole not supported yet');
             end
 %             data_buffer.trajectoryectory=reshape(data_buffer.trajectoryectory,[3 ,data_buffer.headfile.ray_blocks_per_volume,data_buffer.headfile.ray_length]);
@@ -1421,7 +1170,7 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,recon_stra
         end
         %%% pre regrid data save.
         %     if opt_struct.display_kspace==true
-        %         input_kspace=reshape(data_buffer.data,input_dimensions);
+        %         input_kspace=reshape(data_buffer.data,data_in.input_dimensions);
         %     end
         %% reformat/regrid kspace to cartesian
         % perhaps my 'regrid' should be re-named to 'reformat' as that is
@@ -1434,7 +1183,7 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,recon_stra
             if chunk_num==1 || ~recon_strategy.load_whole
                 rad_regrid(data_buffer,recon_strategy.c_dims);
             end
-            if  regexp(vol_type,'.*radial.*')
+            if  regexp(data_in.vol_type,'.*radial.*')
                 if recon_strategy.num_chunks==1
                     fprintf('Clearing traj,dcf and radial kspace data\n');
                     data_buffer.trajectory=[];
@@ -1443,7 +1192,7 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,recon_stra
                 end
             end
         else
-            data_buffer.data=reshape(data_buffer.data,input_dimensions);
+            data_buffer.data=reshape(data_buffer.data,data_in.input_dimensions);
         end
         if opt_struct.do_aspect_freq_correct && strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
             fprintf('Performing aspect frequency correction\n');
@@ -1625,7 +1374,7 @@ dim_text=dim_text(1:end-1);
             if disp_pause==1
                 disp_pause=5;
             end
-            disp_pause=disp_pause/prod(input_dimensions(1:numel(recon_strategy.c_dims)));
+            disp_pause=disp_pause/prod(data_in.input_dimensions(1:numel(recon_strategy.c_dims)));
             %             for tn=1:d_struct.t
             if isfield(data_buffer.headfile,'processing_chunk')
                 t_s=data_buffer.headfile.processing_chunk;
@@ -1727,7 +1476,7 @@ dim_text=dim_text(1:end-1);
             %             end ; clear d_num;
             fprintf('Performing fermi filter on volume with size %s\n',dim_string );
             
-            if strcmp(vol_type,'2D')
+            if strcmp(data_in.vol_type,'2D')
                 % this requires regridding to place volume in same dimensions as the output dimensions
                 % it also requires the first two dimensions of the output to be to be xy.
                 % these asumptions may not always be true.
@@ -1735,17 +1484,17 @@ dim_text=dim_text(1:end-1);
                 data_buffer.data=fermi_filter_isodim2(data_buffer.data,...
                     opt_struct.filter_width,opt_struct.filter_window,true);
                 data_buffer.data=reshape(data_buffer.data,data_out.output_dimensions );
-                %elseif strcmp(vol_type,'3D')
-            elseif regexpi(vol_type,'3D|4D');
+                %elseif strcmp(data_in.vol_type,'3D')
+            elseif regexpi(data_in.vol_type,'3D|4D');
                 fermi_filter_isodim2_memfix_obj(data_buffer,...
                     opt_struct.filter_width,opt_struct.filter_window,false);
                 
                 %                 data_buffer.data=fermi_filter_isodim2(data_buffer.data,...
                 %                     opt_struct.filter_width,opt_struct.filter_window,false);
-                %             elseif strcmp(vol_type,'4D')
+                %             elseif strcmp(data_in.vol_type,'4D')
                 %                 data_buffer.data=fermi_filter_isodim2(data_buffer.data,...
                 %                     opt_struct.filter_width,opt_struct.filter_window,false);
-            elseif regexpi(vol_type,'radial');
+            elseif regexpi(data_in.vol_type,'radial');
                 mem_efficient_filter=true;
                 if mem_efficient_filter;
                     fermi_filter_isodim2_memfix_obj(data_buffer,...
@@ -1809,8 +1558,8 @@ dim_text=dim_text(1:end-1);
         if ~opt_struct.skip_fft
             %% fft
             fprintf('Performing FFT on ');
-            if strcmp(vol_type,'2D')
-                fprintf('%s volumes\n',vol_type);
+            if strcmp(data_in.vol_type,'2D')
+                fprintf('%s volumes\n',data_in.vol_type);
                 if ~exist('img','var') || numel(img)==1;
                     img=zeros(data_out.output_dimensions);
                 end
@@ -1859,8 +1608,8 @@ dim_text=dim_text(1:end-1);
                 end
                 data_buffer.data=img;
                 clear img;
-             elseif regexp(vol_type,'.*radial.*')
-                fprintf('%s volumes\n',vol_type);
+             elseif regexp(data_in.vol_type,'.*radial.*')
+                fprintf('%s volumes\n',data_in.vol_type);
                 fprintf('Radial fft optimizations\n');
                 %% timepoints
                 if isfield(data_buffer.headfile,'processing_chunk')
@@ -1914,7 +1663,7 @@ dim_text=dim_text(1:end-1);
                 data_buffer.headfile.grid_crop=[c_s,c_e];
                 clear c_s c_e dims temp;
             else
-                fprintf('%s volumes\n',vol_type);
+                fprintf('%s volumes\n',data_in.vol_type);
                 %method 1 fails for more than 3D
                 %                 odims=size(data_buffer.data);
                 %                 data_buffer.data=reshape(data_buffer.data,[odims(1:3) prod(odims(4:end))]);
@@ -1955,7 +1704,7 @@ dim_text=dim_text(1:end-1);
                 data_buffer.data=fftshift(fftshift(fftshift(ifft(ifft(ifft(data_buffer.data,[],1),[],2),[],3),1),2),3);
             end
             %% resort images flip etc
-            if strcmp(vol_type,'3D') && ~opt_struct.skip_resort
+            if strcmp(data_in.vol_type,'3D') && ~opt_struct.skip_resort
                 %%% decide how and if a resort should be done.
                 if strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
                     
@@ -2097,7 +1846,7 @@ dim_text=dim_text(1:end-1);
             %% combine channel data
             % should make collapse dimension function.
             if ~opt_struct.skip_combine_channels && d_struct.c>1
-                if regexp(vol_type,'2D|3D')
+                if regexp(data_in.vol_type,'2D|3D')
                     % To respect the output order we use strfind.
                     fprintf('combining channel complex data with method %s\n',opt_struct.combine_method);
                     dind=strfind(opt_struct.output_order,'c'); % get dimension index for channels

@@ -1,4 +1,12 @@
 function [recon_strategy, opt_struct]=get_recon_strategy(data_buffer,opt_struct,d_struct,data_in,data_work,data_out,meminfo)
+% recon strategy settings
+% possible recon strategys
+% for a series of acquistions load the whole or load most reasonable small
+% part.(1 volume)
+% filter always operates per volume or slice so its operation is
+% unaffected.
+% fft all in parllel, or fft whole most reasonable chunk or, fft slice then
+% fft across 3rd dimension later if need be.
 
 %% calculate memory and chunk sizes
 data_in.total_bytes_RAM=...
@@ -64,7 +72,7 @@ if useable_RAM>=maximum_RAM_requirement || opt_struct.skip_mem_checks
     % recon_strategy.num_chunks
     % chunks_to_load(chunk_num)]
 %     if true
-    min_chunks=1;
+    recon_strategy.min_chunks=1;
     recon_strategy.memory_space_required=maximum_RAM_requirement;
     % max_loadable_chunk_size=((data_in.line_points*rays_per_block+load_skip)*data_in.ray_blocks*data_in.disk_bytes_per_sample);
     max_loadable_chunk_size=((data_in.line_points*rays_per_block)*data_in.ray_blocks*data_in.disk_bytes_per_sample);
@@ -126,7 +134,7 @@ elseif true
     % chunks_to_load(chunk_num)
     % recon_strategy.dim_string='xyz';
     recon_strategy.dim_string=opt_struct.output_order;
-    data_work.single_vol_RAM=data_work.volume_voxels*data_work.RAM_bytes_per_voxel*data_work.RAM_volume_multiplier;
+    data_work.single_vol_RAM=data_work.volume_voxels*data_work.RAM_bytes_per_voxel*data_work.RAM_volume_multiplier;%add slice sizes as well in all likely hood if we do slice recon we'll still have room to load at least one whole volume.
     data_out.single_vol_RAM =data_out.volume_voxels *data_out.RAM_bytes_per_voxel *data_out.RAM_volume_multiplier;
     %%% NEED TO DETERMINE CHUNK STRATEGY!
     %%% Can we load all input data at once?

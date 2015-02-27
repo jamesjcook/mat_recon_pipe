@@ -1,4 +1,4 @@
-function puller(data_buffer,opt_struct)
+function puller(data_buffer,opt_struct,scanner,puller_data)
 %pull the data to local machine
 work_dir_name= [data_buffer.headfile.U_runno '.work'];
 data_buffer.headfile.work_dir_path=[data_buffer.engine_constants.engine_work_directory '/' work_dir_name];
