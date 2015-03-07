@@ -1763,6 +1763,9 @@ dim_text=dim_text(1:end-1);
             end
             %% display result images
             if opt_struct.display_output==true
+                if ~exist('old_way','var')
+                    pan_nd_image(data_buffer.data);
+                else
                 dim_select.x=':';
                 dim_select.y=':';
                 for zn=1:d_struct.z
@@ -1787,6 +1790,7 @@ dim_text=dim_text(1:end-1);
                         end
                         fprintf('%d %d\n',zn,tn);
                     end
+                end
                 end
             end
             %% combine channel data
@@ -2130,7 +2134,7 @@ dim_text=dim_text(1:end-1);
            
             %% save types.
             %% complex save
-            if ( opt_struct.write_complex && ~opt_struct.skip_recon ) || recon_strategy.work_by_chumk || recon_strategy.work_by_sub_chunk
+            if ( opt_struct.write_complex && ~opt_struct.skip_recon ) || recon_strategy.work_by_chunk || recon_strategy.work_by_sub_chunk
                 fprintf('\twrite_complex (radish_format) save\n');
                 save_complex(tmp,[ work_dir_img_path '.rp.out']);
             end
