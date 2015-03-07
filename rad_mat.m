@@ -195,6 +195,7 @@ beta_options={
     'open_volume_limit',      ' override the maximum number of volumes imagej will open at a time,default is 36. use open_volume_limit=##'
     'warning_pause',          ' length of pause after warnings (default 3). Errors outside matlab from the perl parsers are not effected. use warning_pause=##'
     'no_navigator',           ' aspect spinecho? scans have a navigator of 50 points, this forces that off.'
+    'ij_custom_macro',        ' use custom macro to load file instead of CIVM_RunnoOpener macro'
     '',                       ''
     };
 planned_options={
@@ -594,22 +595,16 @@ elseif local_space_bytes-data_out.disk_total_bytes < 0.1*local_space_bytes % war
 else
     error('not enough free local disk space to reconstruct data, delete some files and try again');
 end
-clear local_space_bytes;
+clear local_space_bytes df_field;
 %% load_data parameter determination
 display('Checking file size and calcualting RAM requirements...');
 data_prefix=data_buffer.headfile.(['U_' 'prefix']);
 meminfo=imaqmem; %check available memory
 
-data_in.line_pad     = 0;
-data_in.line_points  = d_struct.c*data_in.ray_length;
-data_in.total_points = data_in.ray_length*data_in.rays_per_block*data_in.ray_blocks;
-% the number of points in kspace that were sampled.
-% for our number of input points.
-data_in.min_load_bytes= 2*data_in.line_points*data_in.rays_per_block*(data_in.disk_bit_depth/8); % 8 bits per byte.
-% minimum amount of bytes of data we can load at a time
 %%   determine padding
 % block_factors=factor(data_in.ray_blocks);
 alt_agilent_channel_code=true;
+data_in.line_pad=0;
 if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
     %% calculate padding for bruker
     if ( strcmp(data_buffer.headfile.([data_prefix 'GS_info_dig_filling']),'Yes')...
@@ -635,7 +630,7 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
         data_in.total_points = data_in.ray_length*data_in.rays_per_block*data_in.ray_blocks;
         % the number of points in kspace that were sampled.
         % this does not include header or padding
-        data_in.min_load_bytes= 2*data_in.line_points*data_in.rays_per_block*(data_in.disk_bit_depth/8);
+        % data_in.min_load_bytes= 2*data_in.line_points*data_in.rays_per_block*(data_in.disk_bit_depth/8);
         
         % somehow for john's rare acquisition the data_in.rays_per_block includes
         % the channel information, This causes my line_points to be off,
@@ -645,7 +640,7 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
             if data_buffer.headfile.B_rare_factor==1
                 data_in.line_points   = data_in.ray_length;
                 data_in.total_points = data_in.ray_length*data_in.rays_per_block*data_in.ray_blocks;
-                data_in.min_load_bytes= 2*data_in.line_points*data_in.rays_per_block*(data_in.disk_bit_depth/8);
+                % data_in.min_load_bytes= 2*data_in.line_points*data_in.rays_per_block*(data_in.disk_bit_depth/8);
             end
         end
             
@@ -683,7 +678,7 @@ elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect')
     end
     data_in.total_points = data_in.ray_length*data_in.rays_per_block*data_in.ray_blocks;
     % because data_in.ray_length is number of complex points have to doubled this.
-    data_in.min_load_bytes= 2*data_in.line_points*data_in.rays_per_block*(data_in.disk_bit_depth/8);
+    % data_in.min_load_bytes= 2*data_in.line_points*data_in.rays_per_block*(data_in.disk_bit_depth/8);
     % minimum amount of bytes of data we can load at a time,
 elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
     %% No padding on agilent that we can tell.
@@ -702,8 +697,7 @@ elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
     %%%%%%
     data_in.total_points = data_in.ray_length*data_in.rays_per_block*d_struct.c*data_in.ray_blocks;
     % because data_in.ray_length is doubled, this is doubled too.
-    data_in.min_load_bytes=2*data_in.line_points*data_in.rays_per_block*...
-        (data_in.disk_bit_depth/8);
+    % data_in.min_load_bytes=2*data_in.line_points*data_in.rays_per_block* (data_in.disk_bit_depth/8);
     % minimum amount of bytes of data we can load at a time,
 else
     error(['Stopping for unrecognized scanner_vendor:', data_buffer.scanner_constants.scanner_vendor,', not sure if how to calculate the memory size.']); 
@@ -719,13 +713,13 @@ end
 %% calculate expected input file size and compare to real size
 % if we cant calcualte the file size its likely we dont know what it is
 % we're loading, and therefore we would fail to reconstruct.
-data_in.kspace_header_bytes  =data_in.binary_header_size+data_in.load_skip*(data_in.ray_blocks-1); 
+data_in.kspace_header_bytes  =data_in.binary_header_bytes+data_in.ray_block_hdr_bytes*(data_in.ray_blocks-1); 
 % total bytes used in headers spread throughout the kspace data
 if strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')&&alt_agilent_channel_code
-    data_in.kspace_header_bytes  =data_in.binary_header_size+data_in.load_skip*(data_in.ray_blocks); 
+    data_in.kspace_header_bytes  =data_in.binary_header_bytes+data_in.ray_block_hdr_bytes*(data_in.ray_blocks); 
     %%% TEMPORARY HACK TO FIX ISSUES WITH AGILENT
 elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
-    data_in.kspace_header_bytes  =data_in.binary_header_size+data_in.load_skip*data_in.ray_blocks*d_struct.c; 
+    data_in.kspace_header_bytes  =data_in.binary_header_bytes+data_in.ray_block_hdr_bytes*data_in.ray_blocks*d_struct.c; 
 end
 data_in.kspace_data=2*(data_in.line_points*data_in.rays_per_block)*data_in.ray_blocks*(data_in.disk_bit_depth/8); % data bytes in file (not counting header bytes)
 % data_in.kspace_data          =recon_strategy.min_load_size*max_loads_per_chunk;
@@ -769,7 +763,7 @@ end
 clear data_in.kspace_header_bytes kspace_file_size fileInfo measured_filesize;
 
 %% set the recon strategy dependent on memory requirements
-[recon_strategy,opt_struct]=get_recon_strategy(data_buffer,opt_struct,d_struct,data_in,data_work,data_out,meminfo);
+[recon_strategy,opt_struct]=get_recon_strategy3(data_buffer,opt_struct,d_struct,data_in,data_work,data_out,meminfo);
 
 %% mem purging when we expect to fit.
 %%% first just try a purge to free enough space.
@@ -779,10 +773,10 @@ if meminfo.AvailPhys<recon_strategy.memory_space_required
 end
 %%% now prompt for program close and purge and update available mem.
 while meminfo.AvailPhys<recon_strategy.memory_space_required
-    fprintf('%0.2fM/%0.2fM you have too many programs open.\n ',meminfo.AvailPhys/1024/1024,memory_space_required/1024/1024);
+    fprintf('%0.2fM/%0.2fM you have too many programs open.\n ',meminfo.AvailPhys/1024/1024,recon_strategy.memory_space_required/1024/1024);
     user_response=input('close some programs and then press enter >> (press c to ignore mem limit, NOT RECOMMENDED)','s');
     if strcmp(user_response,'c')
-        meminfo.AvailPhys=memory_space_required;
+        meminfo.AvailPhys=recon_strategy.memory_space_required;
     else
         system('purge');
         meminfo=imaqmem;
@@ -837,7 +831,7 @@ for d_num=1:length(dim_order)
    ds=sprintf('%s %d',ds,d_struct.(dim_order(d_num)));
 end
 %  load_from_data_file(data_buffer, data_buffer.headfile.kspace_data_path, ....
-%                 data_buffer.headfile.kspace_data_path, recon_strategy.min_load_size, data_in.load_skip, data_in.precision_string, load_chunk_size, ...
+%                 data_buffer.headfile.kspace_data_path, recon_strategy.min_load_size, recon_strategy.load_skip, data_in.precision_string, load_chunk_size, ...
 %                 load_chunks,chunks_to_load(chunk_num),...
 %                 data_in.disk_endian);
 fprintf(['recon proceding of file at %s\n'...
@@ -849,26 +843,37 @@ fprintf(['recon proceding of file at %s\n'...
     '\tdata precision is %s, endian is %s.\n'],...
     data_buffer.headfile.kspace_data_path, ....
     dim_order, ds,...
-    data_in.binary_header_size,...
+    data_in.binary_header_bytes,...
     recon_strategy.min_load_size*(data_in.disk_bit_depth/8),...
     recon_strategy.chunk_size/recon_strategy.min_load_size,...
-    data_in.load_skip,...    
+    recon_strategy.load_skip,...    
     data_in.precision_string,...
     data_in.disk_endian);
 
  if ~opt_struct.skip_write_temp_headfile
-    dest=[data_buffer.headfile.work_dir_path '/' 'rad_mat.headfile'];
-    fprintf('\ttemp headfile save \n\t\t%s\n',dest);
+    hf_path=[data_buffer.headfile.work_dir_path '/' 'rad_mat.headfile'];
+    fprintf('\ttemp headfile save \n\t\t%s\n',hf_path);
 %     data_buffer.headfile.output_image_path=space_dir_img_folder;
-    write_headfile(dest,data_buffer.headfile,0);
+    write_headfile(hf_path,data_buffer.headfile,0);
     % insert validate_header perl script check here?
  end
 
-clear dim_order ds dest ;
+clear dim_order ds hf_path ;
 
 % runno_list=cell(1,prod(ouput_dimensions(4:end)));
-    %% reconstruction
-for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,recon_strategy.num_chunks)
+%% reconstruction
+%%% have to change this from chunk_num 1... end to recon_operation 1...n, 
+%%% in most cases recon_ops are exactly chunks, however a few condiditons
+%%% bunk that. 
+% recon_operations=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,recon_strategy.num_chunks);
+recon_operations=recon_strategy.recon_operations;
+% reference to chunk in opt_struct should be fixed to recon_operation.
+for recon_num=1:recon_operations
+    meminfo=imaqmem;
+    if meminfo.AvailPhys<recon_strategy.memory_space_required
+        fprintf('%0.2fM/%0.2fM you have too many programs open.\n ',meminfo.AvailPhys/1024/1024,recon_strategy.memory_space_required/1024/1024);
+        system('purge');
+    end
     time_chunk=tic;
     if ~opt_struct.skip_load
         %% Load data file
@@ -876,11 +881,19 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,recon_stra
         %load data with skips function, does not reshape, leave that to regridd
         %program.
         time_l=tic;
-        load_chunks=recon_strategy.num_chunks;
+        load_chunks=recon_strategy.num_chunks; %load_chunks may not be used for aything helpful, here or in load_file. ...
         load_chunk_size=recon_strategy.chunk_size;
-        if recon_strategy.load_whole && recon_strategy.num_chunks>1
+        file_header=data_in.binary_header_bytes;
+        if recon_strategy.load_whole && recon_strategy.num_chunks>1 && ~recon_strategy.work_by_sub_chunk
             load_chunks=1;
             load_chunk_size=recon_strategy.chunk_size*recon_strategy.num_chunks;
+        elseif recon_strategy.work_by_sub_chunk 
+            file_header=data_in.binary_header_bytes+(recon_num-1)*recon_strategy.min_load_size*(data_in.disk_bit_depth/8);
+            chunks_to_load=1:recon_strategy.num_chunks;
+            load_chunk_size=recon_strategy.chunk_size;
+        else 
+            save('/tmp/matlab_debug.mat');
+            error('Unsupported recon condition, saved matlab workspace to /tmp/matlab_debug.mat');
         end
         %         temp_chunks=recon_strategy.num_chunks;
         %         temp_size=recon_strategy.chunk_size;
@@ -889,16 +902,16 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,recon_stra
         %             recon_strategy.chunk_size=temp_size*temp_chunks;
         %         end
 
-        if  chunk_num==1 || (  load_chunks>1 ) ||  ~isprop(data_buffer,'data') %~recon_strategy.load_whole &&
+        if  recon_num==1 || (  load_chunks>1 ) ||  ~isprop(data_buffer,'data') %~recon_strategy.load_whole &&
             % we load the data for only the first chunk of a load_whole, 
             % or for each/any chunk when recon_strategy.num_chunks  > 1
             if ~isprop(data_buffer,'data')
                 data_buffer.addprop('data');
             end
             load_from_data_file(data_buffer, data_buffer.headfile.kspace_data_path, ....
-                data_in.binary_header_size, recon_strategy.min_load_size, data_in.load_skip, data_in.precision_string, load_chunk_size, ...
-                load_chunks,chunks_to_load(chunk_num),...
-                data_in.disk_endian);
+                file_header, recon_strategy.min_load_size, recon_strategy.load_skip, data_in.precision_string, load_chunk_size, ...
+                load_chunks,chunks_to_load,...
+                data_in.disk_endian,recon_strategy.post_skip);
             
             if data_in.line_pad>0  %remove extra elements in padded ray,
                 % lenght of full ray is spatial_dim1*nchannels+pad
@@ -1178,9 +1191,9 @@ for chunk_num=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,recon_stra
         %%enhance to handle load_whole vs work_by_chunk.
         if ~opt_struct.skip_regrid
             if recon_strategy.num_chunks>1 %%%&& ~isempty(regexp(vol_type,'.*radial.*', 'once'))
-                data_buffer.headfile.processing_chunk=chunk_num;
+                data_buffer.headfile.processing_chunk=recon_num;
             end
-            if chunk_num==1 || ~recon_strategy.load_whole
+            if recon_num==1 || ~recon_strategy.load_whole
                 rad_regrid(data_buffer,recon_strategy.c_dims);
             end
             if  regexp(data_in.vol_type,'.*radial.*')
@@ -1365,74 +1378,7 @@ dim_text=dim_text(1:end-1);
         end 
         %% display kspace
         if opt_struct.display_kspace>=1
-            %         kslice=zeros(size(data_buffer.data,1),size(data_buffer.data,2)*2);
-            %         kslice=zeros(x,y);
-            dim_select.x=':';
-            dim_select.y=':';
-            figure(1);colormap gray;
-            disp_pause=opt_struct.display_kspace;
-            if disp_pause==1
-                disp_pause=5;
-            end
-            disp_pause=disp_pause/prod(data_in.input_dimensions(1:numel(recon_strategy.c_dims)));
-            %             for tn=1:d_struct.t
-            if isfield(data_buffer.headfile,'processing_chunk')
-                t_s=data_buffer.headfile.processing_chunk;
-                t_e=data_buffer.headfile.processing_chunk;
-            else
-                t_s=1;
-                t_e=d_struct.t;
-            end
-            for tn=t_s:t_e
-                if recon_strategy.num_chunks>1
-                    dim_select.t=1;
-                else
-                    dim_select.t=tn;
-                end
-                for zn=1:d_struct.z
-                    dim_select.z=zn;
-                    for cn=1:d_struct.c
-                        dim_select.c=cn;
-                        for pn=1:d_struct.p
-                            dim_select.p=pn;
-                            fprintf('z:%d c:%d p:%d\n',zn,cn,pn);
-                            if opt_struct.skip_regrid
-                                kslice=data_buffer.data(dim_select.(input_order(1)),dim_select.(input_order(2)),...
-                                    dim_select.(input_order(3)),dim_select.(input_order(4)),...
-                                    dim_select.(input_order(5)),dim_select.(input_order(6)));
-                            else
-                                kslice=data_buffer.data(...
-                                    dim_select.(opt_struct.output_order(1)),...
-                                    dim_select.(opt_struct.output_order(2)),...
-                                    dim_select.(opt_struct.output_order(3)),...
-                                    dim_select.(opt_struct.output_order(4)),...
-                                    dim_select.(opt_struct.output_order(5)),...
-                                    dim_select.(opt_struct.output_order(6)));
-                            end
-                            %kslice(1:size(data_buffer.data,1),size(data_buffer.data,2)+1:size(data_buffer.data,2)*2)=input_kspace(:,cn,pn,zn,:,tn);
-                            imagesc(log(abs(squeeze(kslice)))), axis image;
-                            %                             fprintf('.');
-                            pause(disp_pause);
-%                             pause(4/d_struct.z/d_struct.c/d_struct.p);
-                            %                         pause(1);
-                            %                         imagesc(log(abs(squeeze(input_kspace(:,cn,pn,zn,:,tn)))));
-                            %                             fprintf('.');
-                            %                         pause(4/z/d_struct.c/d_struct.p);
-                            %                         pause(1);
-                            if(strfind(input_order,'p'))>numel(recon_strategy.c_dims)
-                                pn=d_struct.p;
-                            end
-                        end
-                        fprintf('\n');
-                        if(strfind(input_order,'c'))>numel(recon_strategy.c_dims)
-                            cn=d_struct.c;
-                        end
-                    end
-                end
-                if(strfind(input_order,'t'))>numel(recon_strategy.c_dims)
-                    tn=d_struct.t;
-                end
-            end
+            pan_nd_image(data_buffer);
         end
         %% preserve original kspace
         % should modify this to handle any of the reasons to preserve here
@@ -1926,10 +1872,7 @@ dim_text=dim_text(1:end-1);
         end
         
     end % end skipload
-    fprintf('Reconstruction Finished! Saving...');
-    %% stich chunks together
-    % this is not implimented yet.
-    warning('this saving code is temporary it is not designed for chunks');
+    fprintf('Reconstruction %d of %d Finished! Saving...',recon_num,recon_operations);
     %% save data
     % this needs a bunch of work, for now it is just assuming the whole pile of
     % data is sitting in memory awaiting saving, does not handle chunks or
@@ -1951,6 +1894,7 @@ dim_text=dim_text(1:end-1);
         datatype='raw';
     end
     data_buffer.headfile.F_imgformat=datatype;
+    %% save outputs
     if ~opt_struct.skip_write
         work_dir_img_path_base=[ data_buffer.headfile.work_dir_path '/' runno ] ;
         %% save uncombined channel niis.
@@ -1973,97 +1917,6 @@ dim_text=dim_text(1:end-1);
             data_buffer.headfile.([data_tag 'volumes'])=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c;
             d_struct.c=1;
         end
-        %% ijmacro
-        openmacro_path=sprintf('%s%s',work_dir_img_path_base ,'.ijm');
-        if opt_struct.overwrite && exist(openmacro_path,'file')
-            delete(openmacro_path);
-        else
-            warning('macro exists at:%s\n did you mean to enable overwrite?',openmacro_path);
-        end
-        %     end
-        %        for tn=1:d_struct.t
-        %         for cn=1:channels
-        %             for pn=1:d_struct.p
-%             'channels=1;\n',...
-        openmacro_lines=strcat(...
-            'channels=',num2str(d_struct.c),';\n' , ...
-            'channel_alias="',opt_struct.channel_alias,'";\n',...
-            'frames=', num2str(d_struct.t),';\n', ...
-            'params=', num2str(d_struct.p),';\n', ...
-            'slices=', num2str(d_struct.z),';\n', ...
-            'volumes=', num2str(data_buffer.headfile.([data_tag 'volumes'])),';\n', ...
-            'runno="', runno, '"',';\n', ...
-            'runno_dir="', data_buffer.engine_constants.engine_work_directory, '/"+runno+""',';\n', ...
-            'open_all_output="open";\n',...
-            'if(slices==1){ open_all_output=""; }\n',...
-            'sub_start=1',';\n', ...
-            'sub_stop=sub_start+slices-1;\n', ...
-            'for(framenum=1;framenum<=frames;framenum++) {\n', ...
-            '    for(channelnum=1;channelnum<=channels;channelnum++) {\n', ...
-            '    for(paramnum=1;paramnum<=params;paramnum++) {\n', ...
-            '        if ( channels>1 ) { \n',...
-            '            channel_code=substring(channel_alias,channelnum-1,channelnum);\n',...
-            '        } else {\n',...
-            '            channel_code="";\n',...
-            '        }\n',...
-            '        volumenum=(framenum-1)*params+paramnum;\n', ...
-            '        if (volumes > 1 && volumes!=channels) {\n', ...
-            '            num=d2s(volumenum-1,0);\n', ...
-            '            digits=lengthOf(d2s(volumes/channels,0));\n', ...
-            '            while(lengthOf(num)<digits && lengthOf(num) < 4 ) {\n', ...
-            '               num="0"+num;\n', ...
-            '            }\n', ...
-            '            multi_suffix="_m"+num;\n', ...
-            '        } else {\n', ...
-            '          multi_suffix="";\n', ...
-            '        }\n',...
-            '\n', ...
-            '        out_runno=""+runno+channel_code+multi_suffix;\n', ...
-            '        output_dir=""+runno_dir+channel_code+multi_suffix+"/"+out_runno+"images";\n', ...
-            '\n', ...
-            '        if ( volumes < ', num2str(opt_struct.open_volume_limit), ' ) { \n', ...
-            '            run("Raw...", "open="+output_dir+"/"+out_runno+"',...
-            data_buffer.scanner_constants.scanner_tesla_image_code,...
-            'imx.0001.raw image=[16-bit Unsigned] width=',...
-            num2str(d_struct.x),' height=',num2str(d_struct.y),...
-            ' offset=0 number="+slices+" gap=0 "+open_all_output+"");\n', ...
-            '        }  else if ( volumenum == 1 ) {\n', ...
-            '            run("Raw...", "open="+output_dir+"/"+out_runno+"',...
-            data_buffer.scanner_constants.scanner_tesla_image_code,...
-            'imx.0001.raw image=[16-bit Unsigned] width=', num2str(d_struct.x),...
-            ' height=', num2str(d_struct.y),' offset=0 number="+slices+" gap=0 "+open_all_output+"");\n', ...
-            '        } else  if ( volumenum == channels*frames) {\n', ...
-            '            run("Raw...", "open="+output_dir+"/"+out_runno+"',...
-            data_buffer.scanner_constants.scanner_tesla_image_code,...
-            'imx.0001.raw image=[16-bit Unsigned] width=', num2str(d_struct.x),...
-            ' height=', num2str(d_struct.y),' offset=0 number="+slices+" gap=0 "+open_all_output+"");\n', ...
-            '        }\n', ...
-            '        rename(out_runno);\n',...
-            '    }\n', ...
-            '    }\n', ...
-            '}\n', ...
-            'run("Tile");\n', ...
-            'if(slices==1){\n',...
-            '    setSlice(round(slices/2);\n',...
-            '}\n',...
-            '\n',...
-            '\n');
-%             '        if ( !File.isDirectory(output_dir) ) {\n', ...
-%             '            print("  Imagej: making directory"+output_dir);\n', ...
-%             '            dirparts=split(output_dir,"/");\n', ...
-%             '            current="";\n', ...
-%             '            for (part=0;part<dirparts.length;part++) { \n', ...
-%             '                current=current+"/"+dirparts[part];\n', ...
-%             '                if (!File.isDirectory(current) ) {\n', ...
-%             '                    File.makeDirectory(current);\n', ...
-%             '                }\n', ...
-%             '            }\n', ...
-%             '         }\n',...
-%             '\n', ...        
-        mfid=fopen(openmacro_path,'w');
-        fprintf(mfid,openmacro_lines);
-        fclose(mfid);
-        clear mfid openmacro_lines;
         %% write_unscaled_nD or independent_scaling
         dim_select.x=':';
         dim_select.y=':';
@@ -2129,6 +1982,223 @@ dim_text=dim_text(1:end-1);
             end
         end
         %% save volumes
+        if recon_strategy.work_by_chunk||recon_strategy.work_by_sub_chunk
+            %% arbitrarychunksave.
+            warning('this saving code is temporary it is not designed for chunks');
+            %if length(c_dims)>3  foreach outputimage , saveimgae.
+            if ( length(recon_strategy.c_dims)>3 ) 
+                [l,n,f]=get_dbline('rad_mat');
+                eval(sprintf('dbstop in %s at %d',f,l+3));
+                warning('C_DIMS CANT BE BIGGER THAN 3 YET!');
+            end
+            %%%% HAHA for each dim of c_dims outside xyz! we can
+            %%%% for each output type
+            %%%% save each output image 
+            d_pos=indx_calc(recon_num,data_out.ds.Sub(recon_strategy.op_dims));
+            for dx=1:length(recon_strategy.op_dims)
+                d_s.(recon_strategy.op_dims(dx))=d_pos(dx);
+            end
+            clear dx;
+            
+            %% sort headfile details
+            
+            %%%set channel header settings and mnumber codes for the filename
+            if d_struct.c>1
+                channel_code=opt_struct.channel_alias(cn);
+                if isfield(data_buffer.headfile,'U_specid')
+                    s_exp='[0-9]{6}-[0-9]+:[0-9]+(;|)';
+                    m_s_exp=cell(1,d_struct.c);
+                    for rexp_c=1:d_struct.c
+                        m_s_exp{rexp_c}=s_exp;
+                    end
+                    m_exp=strjoin(m_s_exp,';');
+                    m_exp=['^' m_exp '$'];
+                    if regexp(data_buffer.input_headfile.U_specid,m_exp)
+                        specid_s=strsplit(data_buffer.input_headfile.U_specid,';');
+                        data_buffer.headfile.U_specid=specid_s{cn};
+                        data_buffer.headfile.U_specid_list=data_buffer.input_headfile.U_specid;
+                        fprintf('Multi specid found in multi channel, assigning singular specid on output %s <= %s\n',data_buffer.headfile.U_specid,data_buffer.input_headfile.U_specid);
+                    elseif regexp(data_buffer.headfile.U_specid,'.*;.*')
+                        warning('Multi specid found in multi channel, but not the right number for the number of channels, \n\ti.e %s did not match regex. %s\n',data_buffer.input_headfile.U_specid,m_exp);
+                        
+                    end
+                    clear s_exp m_s_exp;
+                end
+                
+            else
+                channel_code='';
+            end
+            m_number=(d_s.t-1)*d_struct.p+d_s.p-1;
+            if d_struct.t> 1 || d_struct.p >1
+                m_code=sprintf(['_m%0' num2str(m_length) '.0f'], m_number);
+            else
+                m_code='';
+            end
+            space_dir_img_name =[ runno channel_code m_code];
+            data_buffer.headfile.U_runno=space_dir_img_name;
+            
+            space_dir_img_folder=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '/' space_dir_img_name 'images' ];
+            work_dir_img_name_per_vol =[ runno channel_code m_code];
+            work_dir_img_path_per_vol=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '.work/' space_dir_img_name 'images' ];
+            work_dir_img_path=[work_dir_img_path_base channel_code m_code];
+            if d_struct.c > 1
+                data_buffer.headfile.work_dir=data_buffer.engine_constants.engine_work_directory;
+                data_buffer.headfile.runno_base=runno;
+            end
+            %%% set param value in output
+            % if te
+            if isfield(data_buffer.headfile,'te_sequence')
+                data_buffer.headfile.te=data_buffer.headfile.te_sequence(d_s.p);
+            end
+            % if tr
+            if isfield(data_buffer.headfile,'tr_sequence')
+                data_buffer.headfile.tr=data_buffer.headfile.tr_sequence(d_s.p);
+            end
+            % if alpha
+            if isfield(data_buffer.headfile,'alpha_sequence')
+                data_buffer.heafdile.alpha=data_buffer.headfile.alpha_sequence(d_s.p);
+            end
+            %% disp messages
+            if (~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon )||...
+                    ~opt_struct.skip_write_headfile
+                % if recon done, and we're writing civmrawoutput or
+                % we're writing headfile outs.
+                fprintf('Writing standard outputs to %s,\n',space_dir_img_folder);
+            end
+            if ( opt_struct.write_unscaled ||...
+                    opt_struct.write_complex )&& ~opt_struct.skip_recon ||...
+                    opt_struct.write_kimage ||...
+                    opt_struct.write_kimage_unfiltered
+                fprintf('Writing debug outputs to %s\n',data_buffer.headfile.work_dir_path);
+            end
+                           
+            %% pull single vol to save
+            if ~opt_struct.skip_recon && ( opt_struct.write_complex || opt_struct.write_unscaled || ~opt_struct.skip_write_civm_raw)
+                fprintf('Extracting image channel:%0.0f param:%0.0f timepoint:%0.0f\n',d_s.c,d_s.p,d_s.t);
+                %                 tmp=data_buffer.data(:,:,:,1); %% only take first.
+                %                 tmp=squeeze(data_buffer.data(...
+                %                     dim_select.(opt_struct.output_order(1)),...
+                %                     dim_select.(opt_struct.output_order(2)),...
+                %                     dim_select.(opt_struct.output_order(3)),...
+                %                     dim_select.(opt_struct.output_order(4)),...
+                %                     dim_select.(opt_struct.output_order(5)),...
+                %                     dim_select.(opt_struct.output_order(6))...
+                %                     ));
+                tmp=data_buffer.data;
+                if numel(tmp)<prod(data_out.output_dimensions(1:3))
+                    error('Save file not right, chunking error likly');
+                end
+            else
+                tmp='RECON_DISABLED';
+            end
+            %% integrated rolling
+            %
+            if opt_struct.integrated_rolling
+                fprintf('Integrated Rolling code\n');
+                channel_code_r=[channel_code '_'];
+                if ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X' ])
+                    input_center=get_wrapped_volume_center(tmp);
+                    ideal_center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
+                    shift_values=ideal_center-input_center;
+                    for di=1:length(shift_values)
+                        if shift_values(di)<0
+                            shift_values(di)=shift_values(di)+size(data_buffer.data,di);
+                        end
+                    end
+                    data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' ])=shift_values(strfind(opt_struct.output_order,'x'));
+                    data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' ])=shift_values(strfind(opt_struct.output_order,'y'));
+                    data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' ])=shift_values(strfind(opt_struct.output_order,'z'));
+                    fprintf('\tSet Roll value\n');
+                else
+                    shift_values=[ data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' ])
+                        data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' ])
+                        data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' ])
+                        ];
+                    fprintf('\tExisting Roll value\n');
+                end
+                fprintf('\tshift by :');
+                fprintf('%d,',shift_values);
+                fprintf('\n');
+                tmp=circshift(tmp,round(shift_values));
+            end
+
+            
+            %                     if(recon_strategy.num_chunks>1)
+            %                         out_runnos.(space_dir_img_name)=1; %make a struct of our runnums
+            %                     end
+         
+           
+            %% save types.
+            %% complex save
+            if ( opt_struct.write_complex && ~opt_struct.skip_recon ) || recon_strategy.work_by_chumk || recon_strategy.work_by_sub_chunk
+                fprintf('\twrite_complex (radish_format) save\n');
+                save_complex(tmp,[ work_dir_img_path '.rp.out']);
+            end
+            %% civmraw save
+            if ~exist(space_dir_img_folder,'dir') || opt_struct.ignore_errors
+                if ~opt_struct.skip_write_civm_raw || ~opt_struct.skip_write_headfile
+                    mkdir(space_dir_img_folder);
+                end
+            elseif ~opt_struct.overwrite
+                % the folder existed, however we were not set for
+                % overwrite
+                error('Output directory existed! NOT OVERWRITING SOMEONE ELSES DATA UNLESS YOU TELL ME!, use overwrite option.');
+            end
+            if ~opt_struct.skip_write_headfile
+                hf_path=[space_dir_img_folder '/' space_dir_img_name '.headfile'];
+                fprintf('\twrite_headfile save \n\t\t%s\n',hf_path);
+                data_buffer.headfile.output_image_path=space_dir_img_folder;
+                write_headfile(hf_path,data_buffer.headfile,0);
+                % insert validate_header perl script check here?
+            end
+            if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon
+                fprintf('\tcivm_raw save\n');
+                histo_bins=numel(tmp);
+                if opt_struct.independent_scaling
+                    img_s=sort(abs(tmp(:)));
+                    data_buffer.headfile.group_max_intensity=max(img_s);
+                    data_buffer.headfile.group_max_atpct=img_s(round(numel(img_s)*opt_struct.histo_percent/100));%throwaway highest % of data... see if that helps.
+                    fprintf('\tMax for scale = %f\n',data_buffer.headfile.group_max_atpct);
+                    %                         else
+                    %                              data_buffer.headfile.group_max_atpct= data_buffer.headfile.group_max_atpct;
+                end
+                % must write convert_info_histo for old school radish purposes
+                %                       opt_struct.histo_percent=99.95;
+                
+                outpath=[space_dir_img_folder '/convert_info_histo'];
+                % display(['Saving vintage threeft to ' outpath '.']);
+                ofid=fopen(outpath,'w+');
+                if ofid==-1
+                    error('problem opening convert_info_hist file for writing file');
+                end
+                fprintf(ofid,'%f=scale_max found by rad_mat in complex file %s\n', data_buffer.headfile.group_max_atpct,[work_dir_img_path '.out']);
+                fprintf(ofid,'%i %i : image dimensions.\n',d_struct.x,d_struct.y);
+                fprintf(ofid,'%i : image set zdim.\n', d_struct.z);
+                fprintf(ofid,'%i : histo_bins, %f : histo_percent\n',histo_bins,opt_struct.histo_percent);
+                fprintf(ofid,'x : user provided max voxel value? provided for max= none (if file used).\n');
+                fprintf(ofid,'%f : max voxel value used to construct histogram\n',data_buffer.headfile.group_max_intensity);
+                fprintf(ofid,' rad_mat convert_info_histo dump 2013/11/05\n');
+                fclose(ofid);
+                if ~recon_strategy.work_by_chunk && ~recon_strategy.work_by_sub_chunk
+                    % alternatively,
+                    % ~recon_stragey.recon_operations>1    % : p
+                    complex_to_civmraw(tmp,data_buffer.headfile.U_runno , ...
+                        data_buffer.scanner_constants.scanner_tesla_image_code, ...
+                        space_dir_img_folder,'',outpath,1,datatype)
+                end
+            end
+            %%% convenience prompts
+            %                     if ~opt_struct.skip_write_civm_raw||recon_strategy.num_chunks>1 %
+            %                     when wouldnt i want the list of expected run numbers?
+            %write_archive_tag(runno,spacename, slices, projectcode, img_format,civmid)
+            runnumbers(rindx)={data_buffer.headfile.U_runno};
+            rindx=rindx+1;
+            
+            %                     end
+            
+            
+        else
+            %% timepointonlychunksave
         % this could be changed to some kind of generic chunk along
         % dimension, then we could do a chunked dimension lookup using
         % dim_select.(chunk_d)
@@ -2152,18 +2222,10 @@ dim_text=dim_text(1:end-1);
                 dim_select.c=cn;
                 for pn=1:d_struct.p
                     dim_select.p=pn;
+                    
+                    %% pull single vol to save
                     if ~opt_struct.skip_recon && ( opt_struct.write_complex || opt_struct.write_unscaled || ~opt_struct.skip_write_civm_raw)
                         fprintf('Extracting image channel:%0.0f param:%0.0f timepoint:%0.0f\n',cn,pn,tn);
-                        %                         if ~opt_struct.skip_combine_channels  && ~ischar(combine_image);% && d_struct.c>1
-                        %                             tmp=squeeze(data_buffer.data(...
-                        %                                 s.(opt_struct.output_order(1)),...
-                        %                                 s.(opt_struct.output_order(2)),...
-                        %                                 s.(opt_struct.output_order(3)),...
-                        %                                 s.(opt_struct.output_order(4)),...
-                        %                                 s.(opt_struct.output_order(5)),...
-                        %                                 s.(opt_struct.output_order(6))...
-                        %                                 ));
-                        %                         else
                         tmp=squeeze(data_buffer.data(...
                             dim_select.(opt_struct.output_order(1)),...
                             dim_select.(opt_struct.output_order(2)),...
@@ -2206,7 +2268,8 @@ dim_text=dim_text(1:end-1);
                     else
                         channel_code='';
                     end
-                    %%%
+                    
+                    %% integrated rolling
                     %
                     if opt_struct.integrated_rolling
                         fprintf('Integrated Rolling code\n');
@@ -2247,8 +2310,10 @@ dim_text=dim_text(1:end-1);
 %                     if(recon_strategy.num_chunks>1)
 %                         out_runnos.(space_dir_img_name)=1; %make a struct of our runnums
 %                     end    
+
+                    %% sort headfile details
                     data_buffer.headfile.U_runno=space_dir_img_name;
-                    
+
                     space_dir_img_folder=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '/' space_dir_img_name 'images' ];
                     work_dir_img_name_per_vol =[ runno channel_code m_code];
                     work_dir_img_path_per_vol=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '.work/' space_dir_img_name 'images' ];
@@ -2257,7 +2322,21 @@ dim_text=dim_text(1:end-1);
                         data_buffer.headfile.work_dir=data_buffer.engine_constants.engine_work_directory;
                         data_buffer.headfile.runno_base=runno;
                     end
+                    %%% set param value in output
+                    % if te
+                    if isfield(data_buffer.headfile,'te_sequence')
+                        data_buffer.headfile.te=data_buffer.headfile.te_sequence(pn);
+                    end
+                    % if tr
+                    if isfield(data_buffer.headfile,'tr_sequence')
+                        data_buffer.headfile.tr=data_buffer.headfile.tr_sequence(pn);
+                    end
+                    % if alpha
+                    if isfield(data_buffer.headfile,'alpha_sequence')
+                        data_buffer.heafdile.alpha=data_buffer.headfile.alpha_sequence(pn);
+                    end
                     
+                    %% disp messages
                     if (~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon )||...
                             ~opt_struct.skip_write_headfile
                         % if recon done, and we're writing civmrawoutput or
@@ -2270,18 +2349,12 @@ dim_text=dim_text(1:end-1);
                             opt_struct.write_kimage_unfiltered 
                         fprintf('Writing debug outputs to %s\n',data_buffer.headfile.work_dir_path);
                     end
+                    
+                    %% save types.
                     %%% complex save
                     if opt_struct.write_complex && ~opt_struct.skip_recon
                         fprintf('\twrite_complex (radish_format) save\n');
                         save_complex(tmp,[ work_dir_img_path '.rp.out']);
-%                         data_buffer.data(...
-%                                 s.(opt_struct.output_order(1)),...
-%                                 s.(opt_struct.output_order(2)),...
-%                                 s.(opt_struct.output_order(3)),...
-%                                 s.(opt_struct.output_order(4)),...
-%                                 s.(opt_struct.output_order(5)),...
-%                                 s.(opt_struct.output_order(6))...
-%                                 )
                     end
                     %%% kimage_
                     if opt_struct.write_kimage && ~opt_struct.skip_filter && ~opt_struct.skip_load
@@ -2330,17 +2403,10 @@ dim_text=dim_text(1:end-1);
                             data_buffer.headfile.fovx/d_struct.x ...
                             data_buffer.headfile.fovy/d_struct.y ...
                             data_buffer.headfile.fovz/d_struct.z]); % insert fov settings here ffs....
-%                         data_buffer.data(...
-%                                 s.(opt_struct.output_order(1)),...
-%                                 s.(opt_struct.output_order(2)),...
-%                                 s.(opt_struct.output_order(3)),...
-%                                 s.(opt_struct.output_order(4)),...
-%                                 s.(opt_struct.output_order(5)),...
-%                                 s.(opt_struct.output_order(6))...
-%                                 )
                         fprintf('\t\t save_nii\n');
                         save_nii(nii,[work_dir_img_path '.nii']);
                     end
+                    
                     %%% civmraw save
                     if ~exist(space_dir_img_folder,'dir') || opt_struct.ignore_errors
                         if ~opt_struct.skip_write_civm_raw || ~opt_struct.skip_write_headfile 
@@ -2351,27 +2417,11 @@ dim_text=dim_text(1:end-1);
                         % overwrite
                         error('Output directory existed! NOT OVERWRITING SOMEONE ELSES DATA UNLESS YOU TELL ME!, use overwrite option.');
                     end
-                    %%% set param value in output
-                    
-                    % if te
-                    if isfield(data_buffer.headfile,'te_sequence')
-                        data_buffer.headfile.te=data_buffer.headfile.te_sequence(pn);
-                    end
-                    % if tr
-                    if isfield(data_buffer.headfile,'tr_sequence')
-                        data_buffer.headfile.tr=data_buffer.headfile.tr_sequence(pn);
-                    end
-                    % if alpha
-                    if isfield(data_buffer.headfile,'alpha_sequence')
-                        data_buffer.heafdile.alpha=data_buffer.headfile.alpha_sequence(pn);
-                    end
-                    
                     if ~opt_struct.skip_write_headfile
-                        
-                        dest=[space_dir_img_folder '/' space_dir_img_name '.headfile'];
-                        fprintf('\twrite_headfile save \n\t\t%s\n',dest);
+                        hf_path=[space_dir_img_folder '/' space_dir_img_name '.headfile'];
+                        fprintf('\twrite_headfile save \n\t\t%s\n',hf_path);
                         data_buffer.headfile.output_image_path=space_dir_img_folder;
-                        write_headfile(dest,data_buffer.headfile,0);
+                        write_headfile(hf_path,data_buffer.headfile,0);
                         % insert validate_header perl script check here?
                     end
                     if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon
@@ -2385,22 +2435,6 @@ dim_text=dim_text(1:end-1);
 %                         else
 %                              data_buffer.headfile.group_max_atpct= data_buffer.headfile.group_max_atpct;
                         end
-%                         data_buffer.data(...
-%                                 s.(opt_struct.output_order(1)),...
-%                                 s.(opt_struct.output_order(2)),...
-%                                 s.(opt_struct.output_order(3)),...
-%                                 s.(opt_struct.output_order(4)),...
-%                                 s.(opt_struct.output_order(5)),...
-%                                 s.(opt_struct.output_order(6))...
-%                                 )
-%                         tmp=data_buffer.data(...
-%                                 s.(opt_struct.output_order(1)),...
-%                                 s.(opt_struct.output_order(2)),...
-%                                 s.(opt_struct.output_order(3)),...
-%                                 s.(opt_struct.output_order(4)),...
-%                                 s.(opt_struct.output_order(5)),...
-%                                 s.(opt_struct.output_order(6))...
-%                                 );
                         % must write convert_info_histo for old school radish purposes
 %                       opt_struct.histo_percent=99.95;
 
@@ -2418,15 +2452,15 @@ dim_text=dim_text(1:end-1);
                         fprintf(ofid,'%f : max voxel value used to construct histogram\n',data_buffer.headfile.group_max_intensity);
                         fprintf(ofid,' rad_mat convert_info_histo dump 2013/11/05\n');
                         fclose(ofid);
-                        if ~recon_strategy.work_by_chunk
+                        if ~recon_strategy.work_by_chunk && ~recon_strategy.work_by_sub_chunk
+                            % alternatively,
+                            % ~recon_stragey.recon_operations>1    % : p
                             complex_to_civmraw(tmp,data_buffer.headfile.U_runno , ...
                                 data_buffer.scanner_constants.scanner_tesla_image_code, ...
                                 space_dir_img_folder,'',outpath,1,datatype)
                         end
-                        
                     end
                     %%% convenience prompts
-
 %                     if ~opt_struct.skip_write_civm_raw||recon_strategy.num_chunks>1 %
 %                     when wouldnt i want the list of expected run numbers?
                         %write_archive_tag(runno,spacename, slices, projectcode, img_format,civmid)
@@ -2438,19 +2472,39 @@ dim_text=dim_text(1:end-1);
                 end
             end
         end
+        end
+        %% save ijmacro
+        if recon_num==1 && exist(work_dir_img_path_base,'var')
+            openmacro_path=sprintf('%s%s',work_dir_img_path_base ,'.ijm');
+            if opt_struct.overwrite && exist(openmacro_path,'file')
+                delete(openmacro_path);
+            else
+                warning('macro exists at:%s\n did you mean to enable overwrite?',openmacro_path);
+            end
+            if exist('hf_path','var')
+                write_convenience_macro(data_buffer,openmacro_path,opt_struct,hf_path);
+            end
+        end
+    elseif opt_struct.skip_write && ( ~opt_struct.skip_recon || ~opt_struct.skip_fft )
+        fprintf('No outputs written.\n');
+        stop here to allow a manual save during execution.
     else
         fprintf('No outputs written.\n');
     end
-
     if (recon_strategy.num_chunks>1)
         fprintf('chunk_time:%0.2f\n',toc(time_chunk));
     end
 end
-if recon_strategy.num_chunks>1&&~opt_struct.skip_write
+
+%% stich chunks together
+% this is not implimented yet.
+    
+%% run group reformer for select datasets.
+if recon_strategy.num_chunks>1&&~opt_struct.skip_write %recon_strategy.work_by_chunk
     if ~exist('runnumbers','var')
         error('Run numbers were not defined, cannot reform_group');
     end
-    if numel(runnumbers) >1
+    if numel(runnumbers) >1 && recon_strategy.recon_operations>1
         if size(runnumbers,2)==1
             system(['reform_group '  strjoin(runnumbers',' ') ])
         else 

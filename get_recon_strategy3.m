@@ -1,4 +1,4 @@
-function [recon_strategy, opt_struct]=get_recon_strategy(data_buffer,opt_struct,d_struct,data_in,data_work,data_out,meminfo)
+function [recon_strategy, opt_struct]=get_recon_strategy3(data_buffer,opt_struct,d_struct,data_in,data_work,data_out,meminfo)
 % recon strategy settings
 % possible recon strategys
 % for a series of acquistions load the whole or load most reasonable small
@@ -7,6 +7,17 @@ function [recon_strategy, opt_struct]=get_recon_strategy(data_buffer,opt_struct,
 % unaffected.
 % fft all in parllel, or fft whole most reasonable chunk or, fft slice then
 % fft across 3rd dimension later if need be.
+
+
+
+% terminolgy conventions
+% points=samples of data, complex points 
+% size=  data_size reads, in loading operations we read by bit depth, this
+% ammount.
+% bytes  bytes, data_size reads bitdepth(generally), size translated to
+% size on disk more or less. 
+
+
 
 
 % maximum_memory_requirement =...
@@ -49,7 +60,12 @@ recon_strategy.load_whole=true;
 recon_strategy.channels_at_once=true;
 recon_strategy.dim_string=opt_struct.output_order;
 recon_strategy.work_by_chunk=false;
+recon_strategy.num_chunks=1;
+recon_strategy.post_scaling=false;
+recon_strategy.recon_operations=1;
+recon_strategy.op_dims='';
 if useable_RAM>=recon_strategy.maximum_RAM_requirement || opt_struct.skip_mem_checks
+    %% load whole process whole
     % for our best case where verything fits in memory set recon variables.
     % set variables 
     %%%
@@ -63,11 +79,11 @@ if useable_RAM>=recon_strategy.maximum_RAM_requirement || opt_struct.skip_mem_ch
     recon_strategy.min_chunks=1;
     recon_strategy.memory_space_required=recon_strategy.maximum_RAM_requirement;
     % max_loadable_chunk_size=((data_in.line_points*rays_per_block+load_skip)*data_in.ray_blocks*data_in.disk_bytes_per_sample);
-    max_loadable_chunk_size=((data_in.line_points*rays_per_block)*data_in.ray_blocks*data_in.disk_bytes_per_sample);
+    max_loadable_chunk_size=((data_in.line_points*data_in.rays_per_block)*data_in.ray_blocks*data_in.disk_bytes_per_sample);
     % the maximum chunk size for an exclusive data per volume reconstruction.
-    recon_strategy.c_dims=[ d_struct.x,...
-        d_struct.y,...
-        d_struct.z];
+%     recon_strategy.c_dims=[ d_struct.x,...
+%         d_struct.y,...
+%         d_struct.z];
     recon_strategy.c_dims=data_buffer.input_headfile. ...
         ([ data_buffer.input_headfile.S_scanner_tag 'dimension_order' ]);
     warning('c_dims set poorly just to input dimensions for now');
@@ -76,6 +92,7 @@ if useable_RAM>=recon_strategy.maximum_RAM_requirement || opt_struct.skip_mem_ch
     if floor(recon_strategy.num_chunks)<recon_strategy.num_chunks
         warning('Number of chunks did not work out to integer, things may be wrong!');
     end
+%     data_in.min_load_bytes= 2*data_in.line_points*data_in.rays_per_block*(data_in.disk_bit_depth/8);
     recon_strategy.min_load_size=data_in.min_load_bytes/(data_in.disk_bit_depth/8); % minimum_load_size in data samples.
     recon_strategy.chunk_size=   chunk_size_bytes/(data_in.disk_bit_depth/8);       % chunk_size in data samples.
     if recon_strategy.num_chunks>1 && ~opt_struct.ignore_errors
@@ -111,12 +128,162 @@ if useable_RAM>=recon_strategy.maximum_RAM_requirement || opt_struct.skip_mem_ch
 %         recon_strategy.min_load_size=data_in.min_load_bytes/(data_in.disk_bit_depth/8); % minimum_load_size in data samples.
 %         recon_strategy.chunk_size=   chunk_size_bytes/(data_in.disk_bit_depth/8);    % chunk_size in data samples.
 %     end
+elseif isfield(data_in,'ds')
+    %% complex recon strategy required.
+    % check that one 3d vol of xyz will fit?
+    % precalc all recon strategies? in tree?
+    %%% possible recon strategies(summary). 
+    % load_whole, process_whole  (num_chunks=1)
+    % load_whole. process_single_vol (num_chunks=n_vols)
+    % load_whole, process_n_vol (num_chunks=n_vols/someidms)
+    % load_onevol,process_onevol (num_chunks=n_vols)
+    % load_onevol,process_volpart (n_parts?) (num_chunks=n_vols*chunks_per_vol)
+    % load_volpart,process_volpart, (n_parts?) (num_chunks=n_vols*chunks_per_vol)
+    
+    recon_strategy.memory_space_required=data_in.ds.Sub('x')...
+        *data_in.RAM_bytes_per_voxel;
+    % recon_strategy.load_whole=true;
+    % recon_strategy.channels_at_once=true;
+    % recon_strategy.dim_string=opt_struct.output_order;
+    % recon_strategy.work_by_chunk=false;
+    % recon_strategy.num_chunks=1;
+    recon_strategy.dim_string=data_in.input_order;
+    recon_strategy.c_dims='';%=zeros(0,0);
+    
+    % recon_strategy.min_load_size      % set according to data_in.min_load_bytes(this is in data values).
+    % load_skip          
+    % chunk_size
+    % recon_strategy.num_chunks
+    % chunks_to_load(chunk_num)
+    % recon_strategy.dim_string='xyz';
+    
+%     load_from_data_file(data_buffer, data_buffer.headfile.kspace_data_path, ....
+%         data_in.binary_header_size, recon_strategy.min_load_size, recon_strategy.load_skip, data_in.precision_string, recon_strategy.chunk_size, ...
+%         load_chunks,chunks_to_load(chunk_num),...
+%         data_in.disk_endian);
+            
+    % we're not load_whole,process_whole becuase that is what our outer if
+    % statment checks.
+    % how much memory to load whole,procsss_vol
+    rs.last=recon_strategy;
+    string_ver=true;
+    while recon_strategy.memory_space_required < useable_RAM && ...
+            numel(recon_strategy.c_dims) < numel(data_out.output_dimensions)
+        rs.last=recon_strategy;
+        if string_ver
+            recon_strategy.c_dims(end+1)=data_out.output_order(numel(recon_strategy.c_dims)+1);
+            recon_strategy.memory_space_required=prod(data_in.ds.Sub(recon_strategy.c_dims))...
+                *data_in.RAM_bytes_per_voxel...
+                +prod(data_work.ds.Sub(recon_strategy.c_dims))...
+                *data_work.RAM_bytes_per_voxel...
+                +prod(data_out.ds.Sub(recon_strategy.c_dims))...
+                *data_out.RAM_bytes_per_voxel;
+        elseif num_ver
+            recon_strategy.c_dims(end+1)=data_out.output_dimensions(numel(recon_strategy.c_dims)+1);
+            recon_strategy.memory_space_required=prod(data_in.ds.Sub(data_in.ds.showorder(recon_strategy.c_dims)))...
+                *data_in.RAM_bytes_per_voxel...
+                +prod(data_work.ds.Sub(data_work.ds.showorder(recon_strategy.c_dims)))...
+                *data_work.RAM_bytes_per_voxel...
+                +prod(data_out.ds.Sub(data_out.ds.showorder(recon_strategy.c_dims)))...
+                *data_out.RAM_bytes_per_voxel;
+        end
+    end
+    if recon_strategy.memory_space_required > useable_RAM 
+        recon_strategy=rs.last;
+    end
+    if numel(recon_strategy.c_dims)<numel(data_out.output_order)
+        recon_strategy.op_dims=data_out.output_order(numel(recon_strategy.c_dims)+1:end);
+    end
+    %     recon_strategy.dim_string=data_out.ds.showorder(recon_strategy.c_dims);
+    recon_strategy.recon_operations=prod(data_out.ds.dim_sizes)/prod(data_out.ds.Sub(recon_strategy.c_dims));
+    %%%
+    
+    % data_in.min_load_bytes= 2*data_in.line_points*data_in.rays_per_block*(data_in.disk_bit_depth/8);
+    recon_strategy.chunk_size=2*data_in.line_points*data_in.rays_per_block;  % chunk_size in # of values (eg, 2*complex_points).
+    recon_strategy.min_load_size=recon_strategy.chunk_size; % minimum_load_size in data samples. this is the biggest piece of data we can load between header bytes.
+    
+    chunk_size_bytes=recon_strategy.chunk_size*(data_in.disk_bit_depth/8);
+    recon_strategy.num_chunks=data_in.kspace_data/chunk_size_bytes;
+
+    %chunks_per_vol
+    %sub_chunks_per_chunk.
+    
+    %%% calc var skip btween dim_string and c_dims.
+    %%% indicate subchunk skips.... if we got them.
+    %%% what is the chunk dimension? previously we always just assumed it.
+    recon_strategy.work_by_chunk=false;
+    recon_strategy.work_by_sub_chunk=false;
+    %%% blocks = chunks, so how big is the block dimension, that should
+    %%% matchup with the possible read data dimensions.
+    
+    %%%% if 2D we will operate in slice mode.... (code that later).
+    if strcmp(data_in.vol_type,'2D')
+        error('did not do 2D recon strategy. code');
+    %%%% if 3D
+    elseif strcmp(data_in.vol_type,'3D')
+        if ( recon_strategy.num_chunks ~= prod(data_out.output_dimensions)/prod(data_out.ds.Sub('xyz'))) 
+            warning('native fft blocks dont line up with chunks!');
+        end
+        unique_test_string=data_in.ds.showorder([data_in.ray_blocks data_in.ray_blocks data_in.ray_blocks]);
+        unique_test_string=unique_test_string([true diff(unique_test_string)~=0]);%collapses any extra f's to a singluar f'.
+        if strcmp(unique_test_string(end-1),'z')&&strcmp(unique_test_string(end),'f')
+            recon_strategy.work_by_sub_chunk=true;
+            recon_strategy.load_whole=false;
+            %%% this is guessing our GUESSING our ray_block dimension.
+            %%% if this this we're working over z, we have to skip over the
+            %%% product of anything between x, y and z dimensions of our
+            %%% output, this significantly complicates the skip load
+            %%% options.  This begs the question would we be better off
+            %%% with a pre-fid reformat in this context.
+            
+            %ray_length is always x. so we can assume that dimension is
+            %fine.
+            % we have to traverse until we get to a non-one dimension other
+            % than y or z. then calculate our subskip.
+            skip_dims=[];
+            for dn=1:length(recon_strategy.dim_string)
+                dl=recon_strategy.dim_string(dn);
+                if ~isempty(regexp(dl,'[^xyz]', 'once')) && data_in.ds.Sub(dl)>1
+                    skip_dims(numel(skip_dims)+1)=dl;
+                elseif ~isempty(regexp(dl,'[yz]', 'once')) && numel(skip_dims)>=1
+                    dn=length(recon_strategy.dim_string); % EARLY EXIT OF LOOP.
+                end
+            end
+            skip_dims=char(skip_dims);% fix it not being a char...
+            skip_dims=['x' skip_dims];
+            skip_dims=data_in.ds.Sub(skip_dims);
+            sub_chunk_load_skip_dim=skip_dims;
+            sub_chunk_load_skip_dim(end)=sub_chunk_load_skip_dim(end)-1;
+            sub_chunk_skip_points=prod(sub_chunk_load_skip_dim);
+            recon_strategy.sub_chunk_size=2*(prod(skip_dims)-prod(sub_chunk_load_skip_dim));
+            recon_strategy.sub_chunk_skip_bytes=2*sub_chunk_skip_points*(data_in.disk_bit_depth/8);
+            recon_strategy.post_skip=recon_strategy.sub_chunk_skip_bytes;
+            recon_strategy.min_load_size=recon_strategy.sub_chunk_size;%*(data_in.disk_bit_depth/8);
+%             recon_strategy.chunk_size=recon_strategy.min_load_size*recon_strategy.num_chunks;
+            
+            recon_strategy.load_skip=data_in.ray_block_hdr_bytes;
+            %%% do i need to double the size of load,and skip because
+            %%% complex?
+            %%%% have sub_chunk_skip_points, but we load each chunk in
+            %%%% file. Have to pass this off to ourrecon_strat.
+            % native_chunk_dimensions?
+        elseif ~strcmp(unique_test_string(end-1),'x')&&~strcmp(unique_test_string(end-1),'y')&&~strcmp(unique_test_string(end-1),'z')&&strcmp(unique_test_string(end),'f')
+            %%% so long as the chunk dimension is not x y or z, loading and
+            %%% load skipping should be okay.
+            error('DID NOT FIX NORMAL CHUNKING YET');
+            % num_chunks=ray_blocks and life is relatively easy.
+        else
+            error('UNHANDLED CHUNK CONDIDTION :(%s)',unique_test_string(end-1));
+        end
+    end
+    
+    
 elseif true
     % set variables
-    %%%
+    %%
     % binary_header_size % set above so we're good
     % recon_strategy.min_load_size      % set according to data_in.min_load_bytes(this is in data values).
-    % load_skip          % set above so we're good
+    % load_skip          
     % chunk_size
     % recon_strategy.num_chunks
     % chunks_to_load(chunk_num)
@@ -231,21 +398,23 @@ elseif true
         opt_struct.write_complex=true;
         opt_struct.independent_scaling=true;
         recon_strategy.load_whole=false;
+        recon_strategy.post_scaling=true;
     end
     recon_strategy.c_dims=recon_strategy.dim_string;
     clear rd;
 else
-    recon_strategy.min_chunks=ceil(maximum_RAM_requirement/useable_RAM);
+ %%
+ recon_strategy.min_chunks=ceil(maximum_RAM_requirement/useable_RAM);
     recon_strategy.memory_space_required=(maximum_RAM_requirement/min_chunks); % this is our maximum memory requirements
     % max_loadable_chunk_size=(data_input.sample_points*d_struct.c*(kspace.bit_depth/8))/min_chunks;
     max_loadable_chunk_size=((data_in.line_points*rays_per_block+load_skip)*data_in.ray_blocks*data_in.disk_bytes_per_sample)...
         /min_chunks;
     % the maximum chunk size for an exclusive data per volume reconstruction.
     
-    recon_strategy.c_dims=[ d_struct.x,...
-        d_struct.y,...
-        d_struct.z];
-    warning('recon_strategy.c_dims set poorly just to volume dimensions for now');
+%     recon_strategy.c_dims=[ d_struct.x,...
+%         d_struct.y,...
+%         d_struct.z];
+%     warning('recon_strategy.c_dims set poorly just to volume dimensions for now');
     
     max_loads_per_chunk=max_loadable_chunk_size/data_in.min_load_bytes;
     if floor(max_loads_per_chunk)<max_loads_per_chunk && ~opt_struct.ignore_errors
@@ -288,7 +457,7 @@ end
 %     recon_strategy.num_chunks=ceil(nblocks/max_blocks);
 % end
 if recon_strategy.num_chunks>1
-    fprintf('\tmemory_required :%0.02fM, split into %d problems\n',recon_strategy.memory_space_required/1024/1024,recon_strategy.num_chunks);
+    fprintf('\tmemory_required :%0.02fM, split into %d problems\n',recon_strategy.memory_space_required/1024/1024,recon_strategy.recon_operations);
     pause(3);
 end
 clear maximum_RAM_requirement useable_RAM ;

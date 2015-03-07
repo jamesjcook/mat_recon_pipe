@@ -1,6 +1,6 @@
 function [d_struct,data_in,data_work,data_out]=create_meta_structs(data_buffer,opt_struct)
 
-%% read input dimensions to shorthand struct
+%% read dimensions to shorthand struct
 d_struct=struct;
 d_struct.x=data_buffer.headfile.dim_X;
 d_struct.y=data_buffer.headfile.dim_Y;
@@ -31,9 +31,8 @@ d_struct.t=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c/d_struct.p;
 % else
 %     r=1;
 % end
-
-data_in.input_order=data_buffer.headfile.([data_tag 'dimension_order' ]);
 %% read input acquisition type from our header
+data_in.input_order=data_buffer.headfile.([data_tag 'dimension_order' ]);
 % some of this might belong in the load data function we're going to need
 data_in.vol_type=data_buffer.headfile.([data_tag 'vol_type']);
 if opt_struct.vol_type_override~=0
@@ -51,50 +50,6 @@ data_in.scan_type=data_buffer.headfile.([data_tag 'vol_type_detail']);
 % multi-vol
 % multi-echo are normally interleaved, so we cut our chunk size in necho pieces
 
-%% set data acquisition parameters to determine how much to work on at a time and how.
-% permute_code=zeros(size(data_in.input_order));
-% for char=1:length(data_in.input_order)
-%     permute_code(char)=strfind(opt_struct.output_order,data_in.input_order(char));
-% end
-
-% this mess gets the input and output dimensions using char arrays as
-% dynamic structure element names.
-% given the structure s.x, s.y, s.z the data_in.input_order='xzy' and
-% outputorder='xyz'
-% will set input to in=[x z y];
-% and output to out=[x y z];
-data_in.binary_header_size   =data_buffer.headfile.binary_header_size; %distance to first data point in bytes-standard block header.
-data_in.load_skip            =data_buffer.headfile.block_header_size;  %distance between blocks of rays in file in bytes
-data_in.ray_blocks           =data_buffer.headfile.ray_blocks;         %number of blocks of rays total, sometimes nvolumes, sometimes nslices, somtimes nechoes, ntrs nalphas
-data_in.rays_per_block       =data_buffer.headfile.rays_per_block;     %number or rays per block of input data,
-data_in.ray_length           =data_buffer.headfile.ray_length;         %number of samples on a ray, or trajectory
-
-% if anything except radial
-% if( ~regexp(data_in.vol_type,'.*radial.*'))
-if strcmp(data_in.vol_type,'radial')
-    % if radial
-    data_in.input_dimensions=[data_in.ray_length d_struct.(data_in.input_order(2))...
-        d_struct.(data_in.input_order(3)) data_in.rays_per_block data_in.ray_blocks];
-else
-    data_in.input_dimensions=[d_struct.(data_in.input_order(1)) d_struct.(data_in.input_order(2))...
-    d_struct.(data_in.input_order(3)) d_struct.(data_in.input_order(4))...
-    d_struct.(data_in.input_order(5)) d_struct.(data_in.input_order(6))];
-
-end
-
-data_out.output_dimensions=[d_struct.(opt_struct.output_order(1)) d_struct.(opt_struct.output_order(2))...
-    d_struct.(opt_struct.output_order(3)) d_struct.(opt_struct.output_order(4))...
-    d_struct.(opt_struct.output_order(5)) d_struct.(opt_struct.output_order(6))];
-
-%% calculate bytes per voxel for RAM(input,working,output) and disk dependent on settings
-% using our different options settings guess how many bytes of ram we need per voxel
-% of, input, workspace, and output
-data_out.disk_bytes_per_voxel=0;
-data_out.RAM_bytes_per_voxel=0;
-data_out.RAM_volume_multiplier=1;
-data_in.RAM_volume_multiplier=1;
-data_work.RAM_volume_multiplier=1;
-data_work.RAM_bytes_per_voxel=0;
 % translate scanner terminology to matlab
 data_in.disk_bit_depth=data_buffer.headfile.([data_tag 'kspace_bit_depth']);
 data_in.disk_data_type=data_buffer.headfile.([data_tag 'kspace_data_type']);
@@ -141,7 +96,61 @@ data_in.precision_string=[data_in.disk_data_type num2str(data_in.disk_bit_depth)
 %     warning('multi-channel support still poor.');
 % end
 % volumes_in_memory_at_time=2; % part of the peak memory calculations. Hopefully supplanted with better way of calcultating in future
+
+%% set data acquisition parameters to determine how much to work on at a time and how.
+% permute_code=zeros(size(data_in.input_order));
+% for char=1:length(data_in.input_order)
+%     permute_code(char)=strfind(opt_struct.output_order,data_in.input_order(char));
+% end
+
+% this mess gets the input and output dimensions using char arrays as
+% dynamic structure element names.
+% given the structure s.x, s.y, s.z the data_in.input_order='xzy' and
+% outputorder='xyz'
+% will set input to in=[x z y];
+% and output to out=[x y z];
+data_in.binary_header_bytes  =data_buffer.headfile.binary_header_size; %distance to first data point in bytes-standard block header.
+data_in.ray_block_hdr_bytes  =data_buffer.headfile.block_header_size;  %distance between blocks of rays in file in bytes
+data_in.ray_blocks           =data_buffer.headfile.ray_blocks;         %number of blocks of rays total, sometimes nvolumes, sometimes nslices, somtimes nechoes, ntrs nalphas
+data_in.rays_per_block       =data_buffer.headfile.rays_per_block;     %number or rays per block of input data,
+data_in.ray_length           =data_buffer.headfile.ray_length;         %number of samples on a ray, or trajectory
+
+% if anything except radial
+% if( ~regexp(data_in.vol_type,'.*radial.*'))
+if strcmp(data_in.vol_type,'radial')
+    % if radial
+    data_in.input_dimensions=[data_in.ray_length d_struct.(data_in.input_order(2))...
+        d_struct.(data_in.input_order(3)) data_in.rays_per_block data_in.ray_blocks];
+else
+    if exist('dimstruct','class')
+        data_in.ds=dimstruct(data_in.input_order,d_struct);
+        data_in.input_dimensions=data_in.ds.dim_sizes;
+    else
+        data_in.input_dimensions=[d_struct.(data_in.input_order(1)) d_struct.(data_in.input_order(2))...
+            d_struct.(data_in.input_order(3)) d_struct.(data_in.input_order(4))...
+            d_struct.(data_in.input_order(5)) d_struct.(data_in.input_order(6))];
+    end
+end
+data_out.output_order=opt_struct.output_order;
+if exist('dimstruct','class')
+    data_out.ds=dimstruct(data_out.output_order,d_struct);
+    data_out.output_dimensions=data_out.ds.dim_sizes;
+else
+    data_out.output_dimensions=[d_struct.(opt_struct.output_order(1)) d_struct.(opt_struct.output_order(2))...
+        d_struct.(opt_struct.output_order(3)) d_struct.(opt_struct.output_order(4))...
+        d_struct.(opt_struct.output_order(5)) d_struct.(opt_struct.output_order(6))];
+end
+
+%% calculate bytes per voxel for RAM(input,working,output) and disk dependent on settings
+% using our different options settings guess how many bytes of ram we need per voxel
+% of, input, workspace, and output
+data_in.RAM_volume_multiplier=1;
 data_in.disk_bytes_per_sample=2*data_in.disk_bit_depth/8; % input samples are always double because complex points are (always?) stored in 2 component vectors.
+data_work.RAM_volume_multiplier=1;
+data_work.RAM_bytes_per_voxel=0;
+data_out.disk_bytes_per_voxel=0;
+data_out.RAM_bytes_per_voxel=0;
+data_out.RAM_volume_multiplier=1;
 data_out.disk_bytes_header_per_out_vol=0;
 data_out.disk_bytes_single_header=352; % this way we can do an if nii header switch.
 % precision_bytes is multiplied by 2 because complex data takes one number
@@ -229,10 +238,48 @@ if regexp(data_in.vol_type,'.*radial.*')
     % trajectory is double precision 3 part vector (3x64) for each point of
     % kspace sampled. DCF is single precision (or at least can be without
     % noticeable loss in quality).
+    if exist('dimstruct','class')
+        og_vol=[1 1 1 ]*data_out.output_dimensions(1)*data_buffer.headfile.radial_grid_oversample_factor;
+        data_work.ds=dimstruct(data_out.output_order,[og_vol data_out.output_dimensions(4:end)]);
+    end
 else
     data_work.volume_voxels=data_out.volume_voxels;
     data_work.total_voxel_count=data_out.total_voxel_count;
+    if exist('dimstruct','class')
+        data_work.ds=dimstruct(data_out.output_order,data_out.output_dimensions);
+    end
 end
 data_out.disk_total_bytes=data_out.total_voxel_count*data_out.disk_bytes_per_voxel;
 fprintf('Required disk space is %0.2fMB\n',data_out.disk_total_bytes/1024/1024);
+
+%% calculate memory and chunk sizes
+data_in.total_points = data_in.ray_length*data_in.rays_per_block*data_in.ray_blocks;
+data_in.total_bytes_RAM=...
+    data_in.RAM_volume_multiplier...
+    *data_in.RAM_bytes_per_voxel...
+    *data_in.total_points;
+data_work.total_bytes_RAM=...
+    data_work.RAM_volume_multiplier...
+    *data_work.RAM_bytes_per_voxel...
+    *data_work.total_voxel_count;
+data_out.total_bytes_RAM=...
+    data_out.RAM_volume_multiplier...
+    *data_out.RAM_bytes_per_voxel...
+    *data_out.total_voxel_count;
+
+% total data / nvols?(this would only work for cartesian)
+data_in.single_vol_RAM=(data_in.ray_length*data_in.rays_per_block*data_in.ray_blocks)/data_out.volumes;
+
+data_work.single_vol_RAM=data_work.volume_voxels*data_work.RAM_bytes_per_voxel*data_work.RAM_volume_multiplier;%add slice sizes as well in all likely hood if we do slice recon we'll still have room to load at least one whole volume.
+% data_work.one_slice_RAM=d_struct.x*d_strucyt.y*data_work.RAM_bytes_per_voxel;
+data_out.single_vol_RAM =data_out.volume_voxels *data_out.RAM_bytes_per_voxel *data_out.RAM_volume_multiplier;
+% data_out.one_slice_RAM = d_struct.x*d_strucyt.y*data_out.RAM_bytes_per_voxel;
+
+
+data_in=orderfields(data_in);
+data_work=orderfields(data_work);
+data_out=orderfields(data_out);
+
+
+
 
