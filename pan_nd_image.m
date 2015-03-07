@@ -1,4 +1,4 @@
-function pan_nd_image(data_buffer)
+function pan_nd_image(data_buffer,opt_struct)
 %%%
 % order info, 
 

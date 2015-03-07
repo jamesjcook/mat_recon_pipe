@@ -1378,7 +1378,7 @@ dim_text=dim_text(1:end-1);
         end 
         %% display kspace
         if opt_struct.display_kspace>=1
-            pan_nd_image(data_buffer);
+            pan_nd_image(data_buffer,opt_struct);
         end
         %% preserve original kspace
         % should modify this to handle any of the reasons to preserve here
@@ -1764,7 +1764,7 @@ dim_text=dim_text(1:end-1);
             %% display result images
             if opt_struct.display_output==true
                 if ~exist('old_way','var')
-                    pan_nd_image(data_buffer.data);
+                    pan_nd_image(data_buffer,opt_struct);
                 else
                 dim_select.x=':';
                 dim_select.y=':';
