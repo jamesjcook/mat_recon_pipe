@@ -204,7 +204,8 @@ planned_options={
     'fp32_magnitude',         ' write fp32 civm raws instead of the normal ones'
     'write_kimage',           ' write the regridded and filtered kspace data to the work directory.'
     'write_kimage_unfiltered',' write the regridded unfiltered   kspace data to the work direcotry.'
-    'matlab_parallel',            ' use the matlab pool to parallelize.'
+    'matlab_parallel',        ' use the matlab pool to parallelize.'
+    'reprocess_rp',           ' load and reprocess rp file saved by write_complex. Mostly useful in case of error on write or process interruption.'
     'ignore_errors',          ' will try to continue regarless of any error'
     'asymmetry_mirror',       ' with echo asymmetry tries to copy 85% of echo trail to leading echo side.'
     'independent_scaling',    ' scale output images independently'
@@ -375,7 +376,7 @@ if opt_struct.skip_filter
 end
 if opt_struct.skip_regrid
 end
-if opt_struct.skip_fft
+if opt_struct.skip_fft && ~opt_struct.reprocess_rp
     opt_struct.skip_write_civm_raw=true;
     opt_struct.write_complex=false;
     opt_struct.fp32magnitude=false;
@@ -1388,12 +1389,22 @@ dim_text=dim_text(1:end-1);
         if opt_struct.display_kspace>=1
             pan_nd_image(data_buffer,opt_struct);
         end
-        %% preserve original kspace
+        %% write kspace unfiltered image log(abs(img))
         % should modify this to handle any of the reasons to preserve here
         % instead of taking up additional memory. 
         if opt_struct.write_kimage_unfiltered
-            data_buffer.addprop('kspace_unfiltered');
-            data_buffer.kspace_unfiltered=data_buffer.data;
+%             data_buffer.addprop('kspace_unfiltered');
+%             data_buffer.kspace_unfiltered=data_buffer.data;
+%             
+            %%% should move the kspace writing code to here with a check if it already exists, in the case we're iterating over it for some reason.
+            fprintf('\twrite_kimage make_nii\n');
+            nii=make_nii(log(abs(data_buffer.data)));
+            fprintf('\t\t save_nii\n');
+            kimg_code='';
+            if recon_strategy.recon_operations>1 || length(recon_strategy.recon_operations)>1
+                kimg_code=sprintf(['_%' num2str(length(recon_strategy.recon_operations)) 'd'],recon_num);
+            end
+            save_nii(nii,[work_dir_img_path_base kimg_code '_kspace_unfiltered.nii']);
         end
         %% combine dimensions in kspace
         % combine kspace by letter string, 
@@ -1501,23 +1512,22 @@ dim_text=dim_text(1:end-1);
         else
             fprintf('skipping fermi filter\n');
         end
-        if opt_struct.write_kimage%%% should move the kspace writing code to here with a check if it already exists, in the case we're iterating over it for some reason. 
+        %% write kspace image log(abs(img))
+        if opt_struct.write_kimage%%% should move the kspace writing code to here with a check if it already exists, in the case we're iterating over it for some reason.
             %             if  ~isprop(data_buffer,'kspace')
             %                 data_buffer.addprop('kspace');
             %                 data_buffer.kspace=data_buffer.data;
             %             end
-%             if opt_struct.write_kimage && ~opt_struct.skip_filter && ~opt_struct.skip_load
-                fprintf('\twrite_kimage make_nii\n');
-                nii=make_nii(log(abs(data_buffer.data)));
-                fprintf('\t\t save_nii\n');
-                kimg_code='';
-                if recon_strategy.recon_operations>1 || length(recon_strategy.recon_operations)>1
-                    kimg_code=sprintf(['_%' num2str(length(recon_strategy.recon_operations)) 'd'],recon_num);
-                end
-                save_nii(nii,[work_dir_img_path_base kimg_code '_kspace.nii']);
-                
-        end
-        
+            %             if opt_struct.write_kimage && ~opt_struct.skip_filter && ~opt_struct.skip_load
+            fprintf('\twrite_kimage make_nii\n');
+            nii=make_nii(log(abs(data_buffer.data)));
+            fprintf('\t\t save_nii\n');
+            kimg_code='';
+            if recon_strategy.recon_operations>1 || length(recon_strategy.recon_operations)>1
+                kimg_code=sprintf(['_%' num2str(length(recon_strategy.recon_operations)) 'd'],recon_num);
+            end
+            save_nii(nii,[work_dir_img_path_base kimg_code '_kspace.nii']);
+        end       
         %% fft, resort, cut bad data, and display
         if ~opt_struct.skip_fft
             %% fft
@@ -1892,14 +1902,12 @@ dim_text=dim_text(1:end-1);
                data_buffer.input_headfile.dim_Z=d_struct.z;
            end
         end
-        
     end % end skipload
-    fprintf('Reconstruction %d of %d Finished! Saving...',recon_num,recon_strategy.recon_operations);
     %% save data
     % this needs a bunch of work, for now it is just assuming the whole pile of
     % data is sitting in memory awaiting saving, does not handle chunks or
     % anything correctly just now.
-    
+    %% sort headfile details
     %  mag=abs(raw_data(i).data);
     if opt_struct.skip_combine_channels
         channel_images=d_struct.c;
@@ -1916,8 +1924,78 @@ dim_text=dim_text(1:end-1);
         datatype='raw';
     end
     data_buffer.headfile.F_imgformat=datatype;
+    %%%set channel header settings and mnumber codes for the filename
+    d_pos=indx_calc(recon_num,data_out.ds.Sub(recon_strategy.op_dims));
+    for dx=1:length(recon_strategy.op_dims)
+        d_s.(recon_strategy.op_dims(dx))=d_pos(dx);
+    end
+    clear dx;
+    if d_struct.c>1
+        channel_code=opt_struct.channel_alias(cn);
+        if isfield(data_buffer.headfile,'U_specid')
+            s_exp='[0-9]{6}-[0-9]+:[0-9]+(;|)';
+            m_s_exp=cell(1,d_struct.c);
+            for rexp_c=1:d_struct.c
+                m_s_exp{rexp_c}=s_exp;
+            end
+            m_exp=strjoin(m_s_exp,';');
+            m_exp=['^' m_exp '$'];
+            if regexp(data_buffer.input_headfile.U_specid,m_exp)
+                specid_s=strsplit(data_buffer.input_headfile.U_specid,';');
+                data_buffer.headfile.U_specid=specid_s{cn};
+                data_buffer.headfile.U_specid_list=data_buffer.input_headfile.U_specid;
+                fprintf('Multi specid found in multi channel, assigning singular specid on output %s <= %s\n',data_buffer.headfile.U_specid,data_buffer.input_headfile.U_specid);
+            elseif regexp(data_buffer.headfile.U_specid,'.*;.*')
+                warning('Multi specid found in multi channel, but not the right number for the number of channels, \n\ti.e %s did not match regex. %s\n',data_buffer.input_headfile.U_specid,m_exp);
+                
+            end
+            clear s_exp m_s_exp;
+        end
+        
+    else
+        channel_code='';
+    end
+    max_mnumber=d_struct.t*d_struct.p-1;% should generalize this to any dimension except xyzc
+    m_length=length(num2str(max_mnumber));
+    m_number=(d_s.t-1)*d_struct.p+d_s.p-1;
+    if ~opt_struct.skip_combine_channels
+        data_buffer.headfile.([data_tag 'volumes'])=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c;
+        d_struct.c=1;
+    end
+    if d_struct.t> 1 || d_struct.p >1
+        m_code=sprintf(['_m%0' num2str(m_length) '.0f'], m_number);
+    else
+        m_code='';
+    end
+    space_dir_img_name =[ runno channel_code m_code];
+    data_buffer.headfile.U_runno=space_dir_img_name;
+    
+    space_dir_img_folder=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '/' space_dir_img_name 'images' ];
+    work_dir_img_name_per_vol =[ runno channel_code m_code];
+    work_dir_img_path_per_vol=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '.work/' space_dir_img_name 'images' ];
+    work_dir_img_path=[work_dir_img_path_base channel_code m_code];
+    if d_struct.c > 1
+        data_buffer.headfile.work_dir=data_buffer.engine_constants.engine_work_directory;
+        data_buffer.headfile.runno_base=runno;
+    end
+    
+    %% load rp file for reprocessing
+    if opt_struct.skip_load && opt_struct.reprocess_rp ...
+            && exist([work_dir_img_path '.rp.out'],'file') 
+        if ~isprop(data_buffer,'data')
+            data_buffer.addprop('data');
+        end
+        fprintf('Loading rp.out for reprocessing');
+        % other load_complex calls ignore extra options, presubably rp.out is standardish.
+        data_buffer.data=load_complex([work_dir_img_path '.rp.out'], ...
+            data_out.ds.Sub(recon_strategy.c_dims)); 
+        % ,'single','b',0); 
+    end
+    
     %% save outputs
+    fprintf('Reconstruction %d of %d Finished!',recon_num,recon_strategy.recon_operations);
     if ~opt_struct.skip_write
+        fprintf('Saving...\n');
         %% save uncombined channel niis.
         if ~opt_struct.skip_combine_channels && d_struct.c>1 && ~opt_struct.skip_recon && opt_struct.write_unscaled
             if ~exist([work_dir_img_path_base '.nii'],'file') || opt_struct.overwrite
@@ -1931,22 +2009,39 @@ dim_text=dim_text(1:end-1);
                 warning('Combined Image already exists and overwrite disabled');
             end
         end
-        
-        max_mnumber=d_struct.t*d_struct.p-1;% should generalize this to any dimension except xyzc
-        m_length=length(num2str(max_mnumber));
-        if ~opt_struct.skip_combine_channels
-            data_buffer.headfile.([data_tag 'volumes'])=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c;
-            d_struct.c=1;
-        end
-        %% write_unscaled_nD or independent_scaling
+        %% write_unscaled_nD or group_scaling
         dim_select.x=':';
         dim_select.y=':';
         dim_select.z=':';
         data_buffer.headfile.group_max_atpct='auto';
         data_buffer.headfile.group_max_intensity=0;
-        if recon_strategy.num_chunks==1
+        if opt_struct.write_unscaled_nD && ...
+                (recon_strategy.work_by_chunk ||recon_strategy.work_by_sub_chunk )
+            warning('nD unscaled save only supports all at once recon');
+        elseif ~recon_strategy.work_by_chunk && ~recon_strategy.work_by_sub_chunk 
             if ~opt_struct.independent_scaling ||  ( opt_struct.write_unscaled_nD && ~opt_struct.skip_recon )
+                % if group scale, or write_unscaled_nd.  why do we want
+                % this for unscaled nd? its unscaled!
                 data_buffer.headfile.group_max_atpct=0;
+                if ~exist('old_way','var')
+                    for vn=1:numel(data_buffer.data)/prod(data_out.ds.Sub(recon_strategy.c_dims))
+                        d_pos=indx_calc(vn,data_out.ds.Sub(recon_strategy.op_dims));
+                        % for dx=1:length(recon_strategy.op_dims)
+                        %     d_s.(recon_strategy.op_dims(dx))=d_pos(dx);
+                        % end
+                        tmp=abs(eval(['data_buffer.data(:,:,:,' strjoin(strsplit(num2str(d_pos),' '),',') ')' ]));
+%                         tmp=sort(tmp(:)); only needed when not doing
+%                         perentile, should check performance of the two.
+                        m_tmp=max(tmp(:)); % maybe do unshape, reshape for speed?
+                        p_tmp=prctile(tmp,opt_struct.histo_percent);
+                        if m_tmp>data_buffer.headfile.group_max_intensity
+                            data_buffer.headfile.group_max_intensity=m_tmp;
+                        end
+                        if data_buffer.headfile.group_max_atpct<p_tmp
+                            data_buffer.headfile.group_max_atpct=p_tmp;
+                        end
+                    end
+                else
                 for tn=1:d_struct.t
                     dim_select.t=tn;
                     for cn=1:d_struct.c
@@ -1964,7 +2059,7 @@ dim_text=dim_text(1:end-1);
                             tmp=sort(tmp(:));
                             m_tmp=max(tmp);
                             p_tmp=prctile(tmp,opt_struct.histo_percent);
-                            if tmp>data_buffer.headfile.group_max_intensity
+                            if m_tmp>data_buffer.headfile.group_max_intensity
                                 data_buffer.headfile.group_max_intensity=m_tmp;
                             end
                             if data_buffer.headfile.group_max_atpct<p_tmp
@@ -1973,10 +2068,12 @@ dim_text=dim_text(1:end-1);
                         end
                     end
                 end
+                end
                 if ( opt_struct.write_unscaled_nD && ~opt_struct.skip_recon ) %|| opt_struct.skip_write_civm_raw
                     fprintf('Writing debug outputs to %s\n',data_buffer.headfile.work_dir_path);
                     fprintf('\twrite_unscaled_nD save\n');
-                    if ( strcmp(opt_struct.combine_method,'square_and_sum')|| strcmp(opt_struct.combine_method,'regrid')) && ~opt_struct.skip_combine_channels
+                    if ( strcmp(opt_struct.combine_method,'square_and_sum') ...
+                            || strcmp(opt_struct.combine_method,'regrid')) && ~opt_struct.skip_combine_channels
                         nii=make_nii(abs(squeeze(data_buffer.data)), [ ...
                             data_buffer.headfile.fovx/d_struct.x ...
                             data_buffer.headfile.fovy/d_struct.y ...
@@ -2005,67 +2102,17 @@ dim_text=dim_text(1:end-1);
         %% save volumes
         if recon_strategy.work_by_chunk||recon_strategy.work_by_sub_chunk
             %% arbitrarychunksave.
-            warning('this saving code is temporary it is not designed for chunks');
+            warning('this saving code a work in progress for chunks');
             %if length(c_dims)>3  foreach outputimage , saveimgae.
-            if ( length(recon_strategy.c_dims)>3 ) 
+            if ( length(recon_strategy.c_dims)>3 )
                 [l,n,f]=get_dbline('rad_mat');
                 eval(sprintf('dbstop in %s at %d',f,l+2));
                 warning('C_DIMS CANT BE BIGGER THAN 3 YET!');
             end
             %%%% HAHA for each dim of c_dims outside xyz! we can
             %%%% for each output type
-            %%%% save each output image 
-            d_pos=indx_calc(recon_num,data_out.ds.Sub(recon_strategy.op_dims));
-            for dx=1:length(recon_strategy.op_dims)
-                d_s.(recon_strategy.op_dims(dx))=d_pos(dx);
-            end
-            clear dx;
-            
-            %% sort headfile details
-            
-            %%%set channel header settings and mnumber codes for the filename
-            if d_struct.c>1
-                channel_code=opt_struct.channel_alias(cn);
-                if isfield(data_buffer.headfile,'U_specid')
-                    s_exp='[0-9]{6}-[0-9]+:[0-9]+(;|)';
-                    m_s_exp=cell(1,d_struct.c);
-                    for rexp_c=1:d_struct.c
-                        m_s_exp{rexp_c}=s_exp;
-                    end
-                    m_exp=strjoin(m_s_exp,';');
-                    m_exp=['^' m_exp '$'];
-                    if regexp(data_buffer.input_headfile.U_specid,m_exp)
-                        specid_s=strsplit(data_buffer.input_headfile.U_specid,';');
-                        data_buffer.headfile.U_specid=specid_s{cn};
-                        data_buffer.headfile.U_specid_list=data_buffer.input_headfile.U_specid;
-                        fprintf('Multi specid found in multi channel, assigning singular specid on output %s <= %s\n',data_buffer.headfile.U_specid,data_buffer.input_headfile.U_specid);
-                    elseif regexp(data_buffer.headfile.U_specid,'.*;.*')
-                        warning('Multi specid found in multi channel, but not the right number for the number of channels, \n\ti.e %s did not match regex. %s\n',data_buffer.input_headfile.U_specid,m_exp);
-                        
-                    end
-                    clear s_exp m_s_exp;
-                end
-                
-            else
-                channel_code='';
-            end
-            m_number=(d_s.t-1)*d_struct.p+d_s.p-1;
-            if d_struct.t> 1 || d_struct.p >1
-                m_code=sprintf(['_m%0' num2str(m_length) '.0f'], m_number);
-            else
-                m_code='';
-            end
-            space_dir_img_name =[ runno channel_code m_code];
-            data_buffer.headfile.U_runno=space_dir_img_name;
-            
-            space_dir_img_folder=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '/' space_dir_img_name 'images' ];
-            work_dir_img_name_per_vol =[ runno channel_code m_code];
-            work_dir_img_path_per_vol=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '.work/' space_dir_img_name 'images' ];
-            work_dir_img_path=[work_dir_img_path_base channel_code m_code];
-            if d_struct.c > 1
-                data_buffer.headfile.work_dir=data_buffer.engine_constants.engine_work_directory;
-                data_buffer.headfile.runno_base=runno;
-            end
+            %%%% save each output image
+
             %%% set param value in output
             % if te
             if isfield(data_buffer.headfile,'te_sequence')
@@ -2094,17 +2141,9 @@ dim_text=dim_text(1:end-1);
             end
                            
             %% pull single vol to save
-            if ~opt_struct.skip_recon && ( opt_struct.write_complex || opt_struct.write_unscaled || ~opt_struct.skip_write_civm_raw)
+            if ( opt_struct.write_complex || opt_struct.write_unscaled || ~opt_struct.skip_write_civm_raw) ...
+                    &&( ~opt_struct.skip_recon  || opt_struct.reprocess_rp )
                 fprintf('Extracting image channel:%0.0f param:%0.0f timepoint:%0.0f\n',d_s.c,d_s.p,d_s.t);
-                %                 tmp=data_buffer.data(:,:,:,1); %% only take first.
-                %                 tmp=squeeze(data_buffer.data(...
-                %                     dim_select.(opt_struct.output_order(1)),...
-                %                     dim_select.(opt_struct.output_order(2)),...
-                %                     dim_select.(opt_struct.output_order(3)),...
-                %                     dim_select.(opt_struct.output_order(4)),...
-                %                     dim_select.(opt_struct.output_order(5)),...
-                %                     dim_select.(opt_struct.output_order(6))...
-                %                     ));
                 tmp=data_buffer.data;
                 if numel(tmp)<prod(data_out.output_dimensions(1:3))
                     error('Save file not right, chunking error likly');
@@ -2142,18 +2181,36 @@ dim_text=dim_text(1:end-1);
                 fprintf('\n');
                 tmp=circshift(tmp,round(shift_values));
             end
-
-            
-            %                     if(recon_strategy.num_chunks>1)
-            %                         out_runnos.(space_dir_img_name)=1; %make a struct of our runnums
-            %                     end
-         
-           
             %% save types.
             %% complex save
-            if ( opt_struct.write_complex && ~opt_struct.skip_recon ) || recon_strategy.work_by_chunk || recon_strategy.work_by_sub_chunk
+            if ( opt_struct.write_complex  || recon_strategy.work_by_chunk || recon_strategy.work_by_sub_chunk ) && ~opt_struct.skip_recon && ~opt_struct.skip_load
                 fprintf('\twrite_complex (radish_format) save\n');
                 save_complex(tmp,[ work_dir_img_path '.rp.out']);
+            end
+            %%% save unscaled nifti?
+            
+            %%% unscaled_nii_save
+            if ( opt_struct.write_unscaled && ~opt_struct.skip_recon ) %|| opt_struct.skip_write_civm_raw
+                fprintf('\twrite_unscaled save\n');
+                if ~isfield(data_buffer.headfile,'fovx')
+                    warning('No fovx');
+                    data_buffer.headfile.fovx=data_buffer.headfile.dim_X;
+                end
+                if ~isfield(data_buffer.headfile,'fovy')
+                    warning('No fovy');
+                    data_buffer.headfile.fovy=data_buffer.headfile.dim_Y;
+                end
+                if ~isfield(data_buffer.headfile,'fovz')
+                    warning('No fovz');
+                    data_buffer.headfile.fovz=data_buffer.headfile.dim_Z;
+                end
+                tmp=abs(tmp);
+                nii=make_nii(tmp, [ ...
+                    data_buffer.headfile.fovx/d_struct.x ...
+                    data_buffer.headfile.fovy/d_struct.y ...
+                    data_buffer.headfile.fovz/d_struct.z]); % insert fov settings here ffs....
+                fprintf('\t\t save_nii\n');
+                save_nii(nii,[work_dir_img_path '.nii']);
             end
             %% civmraw save
             if ~exist(space_dir_img_folder,'dir') || opt_struct.ignore_errors
@@ -2172,16 +2229,17 @@ dim_text=dim_text(1:end-1);
                 write_headfile(hf_path,data_buffer.headfile,0);
                 % insert validate_header perl script check here?
             end
-            if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon
+            if ~opt_struct.skip_write_civm_raw && (~opt_struct.skip_recon || opt_struct.reprocess_rp)
                 fprintf('\tcivm_raw save\n');
                 histo_bins=numel(tmp);
-                if opt_struct.independent_scaling
+                if opt_struct.independent_scaling || recon_strategy.work_by_chunk || recon_strategy.work_by_sub_chunk
                     img_s=sort(abs(tmp(:)));
                     data_buffer.headfile.group_max_intensity=max(img_s);
                     data_buffer.headfile.group_max_atpct=img_s(round(numel(img_s)*opt_struct.histo_percent/100));%throwaway highest % of data... see if that helps.
                     fprintf('\tMax for scale = %f\n',data_buffer.headfile.group_max_atpct);
                     %                         else
                     %                              data_buffer.headfile.group_max_atpct= data_buffer.headfile.group_max_atpct;
+                    clear img_s;
                 end
                 % must write convert_info_histo for old school radish purposes
                 %                       opt_struct.histo_percent=99.95;
@@ -2455,6 +2513,7 @@ dim_text=dim_text(1:end-1);
                             fprintf('\tMax for scale = %f\n',data_buffer.headfile.group_max_atpct);
 %                         else
 %                              data_buffer.headfile.group_max_atpct= data_buffer.headfile.group_max_atpct;
+clear img_s;
                         end
                         % must write convert_info_histo for old school radish purposes
 %                       opt_struct.histo_percent=99.95;

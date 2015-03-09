@@ -101,7 +101,7 @@ if complex_struct
     end
     data_buffer.ds=struct;
 end
-if numel(data_buffer.data)==0
+if numel(data_buffer.data)==0 && ~complex_struct
     data_buffer.data=sparse((chunk_size-post_skip_size*loads_per_chunk)/2*numel(chunks_to_load),1);
 %     data_buffer.data=sparse((load_size+post_skip_size)/2*numel(chunks_to_load),1);
 %     data_buffer.data=complex(zeros(chunk_size/2*numel(chunks_to_load),1),zeros(chunk_size/2*numel(chunks_to_load),1));
@@ -202,6 +202,7 @@ fprintf('\n');
 fclose(fileid);
 if(complex_struct)
     data_buffer.data=struct2array(data_buffer.ds);
-%     data_buffer.rmprop('ds');
+    %     data_buffer.rmprop('ds');
+    data_buffer.ds=[];
 end
 % fprintf('\t Load Complete!');
