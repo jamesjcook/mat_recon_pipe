@@ -1,48 +1,47 @@
 function pan_nd_image(data_buffer,opt_struct)
 %%%
-% order info, 
+% order info,
 
- disp_pause=opt_struct.display_kspace;
- if disp_pause==1
-     disp_pause=5;
- end
- disp_pause=disp_pause/prod(dims);
- 
- figure(1);colormap gray;
+disp_pause=opt_struct.display_kspace;
+if disp_pause==1
+    disp_pause=5;
+end
+figure(1);colormap gray;
 dims=size(data_buffer.data);
+disp_pause=disp_pause/prod(dims);
 data_buffer.data=reshape(data_buffer.data,[dims(1:2) prod(dims(3:end))]);
 for dn=1:size(data_buffer.data,3)
-%     imagesc((log(abs(squeeze(kslice))))), axis image; % imagesc
-%     imagesc((log(abs(squeeze(data_buffer.data(:,:,dn)))))), axis image; % imagesc
-imshow(log(abs(squeeze(data_buffer.data(:,:,dn)))));
+    %     imagesc((log(abs(squeeze(kslice))))), axis image; % imagesc
+    %     imagesc((log(abs(squeeze(data_buffer.data(:,:,dn)))))), axis image; % imagesc
+    imshow(log(abs(squeeze(data_buffer.data(:,:,dn)))));
     pause(disp_pause);
 end
 data_buffer.data=reshape(data_buffer.data,dims);
 if false
-for dx=1:prod(dims(3:end))
-    %         kslice=zeros(size(data_buffer.data,1),size(data_buffer.data,2)*2);
-    %         kslice=zeros(x,y);
-    
-    selector=zeros(length(dims(3:end)),1);
-    for dl=3:length(dims)
-        if(dx>dims(dl))
-            selector(dl-2)=mod(dx-prod(dims(dl+1:end)),dims(dl));
+    for dx=1:prod(dims(3:end))
+        %         kslice=zeros(size(data_buffer.data,1),size(data_buffer.data,2)*2);
+        %         kslice=zeros(x,y);
+        
+        selector=zeros(length(dims(3:end)),1);
+        for dl=3:length(dims)
+            if(dx>dims(dl))
+                selector(dl-2)=mod(dx-prod(dims(dl+1:end)),dims(dl));
+            end
         end
+        disp(selector');
+        %     kslice=data_buffer.data(...
+        %         dim_select.(opt_struct.output_order(1)),...
+        %         dim_select.(opt_struct.output_order(2)),...
+        %         dim_select.(opt_struct.output_order(3)),...
+        %         dim_select.(opt_struct.output_order(4)),...
+        %         dim_select.(opt_struct.output_order(5)),...
+        %         dim_select.(opt_struct.output_order(6)));
+        %kslice(1:size(data_buffer.data,1),size(data_buffer.data,2)+1:size(data_buffer.data,2)*2)=input_kspace(:,cn,pn,zn,:,tn);
+        %     kslice=data_buffer.data(':',':',selector);
+        %     imshow((log(abs(squeeze(kslice)))), axis image); % imagesc
+        %                             fprintf('.');
+        %     pause(disp_pause);
     end
-    disp(selector');
-    %     kslice=data_buffer.data(...
-    %         dim_select.(opt_struct.output_order(1)),...
-    %         dim_select.(opt_struct.output_order(2)),...
-    %         dim_select.(opt_struct.output_order(3)),...
-    %         dim_select.(opt_struct.output_order(4)),...
-    %         dim_select.(opt_struct.output_order(5)),...
-    %         dim_select.(opt_struct.output_order(6)));
-    %kslice(1:size(data_buffer.data,1),size(data_buffer.data,2)+1:size(data_buffer.data,2)*2)=input_kspace(:,cn,pn,zn,:,tn);
-%     kslice=data_buffer.data(':',':',selector);
-%     imshow((log(abs(squeeze(kslice)))), axis image); % imagesc
-    %                             fprintf('.');
-%     pause(disp_pause);
-end
 end
 
 if false
@@ -103,5 +102,5 @@ if false
         if(strfind(input_order,'t'))>numel(recon_strategy.c_dims)
             tn=d_struct.t;
         end
-            end
-end    
+    end
+end

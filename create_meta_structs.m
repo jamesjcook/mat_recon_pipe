@@ -197,14 +197,14 @@ end
 
 if opt_struct.write_kimage
     data_out.disk_bytes_per_voxel=data_out.disk_bytes_per_voxel+data_out.precision_bytes;
-    data_out.RAM_bytes_per_voxel=data_out.RAM_bytes_per_voxel+data_work.precision_bytes*2;
+%     data_out.RAM_bytes_per_voxel=data_out.RAM_bytes_per_voxel+data_work.precision_bytes*2;
     data_out.disk_bytes_header_per_out_vol=data_out.disk_bytes_header_per_out_vol+data_out.disk_bytes_single_header;
-    data_work.RAM_bytes_per_voxel=data_work.RAM_bytes_per_voxel+data_work.precision_bytes;
+%     data_work.RAM_bytes_per_voxel=data_work.RAM_bytes_per_voxel+data_work.precision_bytes;
 end
 if opt_struct.write_kimage_unfiltered
     data_out.disk_bytes_per_voxel=data_out.disk_bytes_per_voxel+data_out.precision_bytes;
-    data_out.RAM_bytes_per_voxel=data_out.RAM_bytes_per_voxel+data_work.precision_bytes*2;
-    data_work.RAM_bytes_per_voxel=data_work.RAM_bytes_per_voxel+data_work.precision_bytes;
+%     data_out.RAM_bytes_per_voxel=data_out.RAM_bytes_per_voxel+data_work.precision_bytes*2;
+%     data_work.RAM_bytes_per_voxel=data_work.RAM_bytes_per_voxel+data_work.precision_bytes;
 end
 if opt_struct.write_unscaled || opt_struct.write_unscaled_nD || opt_struct.write_phase|| opt_struct.write_complex 
 %     output_

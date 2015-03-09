@@ -173,7 +173,7 @@ for c=1:length(chunks_to_load)
             error('Did not correctly read file, chunk_size(%d) ~= points_read(%d)',chunk_size,points_read);
         elseif points_read ~= chunk_size && (chunk_size-points_read)<=floor(post_skip_bytes/precision_bytes)
             warning('Did not as much data as requested, chunk_size(%d) ~= points_read(%d)',chunk_size,points_read);
-            fid_data=[fid_data zeros(chunk_size-points_read,1)];
+            fid_data=[fid_data; zeros(chunk_size-points_read,1)];
         end
 %         fid_data(1:load_skip_size,:)=[];  % this part is correct.
         fid_data=reshape(fid_data,[load_size+post_skip_size,loads_per_chunk]); % also probably correct.

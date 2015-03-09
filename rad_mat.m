@@ -211,6 +211,8 @@ planned_options={
     'workspace_doubles',      ' use double precision in the workspace instead of single'
     'chunk_test_max',         ' maximum number of chunks to process before quiting. NOT a production option!'
     'chunk_test_min',         ' first chunks to process before. NOT a production option!'
+    'recon_operation_min',    ' first recon operation to do. NOT a production option!'
+    'recon_operation_max',    ' last recon operation to do. NOT a production option!'
     'image_return_type',      ' set the return type image from unscaled 32-bit float magnitude to something else.'
     'no_navigator',           ''
     'force_navigator',        ' Force the navigator selection code on for aspect scans, By default only SE SE classic and ME SE are expected to use navigator.'
@@ -396,6 +398,12 @@ if ~opt_struct.chunk_test_max
 end
 if ~opt_struct.chunk_test_min
     opt_struct.chunk_test_min=1;
+end
+if ~opt_struct.recon_operation_max
+    opt_struct.recon_operation_max=Inf;
+end
+if ~opt_struct.recon_operation_min
+    opt_struct.recon_operation_min=1;
 end
 if isnumeric(opt_struct.kspace_shift)
     opt_struct.kspace_shift=num2str(opt_struct.kspace_shift);
@@ -865,10 +873,10 @@ clear dim_order ds hf_path ;
 %%% have to change this from chunk_num 1... end to recon_operation 1...n, 
 %%% in most cases recon_ops are exactly chunks, however a few condiditons
 %%% bunk that. 
-% recon_operations=opt_struct.chunk_test_min:min(opt_struct.chunk_test_max,recon_strategy.num_chunks);
-recon_operations=recon_strategy.recon_operations;
 % reference to chunk in opt_struct should be fixed to recon_operation.
-for recon_num=1:recon_operations
+work_dir_img_path_base=[ data_buffer.headfile.work_dir_path '/' runno ] ;
+for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,recon_strategy.recon_operations);
+% for recon_num=1:recon_strategy.recon_operations
     meminfo=imaqmem;
     if meminfo.AvailPhys<recon_strategy.memory_space_required
         fprintf('%0.2fM/%0.2fM you have too many programs open.\n ',meminfo.AvailPhys/1024/1024,recon_strategy.memory_space_required/1024/1024);
@@ -1494,10 +1502,20 @@ dim_text=dim_text(1:end-1);
             fprintf('skipping fermi filter\n');
         end
         if opt_struct.write_kimage%%% should move the kspace writing code to here with a check if it already exists, in the case we're iterating over it for some reason. 
-            if  ~isprop(data_buffer,'kspace') 
-                data_buffer.addprop('kspace');
-                data_buffer.kspace=data_buffer.data;
-            end
+            %             if  ~isprop(data_buffer,'kspace')
+            %                 data_buffer.addprop('kspace');
+            %                 data_buffer.kspace=data_buffer.data;
+            %             end
+%             if opt_struct.write_kimage && ~opt_struct.skip_filter && ~opt_struct.skip_load
+                fprintf('\twrite_kimage make_nii\n');
+                nii=make_nii(log(abs(data_buffer.data)));
+                fprintf('\t\t save_nii\n');
+                kimg_code='';
+                if recon_strategy.recon_operations>1 || length(recon_strategy.recon_operations)>1
+                    kimg_code=sprintf(['_%' num2str(length(recon_strategy.recon_operations)) 'd'],recon_num);
+                end
+                save_nii(nii,[work_dir_img_path_base kimg_code '_kspace.nii']);
+                
         end
         
         %% fft, resort, cut bad data, and display
@@ -1876,7 +1894,7 @@ dim_text=dim_text(1:end-1);
         end
         
     end % end skipload
-    fprintf('Reconstruction %d of %d Finished! Saving...',recon_num,recon_operations);
+    fprintf('Reconstruction %d of %d Finished! Saving...',recon_num,recon_strategy.recon_operations);
     %% save data
     % this needs a bunch of work, for now it is just assuming the whole pile of
     % data is sitting in memory awaiting saving, does not handle chunks or
@@ -1900,7 +1918,6 @@ dim_text=dim_text(1:end-1);
     data_buffer.headfile.F_imgformat=datatype;
     %% save outputs
     if ~opt_struct.skip_write
-        work_dir_img_path_base=[ data_buffer.headfile.work_dir_path '/' runno ] ;
         %% save uncombined channel niis.
         if ~opt_struct.skip_combine_channels && d_struct.c>1 && ~opt_struct.skip_recon && opt_struct.write_unscaled
             if ~exist([work_dir_img_path_base '.nii'],'file') || opt_struct.overwrite
@@ -1915,7 +1932,7 @@ dim_text=dim_text(1:end-1);
             end
         end
         
-        max_mnumber=d_struct.t*d_struct.p-1;
+        max_mnumber=d_struct.t*d_struct.p-1;% should generalize this to any dimension except xyzc
         m_length=length(num2str(max_mnumber));
         if ~opt_struct.skip_combine_channels
             data_buffer.headfile.([data_tag 'volumes'])=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c;
@@ -1992,7 +2009,7 @@ dim_text=dim_text(1:end-1);
             %if length(c_dims)>3  foreach outputimage , saveimgae.
             if ( length(recon_strategy.c_dims)>3 ) 
                 [l,n,f]=get_dbline('rad_mat');
-                eval(sprintf('dbstop in %s at %d',f,l+3));
+                eval(sprintf('dbstop in %s at %d',f,l+2));
                 warning('C_DIMS CANT BE BIGGER THAN 3 YET!');
             end
             %%%% HAHA for each dim of c_dims outside xyz! we can
