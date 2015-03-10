@@ -228,6 +228,22 @@ data_out.total_voxel_count=...
     data_out.volumes;
 
 if regexp(data_in.vol_type,'.*radial.*')
+    if ~opt_struct.grid_oversample_factor
+        %         opt_struct.grid_oversample_factor=3;
+        data_buffer.headfile.radial_grid_oversample_factor=3;
+        fprintf('\trad_mat default oversample factor=%0.2f.\n',data_buffer.headfile.radial_grid_oversample_factor);
+    else
+        data_buffer.headfile.radial_grid_oversample_factor=opt_struct.grid_oversample_factor;
+        fprintf('\trad_mat oversample factor=%0.2f.\n',data_buffer.headfile.radial_grid_oversample_factor);
+    end
+    if ~opt_struct.dcf_iterations
+        data_buffer.headfile.radial_dcf_iterations=18; %Number of iterations used for dcf calculation, should be put up higher to top.
+        fprintf('\trad_mat default dcf iterations=%d.\n',data_buffer.headfile.radial_dcf_iterations);
+    else
+        data_buffer.headfile.radial_dcf_iterations=opt_struct.dcf_iterations;
+        fprintf('\trad_mat dcf iterations=%d.\n',data_buffer.headfile.radial_dcf_iterations);
+    end
+
     data_work.volume_voxels=data_out.volume_voxels*data_buffer.headfile.radial_grid_oversample_factor^3;
     data_work.total_voxel_count=...
         data_work.volume_voxels...
