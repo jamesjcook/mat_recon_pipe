@@ -136,6 +136,9 @@ elseif isfield(data_in,'ds')
     % we're not load_whole,process_whole becuase that is what our outer if
     % statment checks.
     % how much memory to load whole,procsss_vol
+    % we intend to process our volumes in output_dimension order, 
+    % later we have to switch the process order to the input order so the
+    % permutations of regrid work correctly.
     rs.last=recon_strategy;
     while recon_strategy.memory_space_required < useable_RAM && ...
             numel(recon_strategy.w_dims) < numel(data_out.output_dimensions)
@@ -155,6 +158,13 @@ elseif isfield(data_in,'ds')
     if numel(recon_strategy.w_dims)<numel(data_out.output_order)
         recon_strategy.op_dims=data_out.output_order(numel(recon_strategy.w_dims)+1:end);
     end
+    %%%% get recon strategy permute code?
+    to=[];
+    for d=1:length(recon_strategy.w_dims)
+        ti=strfind(data_in.input_order,recon_strategy.w_dims(d));
+        to=[to ti];
+    end
+    recon_strategy.w_dims=data_in.input_order(sort(to));
     %     recon_strategy.dim_string=data_out.ds.showorder(recon_strategy.w_dims);
     recon_strategy.recon_operations=prod(data_out.ds.dim_sizes)/prod(data_out.ds.Sub(recon_strategy.w_dims));
     %%%

@@ -877,11 +877,11 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         %load data with skips function, does not reshape, leave that to regridd
         %program.
         time_l=tic;
-        load_chunks=recon_strategy.num_chunks; %load_chunks may not be used for aything helpful, here or in load_file. ...
+        file_chunks=recon_strategy.num_chunks; %load_chunks may not be used for aything helpful, here or in load_file. ...
         load_chunk_size=recon_strategy.chunk_size;
         file_header=data_in.binary_header_bytes;
-        if recon_strategy.load_whole && recon_strategy.num_chunks>1 && ~recon_strategy.work_by_sub_chunk
-            load_chunks=1;
+        if recon_strategy.load_whole && recon_strategy.num_chunks>1 && ~recon_strategy.work_by_sub_chunk && recon_strategy.load_skip==0
+            file_chunks=1;
             load_chunk_size=recon_strategy.chunk_size*recon_strategy.num_chunks;
             chunks_to_load=1;
         elseif recon_strategy.work_by_sub_chunk 
@@ -899,7 +899,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         %             recon_strategy.chunk_size=temp_size*temp_chunks;
         %         end
 
-        if  recon_num==1 || (  load_chunks>1 ) ||  ~isprop(data_buffer,'data') %~recon_strategy.load_whole &&
+        if  recon_num==1 || (  file_chunks>1 ) ||  ~isprop(data_buffer,'data') %~recon_strategy.load_whole &&
             % we load the data for only the first chunk of a load_whole, 
             % or for each/any chunk when recon_strategy.num_chunks  > 1
             if ~isprop(data_buffer,'data')
@@ -907,7 +907,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
             end
             load_from_data_file(data_buffer, data_buffer.headfile.kspace_data_path, ....
                 file_header, recon_strategy.min_load_size, recon_strategy.load_skip, data_in.precision_string, load_chunk_size, ...
-                load_chunks,chunks_to_load,...
+                file_chunks,chunks_to_load,...
                 data_in.disk_endian,recon_strategy.post_skip);
             
             if data_in.line_pad>0  %remove extra elements in padded ray,
@@ -937,7 +937,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 %     *data_in.rays_per_block*data_in.ray_blocks; % channels removed, things
                 %     changed at some point to no longer divide by channel.
                 expected_data_length=(data_in.line_points-data_in.line_pad)...
-                    *data_in.rays_per_block*data_in.ray_blocks/load_chunks;
+                    *data_in.rays_per_block*data_in.ray_blocks/numel(chunks_to_load);
                 if numel(data_buffer.data) ~= expected_data_length && ~opt_struct.ignore_errors;
                     error('Ray_padding reversal went awrry. Data length should be %d, but is %d',...
                         expected_data_length,numel(data_buffer.data));
@@ -1946,19 +1946,22 @@ dim_text=dim_text(1:end-1);
     end
     max_mnumber=d_struct.t*d_struct.p-1;% should generalize this to any dimension except xyzc
     m_length=length(num2str(max_mnumber));
-    if exist('d_s','var')
-        m_number=(d_s.t-1)*d_struct.p+d_s.p-1;
-    else
-        m_number=0;
-    end
+    if recon_strategy.work_by_chunk || recon_strategy.work_by_sub_chunk
+        
+        if exist('d_s','var')
+            m_number=(d_s.t-1)*d_struct.p+d_s.p-1;
+        else
+            m_number=0;
+        end
+        if d_struct.t> 1 || d_struct.p >1
+            m_code=sprintf(['_m%0' num2str(m_length) '.0f'], m_number);
+        else
+            m_code='';
+        end
+    
     if ~opt_struct.skip_combine_channels && d_struct.c>1
         data_buffer.headfile.([data_tag 'volumes'])=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c;
         d_struct.c=1;
-    end
-    if d_struct.t> 1 || d_struct.p >1
-        m_code=sprintf(['_m%0' num2str(m_length) '.0f'], m_number);
-    else
-        m_code='';
     end
     space_dir_img_name =[ runno channel_code m_code];
     data_buffer.headfile.U_runno=space_dir_img_name;
@@ -1967,6 +1970,7 @@ dim_text=dim_text(1:end-1);
     work_dir_img_name_per_vol =[ runno channel_code m_code];
     work_dir_img_path_per_vol=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '.work/' space_dir_img_name 'images' ];
     work_dir_img_path=[work_dir_img_path_base channel_code m_code];
+    end
     if d_struct.c > 1
         data_buffer.headfile.work_dir=data_buffer.engine_constants.engine_work_directory;
         data_buffer.headfile.runno_base=runno;

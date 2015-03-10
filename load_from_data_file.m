@@ -1,4 +1,4 @@
-function load_from_data_file(data_buffer,file_path,header_skip,load_size,load_skip_bytes,data_precision,chunk_size,total_chunks,chunks_to_load,endian,post_skip_bytes)
+function load_from_data_file(data_buffer,file_path,header_skip,min_load_size,load_skip_bytes,data_precision,chunk_size,total_chunks,chunks_to_load,endian,post_skip_bytes)
 % LOAD_FROM_DATA_FILE(data_buffer,file_path,header_skip,load_size,load_skip,data_precision,chunk_size,total_chunks,chunks_to_load,endian)
 %
 %
@@ -8,11 +8,12 @@ function load_from_data_file(data_buffer,file_path,header_skip,load_size,load_sk
 %                 data, and to put the data into.
 % file_path       path to input file
 % header_skip     bytes to skip forward in file counting for first header
-% load_size       number of contiguous data points. will be 2 * complex points
-% load_skip       how many bytes of non-data between loads, we skip this much before every load
+% min_load_size   number of contiguous data points. will be 2 * complex points
+% load_skip       how many bytes of non-data between each file chunk, we
+%                 skip this much before each chunk
 % data_precsion   input data precision
-% chunk_size      size of a data chunk we expect to fit in memory, should be
-%                 equal to size(data_buffer.data)*bytes_per_pix+header info
+% chunk_size      size of native file chunks measured points, will be 2*
+%                 complex points
 % total_chunks    number of chunks to make up the file. 
 % chunks_to_load  number of chunks to load or an array of indicies
 % post_skip       number of bytes to skip after each load(fread).
@@ -46,7 +47,7 @@ function load_from_data_file(data_buffer,file_path,header_skip,load_size,load_sk
 % chunk_dims=size(data_buffer.data);
 
 % filename = fullfile(directory, 'fid');
-complex_struct=true;
+complex_struct=false;
 contiguous_chunks=true;
 load_method='standard';%'experimental'
 force_standard=false;
@@ -63,6 +64,7 @@ end
 if ~exist('post_skip_bytes','var') || isempty(post_skip_bytes) 
     post_skip_bytes=0;
 end
+load_size=min_load_size;
 if load_skip_bytes==0&&post_skip_bytes==0
     load_size=chunk_size;
 end
@@ -73,14 +75,16 @@ elseif regexp(data_precision,'(32)')
 else
     precision_bytes=0;
 end
-loads_per_chunk=chunk_size/(load_size+post_skip_bytes/precision_bytes);%+load_skip);
+loads_per_chunk=chunk_size/(min_load_size+post_skip_bytes/precision_bytes);%+load_skip);
 post_skip_size=post_skip_bytes/precision_bytes;
 if mod(load_skip_bytes,precision_bytes)==0 && mod(post_skip_bytes,precision_bytes)==0  && ~force_standard
     load_skip_size=load_skip_bytes/precision_bytes;
     % modifieds load_skip to be in data values
-    chunk_with_skip=chunk_size+load_skip_size;
+%    load_size=load_skip_size+chunk_size;
+%     loads_per_chunk=1;
+    
 %     chunk_with_skip=load_skip_size+(load_size+post_skip_size)*loads_per_chunk;
-    % this makes chunk size nloads*load_skip
+    % this makes loads size (chunk_size+load_skip)*nchunks
     load_method='experiental2';
 else
 end
@@ -94,6 +98,14 @@ end
 fileid = fopen(file_path, 'r', endian);
 if ~isvector(chunks_to_load)
     chunks_to_load=(chunks_to_load);
+end
+if length(chunks_to_load)>1
+    complex_struct=true;
+end
+for c=2:length(chunks_to_load)
+    if chunks_to_load(c)-1~=chunks_to_load(c-1)
+        contiguous_chunks=false;
+    end
 end
 if complex_struct
     if ( ~isprop(data_buffer,'ds'))
@@ -111,6 +123,7 @@ end
 buffer_pos=1;
 if contiguous_chunks
     fseek(fileid,header_skip,'bof');
+    
 end
 for c=1:length(chunks_to_load)
     if c==1 && numel(chunks_to_load)
@@ -127,14 +140,14 @@ for c=1:length(chunks_to_load)
             if strcmp(load_method,'standard')
                 %% "standard" one fid at a time.
                 fseek(fileid,load_skip_bytes,'cof');
-                [fid_data, points_read]= fread(fileid, load_size, [data_precision '=>single'],post_skip_bytes);
-                if points_read ~= load_size
+                [fid_data, points_read]= fread(fileid, min_load_size, [data_precision '=>single'],post_skip_bytes);
+                if points_read ~= min_load_size
                     error('Data file contained less data than expected.');
                 end
                 
                 %insert the cut out load_skip data here.
                 fid_data = fid_data(1:2:end) + 1i*fid_data(2:2:end); %compelxify.
-                data_buffer.data(buffer_pos:buffer_pos+load_size/2-1,1)=fid_data;
+                data_buffer.data(buffer_pos:buffer_pos+min_load_size/2-1,1)=fid_data;
             elseif strcmp(load_method,'experimental');
                 %% experimental
                 fseek(fileid,load_skip_bytes,'cof');
@@ -143,11 +156,11 @@ for c=1:length(chunks_to_load)
                 %         fseek(fp,8,'bof');
                 %         c=[r fread(fp,inf,'double',1)]; % c is 50Mb
                 
-                r=fread(fileid,load_size/2, [data_precision '=>single']);
+                r=fread(fileid,min_load_size/2, [data_precision '=>single']);
                 fseek(fileid,lpos+load_skip_bytes,'bof');
-                data_buffer.data(buffer_pos:buffer_pos+load_size/2-1,1)=complex(r, fread(fileid,load_size/2, [data_precision '=>single']));
+                data_buffer.data(buffer_pos:buffer_pos+min_load_size/2-1,1)=complex(r, fread(fileid,min_load_size/2, [data_precision '=>single']));
             end
-            buffer_pos=buffer_pos+load_size/2;
+            buffer_pos=buffer_pos+min_load_size/2;
         end
     else
         %% experimental2
@@ -156,7 +169,7 @@ for c=1:length(chunks_to_load)
             fprintf('%%...');
         end
         
-        if ( contiguous_chunks) 
+        if ( contiguous_chunks ) 
             fseek(fileid,load_skip_bytes,'cof');
         else
             % fseek(fileid,load_skip_bytes+chunk_with_skip*(chunks_to_load(c)-1)*precision_bytes,'cof');% save time by seeking past the first little tid bit.
@@ -167,14 +180,15 @@ for c=1:length(chunks_to_load)
         % fseek per chunk usnt too bad, but we could be better off and not
         % seek for contiguous chunks.
         % fprintf('filepos after otherchunk skip %d',ftell(fileid));
-        [fid_data, points_read]= fread(fileid, chunk_size, [data_precision '=>single']);
+        [fid_data, points_read]= fread(fileid, load_size, [data_precision '=>single']);
 %         fprintf('filepos after read our chunk %d',ftell(fileid));
-        if  points_read ~= chunk_size && (chunk_size-points_read)>floor(post_skip_bytes/precision_bytes)
-            error('Did not correctly read file, chunk_size(%d) ~= points_read(%d)',chunk_size,points_read);
-        elseif points_read ~= chunk_size && (chunk_size-points_read)<=floor(post_skip_bytes/precision_bytes)
-            warning('Did not as much data as requested, chunk_size(%d) ~= points_read(%d)',chunk_size,points_read);
-            fid_data=[fid_data; zeros(chunk_size-points_read,1)];
+        if  points_read ~= load_size && (load_size-points_read)>floor(post_skip_bytes/precision_bytes)
+            error('Did not correctly read file, load_size(%d) ~= points_read(%d)',load_size,points_read);
+        elseif points_read ~= load_size && (load_size-points_read)<=floor(post_skip_bytes/precision_bytes)
+            warning('Did not as much data as requested, chunk_size(%d) ~= points_read(%d)',load_size,points_read);
+            fid_data=[fid_data; zeros(load_size-points_read,1)];
         end
+%         fid_data=reshape(fid_data,[load_size/(chunk_size+load_skip_size),(chunk_size+load_skip_size)]);
 %         fid_data(1:load_skip_size,:)=[];  % this part is correct.
         fid_data=reshape(fid_data,[load_size+post_skip_size,loads_per_chunk]); % also probably correct.
         fid_data(load_size+1:end,:)=[]; %ver unsure about this.
