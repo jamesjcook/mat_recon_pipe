@@ -1203,7 +1203,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 data_buffer.headfile.processing_chunk=recon_num;
             end
             if recon_num==1 || ~recon_strategy.load_whole
-                rad_regrid(data_buffer,recon_strategy.c_dims);
+                rad_regrid(data_buffer,recon_strategy.w_dims);
             end
             if  regexp(data_in.vol_type,'.*radial.*')
                 if recon_strategy.num_chunks==1
@@ -1988,7 +1988,7 @@ dim_text=dim_text(1:end-1);
         fprintf('Loading rp.out for reprocessing');
         % other load_complex calls ignore extra options, presubably rp.out is standardish.
         data_buffer.data=load_complex([work_dir_img_path '.rp.out'], ...
-            data_out.ds.Sub(recon_strategy.c_dims)); 
+            data_out.ds.Sub(recon_strategy.w_dims)); 
         % ,'single','b',0); 
     end
     
@@ -2024,7 +2024,7 @@ dim_text=dim_text(1:end-1);
                 % this for unscaled nd? its unscaled!
                 data_buffer.headfile.group_max_atpct=0;
                 if ~exist('old_way','var')
-                    for vn=1:numel(data_buffer.data)/prod(data_out.ds.Sub(recon_strategy.c_dims))
+                    for vn=1:numel(data_buffer.data)/prod(data_out.ds.Sub(recon_strategy.w_dims))
                         d_pos=indx_calc(vn,data_out.ds.Sub(recon_strategy.op_dims));
                         % for dx=1:length(recon_strategy.op_dims)
                         %     d_s.(recon_strategy.op_dims(dx))=d_pos(dx);
@@ -2103,13 +2103,13 @@ dim_text=dim_text(1:end-1);
         if recon_strategy.work_by_chunk||recon_strategy.work_by_sub_chunk
             %% arbitrarychunksave.
             warning('this saving code a work in progress for chunks');
-            %if length(c_dims)>3  foreach outputimage , saveimgae.
-            if ( length(recon_strategy.c_dims)>3 )
+            %if length(w_dims)>3  foreach outputimage , saveimgae.
+            if ( length(recon_strategy.w_dims)>3 )
                 [l,n,f]=get_dbline('rad_mat');
                 eval(sprintf('dbstop in %s at %d',f,l+2));
-                warning('C_DIMS CANT BE BIGGER THAN 3 YET!');
+                warning('w_dims CANT BE BIGGER THAN 3 YET!');
             end
-            %%%% HAHA for each dim of c_dims outside xyz! we can
+            %%%% HAHA for each dim of w_dims outside xyz! we can
             %%%% for each output type
             %%%% save each output image
 
