@@ -567,24 +567,6 @@ clear datapath dirext input input_data puller_data;
 %% read input dimensions to shorthand structs
 [d_struct,data_in,data_work,data_out]=create_meta_structs(data_buffer,opt_struct);
 
-if regexp(data_in.vol_type,'.*radial.*') % unfortunately radial requires double precision for the grid function for now.
-    if ~opt_struct.grid_oversample_factor
-        %         opt_struct.grid_oversample_factor=3;
-        data_buffer.headfile.radial_grid_oversample_factor=3;
-        fprintf('\trad_mat default oversample factor=%0.2f.\n',data_buffer.headfile.radial_grid_oversample_factor);
-    else
-        data_buffer.headfile.radial_grid_oversample_factor=opt_struct.grid_oversample_factor;
-        fprintf('\trad_mat oversample factor=%0.2f.\n',data_buffer.headfile.radial_grid_oversample_factor);
-    end
-    if ~opt_struct.dcf_iterations
-        data_buffer.headfile.radial_dcf_iterations=18; %Number of iterations used for dcf calculation, should be put up higher to top.
-        fprintf('\trad_mat default dcf iterations=%d.\n',data_buffer.headfile.radial_dcf_iterations);
-    else
-        data_buffer.headfile.radial_dcf_iterations=opt_struct.dcf_iterations;
-        fprintf('\trad_mat dcf iterations=%d.\n',data_buffer.headfile.radial_dcf_iterations);
-    end
-end
-
 % get free space
 if ismac
     df_field=4;
@@ -645,7 +627,7 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
         % the channel information, This causes my line_points to be off,
         % which caues my min_load_bytes to be off. We'll set special var
         % here to fix that.
-        if isfield(data_buffer.headfile,'B_rare_factor')
+        if isfield(data_buffer.headfile,'B_rare_factor')&& ~strcmp(data_in.vol_type,'radial')
             if data_buffer.headfile.B_rare_factor==1
                 data_in.line_points   = data_in.ray_length;
                 data_in.total_points = data_in.ray_length*data_in.rays_per_block*data_in.ray_blocks;
@@ -717,8 +699,6 @@ else
 %     % minimum amount of bytes of data we can load at a time,
 end
 
-
-
 %% calculate expected input file size and compare to real size
 % if we cant calcualte the file size its likely we dont know what it is
 % we're loading, and therefore we would fail to reconstruct.
@@ -773,7 +753,12 @@ clear data_in.kspace_header_bytes kspace_file_size fileInfo measured_filesize;
 
 %% set the recon strategy dependent on memory requirements
 [recon_strategy,opt_struct]=get_recon_strategy3(data_buffer,opt_struct,d_struct,data_in,data_work,data_out,meminfo);
-
+if recon_strategy.recon_operations>data_buffer.headfile.([data_tag 'volumes'])
+    save([data_buffer.headfile.work_dir_path '/insufficient_mem_stop.mat']);
+    [l,n,f]=get_dbline('rad_mat');
+    eval(sprintf('dbstop in %s at %d',f,l+3));
+    warning('Cannot proceede sanely on this recon engine due to insufficient RAM');
+end
 %% mem purging when we expect to fit.
 %%% first just try a purge to free enough space.
 if meminfo.AvailPhys<recon_strategy.memory_space_required
@@ -795,7 +780,9 @@ fprintf('    ... Proceding doing recon with %d chunk(s)\n',recon_strategy.num_ch
 
 clear data_in.ray_length2 data_in.ray_length3 fileInfo bytes_per_vox copies_in_memory kspace.bit_depth kspace.data_type min_chunks system_reserved_memory total_memory_required memory_space_required meminfo measured_filesize kspace_file_size kspace_data data_in.kspace_header_bytes F mul user_response ;
 %% collect gui info (or set testmode)
-gui_info_collect(data_buffer,opt_struct);
+if ~isempty(regexp(runno,'^[A-Z][0-9]{5,}.*$', 'once'))
+    gui_info_collect(data_buffer,opt_struct);
+end
 if isfield(data_buffer.headfile,'U_specid')
     if regexp(data_buffer.headfile.U_specid,'.*;.*')
         fprintf('Mutliple specids entered in gui, forcing combine channels off! %s\n',data_buffer.headfile.U_specid);
@@ -896,13 +883,14 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         if recon_strategy.load_whole && recon_strategy.num_chunks>1 && ~recon_strategy.work_by_sub_chunk
             load_chunks=1;
             load_chunk_size=recon_strategy.chunk_size*recon_strategy.num_chunks;
+            chunks_to_load=1;
         elseif recon_strategy.work_by_sub_chunk 
             file_header=data_in.binary_header_bytes+(recon_num-1)*recon_strategy.min_load_size*(data_in.disk_bit_depth/8);
             chunks_to_load=1:recon_strategy.num_chunks;
             load_chunk_size=recon_strategy.chunk_size;
         else 
             save('/tmp/matlab_debug.mat');
-            error('Unsupported recon condition, saved matlab workspace to /tmp/matlab_debug.mat');
+            warning('Unsupported recon condition, saved matlab workspace to /tmp/matlab_debug.mat');
         end
         %         temp_chunks=recon_strategy.num_chunks;
         %         temp_size=recon_strategy.chunk_size;
@@ -1066,7 +1054,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                     radial_filter_modifier=data_buffer.headfile.ray_blocks_per_volume;
                     cutoff_filter(1:nyquist_cutoff,:,cut_key_indices)=0;
                     if opt_struct.display_radial_filter
-                        imagesc(reshape(data_buffer.cutoff_filter,[size(data_buffer.cutoff_filter,1),numel(data_buffer.cutoff_filter)/size(data_buffer.cutoff_filter,1)]))
+                        imagesc(reshape(cutoff_filter,[size(cutoff_filter,1),numel(cutoff_filter)/size(cutoff_filter,1)]))
                     end
                 else
                     fprintf('\tNot filtering radial data\n');
@@ -1099,7 +1087,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 %                 traj(data_buffer.cutoff_filter==0)=NaN;
                 traj(permute(reshape(repmat(data_buffer.cutoff_filter,[3,1,1,1]),[data_in.ray_length,...
                     3, data_buffer.headfile.rays_per_block,...
-                    data_buffer.headfile.ray_blocks]),[2 1 3 4])==0)=NaN;
+                    data_buffer.headfile.ray_blocks_per_volume]),[2 1 3 4])==0)=NaN;
                 % for filter_key=1:radial_filter_modifier
 
                 if exist(dcf_file_path,'file')&& ~opt_struct.dcf_recalculate
@@ -1398,13 +1386,13 @@ dim_text=dim_text(1:end-1);
 %             
             %%% should move the kspace writing code to here with a check if it already exists, in the case we're iterating over it for some reason.
             fprintf('\twrite_kimage make_nii\n');
-            nii=make_nii(log(abs(data_buffer.data)));
+            nii=make_nii(log(abs(squeeze(data_buffer.data))));
             fprintf('\t\t save_nii\n');
             kimg_code='';
             if recon_strategy.recon_operations>1 || length(recon_strategy.recon_operations)>1
                 kimg_code=sprintf(['_%' num2str(length(recon_strategy.recon_operations)) 'd'],recon_num);
             end
-            save_nii(nii,[work_dir_img_path_base kimg_code '_kspace_unfiltered.nii']);
+            save_nii(nii,[work_dir_img_path_base kimg_code '_kspace_unfiltered.nii']);clear nii;
         end
         %% combine dimensions in kspace
         % combine kspace by letter string, 
@@ -1520,13 +1508,13 @@ dim_text=dim_text(1:end-1);
             %             end
             %             if opt_struct.write_kimage && ~opt_struct.skip_filter && ~opt_struct.skip_load
             fprintf('\twrite_kimage make_nii\n');
-            nii=make_nii(log(abs(data_buffer.data)));
+            nii=make_nii(log(abs(squeeze(data_buffer.data))));
             fprintf('\t\t save_nii\n');
             kimg_code='';
             if recon_strategy.recon_operations>1 || length(recon_strategy.recon_operations)>1
                 kimg_code=sprintf(['_%' num2str(length(recon_strategy.recon_operations)) 'd'],recon_num);
             end
-            save_nii(nii,[work_dir_img_path_base kimg_code '_kspace.nii']);
+            save_nii(nii,[work_dir_img_path_base kimg_code '_kspace.nii']);clear nii;
         end       
         %% fft, resort, cut bad data, and display
         if ~opt_struct.skip_fft
@@ -1930,8 +1918,8 @@ dim_text=dim_text(1:end-1);
         d_s.(recon_strategy.op_dims(dx))=d_pos(dx);
     end
     clear dx;
-    if d_struct.c>1
-        channel_code=opt_struct.channel_alias(cn);
+    if d_struct.c>1 && isfield(d_s,'c')
+        channel_code=opt_struct.channel_alias(d_s.c);
         if isfield(data_buffer.headfile,'U_specid')
             s_exp='[0-9]{6}-[0-9]+:[0-9]+(;|)';
             m_s_exp=cell(1,d_struct.c);
@@ -1953,12 +1941,17 @@ dim_text=dim_text(1:end-1);
         end
         
     else
+        d_s.c=1;
         channel_code='';
     end
     max_mnumber=d_struct.t*d_struct.p-1;% should generalize this to any dimension except xyzc
     m_length=length(num2str(max_mnumber));
-    m_number=(d_s.t-1)*d_struct.p+d_s.p-1;
-    if ~opt_struct.skip_combine_channels
+    if exist('d_s','var')
+        m_number=(d_s.t-1)*d_struct.p+d_s.p-1;
+    else
+        m_number=0;
+    end
+    if ~opt_struct.skip_combine_channels && d_struct.c>1
         data_buffer.headfile.([data_tag 'volumes'])=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c;
         d_struct.c=1;
     end
@@ -1978,7 +1971,18 @@ dim_text=dim_text(1:end-1);
         data_buffer.headfile.work_dir=data_buffer.engine_constants.engine_work_directory;
         data_buffer.headfile.runno_base=runno;
     end
-    
+    if ~isfield(data_buffer.headfile,'fovx')
+        warning('No fovx');
+        data_buffer.headfile.fovx=data_buffer.headfile.dim_X;
+    end
+    if ~isfield(data_buffer.headfile,'fovy')
+        warning('No fovy');
+        data_buffer.headfile.fovy=data_buffer.headfile.dim_Y;
+    end
+    if ~isfield(data_buffer.headfile,'fovz')
+        warning('No fovz');
+        data_buffer.headfile.fovz=data_buffer.headfile.dim_Z;
+    end
     %% load rp file for reprocessing
     if opt_struct.skip_load && opt_struct.reprocess_rp ...
             && exist([work_dir_img_path '.rp.out'],'file') 
@@ -2029,11 +2033,19 @@ dim_text=dim_text(1:end-1);
                         % for dx=1:length(recon_strategy.op_dims)
                         %     d_s.(recon_strategy.op_dims(dx))=d_pos(dx);
                         % end
-                        tmp=abs(eval(['data_buffer.data(:,:,:,' strjoin(strsplit(num2str(d_pos),' '),',') ')' ]));
+                        ed_string=strjoin(strsplit(num2str(d_pos),' '),',');
+                        if ~isempty(ed_string)
+                            tmp=abs(eval(['data_buffer.data(:,:,:,' strjoin(strsplit(num2str(d_pos),' '),',') ')' ]));
+                        else
+                            if numel(size(data_buffer.data))~=3
+                                warning('data_buffer dims greater than 3 but didnt figure out which part we''re saving.');
+                            end
+                            tmp=abs(data_buffer.data);
+                        end
 %                         tmp=sort(tmp(:)); only needed when not doing
 %                         perentile, should check performance of the two.
                         m_tmp=max(tmp(:)); % maybe do unshape, reshape for speed?
-                        p_tmp=prctile(tmp,opt_struct.histo_percent);
+                        p_tmp=prctile(tmp(:),opt_struct.histo_percent);
                         if m_tmp>data_buffer.headfile.group_max_intensity
                             data_buffer.headfile.group_max_intensity=m_tmp;
                         end
@@ -2106,7 +2118,7 @@ dim_text=dim_text(1:end-1);
             %if length(w_dims)>3  foreach outputimage , saveimgae.
             if ( length(recon_strategy.w_dims)>3 )
                 [l,n,f]=get_dbline('rad_mat');
-                eval(sprintf('dbstop in %s at %d',f,l+2));
+%                 eval(sprintf('dbstop in %s at %d',f,l+3));
                 warning('w_dims CANT BE BIGGER THAN 3 YET!');
             end
             %%%% HAHA for each dim of w_dims outside xyz! we can
@@ -2187,23 +2199,23 @@ dim_text=dim_text(1:end-1);
                 fprintf('\twrite_complex (radish_format) save\n');
                 save_complex(tmp,[ work_dir_img_path '.rp.out']);
             end
+            
+            if opt_struct.write_phase && ~opt_struct.skip_recon
+                fprintf('\twrite_phase \n');
+                nii=make_nii(angle(tmp), [ ...
+                    data_buffer.headfile.fovx/d_struct.x ...
+                    data_buffer.headfile.fovy/d_struct.y ...
+                    data_buffer.headfile.fovz/d_struct.z]); % insert fov settings here ffs....
+                fprintf('\t\t save_nii\n');
+                save_nii(nii,[work_dir_img_path '_phase.nii']);
+                clear nii;
+            end
+            
             %%% save unscaled nifti?
             
             %%% unscaled_nii_save
             if ( opt_struct.write_unscaled && ~opt_struct.skip_recon ) %|| opt_struct.skip_write_civm_raw
                 fprintf('\twrite_unscaled save\n');
-                if ~isfield(data_buffer.headfile,'fovx')
-                    warning('No fovx');
-                    data_buffer.headfile.fovx=data_buffer.headfile.dim_X;
-                end
-                if ~isfield(data_buffer.headfile,'fovy')
-                    warning('No fovy');
-                    data_buffer.headfile.fovy=data_buffer.headfile.dim_Y;
-                end
-                if ~isfield(data_buffer.headfile,'fovz')
-                    warning('No fovz');
-                    data_buffer.headfile.fovz=data_buffer.headfile.dim_Z;
-                end
                 tmp=abs(tmp);
                 nii=make_nii(tmp, [ ...
                     data_buffer.headfile.fovx/d_struct.x ...
@@ -2211,6 +2223,7 @@ dim_text=dim_text(1:end-1);
                     data_buffer.headfile.fovz/d_struct.z]); % insert fov settings here ffs....
                 fprintf('\t\t save_nii\n');
                 save_nii(nii,[work_dir_img_path '.nii']);
+                clear nii;
             end
             %% civmraw save
             if ~exist(space_dir_img_folder,'dir') || opt_struct.ignore_errors
@@ -2435,6 +2448,10 @@ dim_text=dim_text(1:end-1);
                         fprintf('\twrite_complex (radish_format) save\n');
                         save_complex(tmp,[ work_dir_img_path '.rp.out']);
                     end
+                    if opt_struct.write_phase && ~opt_struct.skip_recon
+                        fprintf('\twrite_phase \n');
+                        %%%%phasewrite(tmp,[work_dir_img_path
+                    end
                     %%% kimage_
                     if opt_struct.write_kimage && ~opt_struct.skip_filter && ~opt_struct.skip_load
                         fprintf('\twrite_kimage make_nii\n');
@@ -2554,7 +2571,7 @@ clear img_s;
         end
         end
         %% save ijmacro
-        if recon_num==1 && exist(work_dir_img_path_base,'var')
+        if recon_num==1 && exist('work_dir_img_path_base','var')
             openmacro_path=sprintf('%s%s',work_dir_img_path_base ,'.ijm');
             if opt_struct.overwrite && exist(openmacro_path,'file')
                 delete(openmacro_path);
@@ -2584,10 +2601,11 @@ if recon_strategy.num_chunks>1&&~opt_struct.skip_write %recon_strategy.work_by_c
     if ~exist('runnumbers','var')
         error('Run numbers were not defined, cannot reform_group');
     end
+    runnumbers=runnumbers(~cellfun('isempty',runnumbers)) ;
     if numel(runnumbers) >1 && recon_strategy.recon_operations>1
         if size(runnumbers,2)==1
             system(['reform_group '  strjoin(runnumbers',' ') ])
-        else 
+        else
             system(['reform_group '  strjoin(runnumbers,' ') ])
         end
     end
