@@ -2016,7 +2016,7 @@ dim_text=dim_text(1:end-1);
         fprintf('Loading rp.out for reprocessing');
         % other load_complex calls ignore extra options, presubably rp.out is standardish.
         data_buffer.data=load_complex([work_dir_img_path '.rp.out'], ...
-            data_out.ds.Sub(recon_strategy.w_dims)); 
+            data_out.ds.Sub(recon_strategy.w_dims),'single','l',false,false); 
         % ,'single','b',0); 
     end
     
