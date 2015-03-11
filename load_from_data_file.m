@@ -85,6 +85,7 @@ if mod(load_skip_bytes,precision_bytes)==0 && mod(post_skip_bytes,precision_byte
     
 %     chunk_with_skip=load_skip_size+(load_size+post_skip_size)*loads_per_chunk;
     % this makes loads size (chunk_size+load_skip)*nchunks
+    load_size=(min_load_size+post_skip_size)*loads_per_chunk;
     load_method='experiental2';
 else
 end
@@ -107,6 +108,10 @@ for c=2:length(chunks_to_load)
         contiguous_chunks=false;
     end
 end
+
+if contiguous_chunks && (chunks_to_load(1)~=1 || numel(chunks_to_load)==1  )
+    contiguous_chunks=false;
+end
 if complex_struct
     if ( ~isprop(data_buffer,'ds'))
         data_buffer.addprop('ds');
@@ -123,7 +128,6 @@ end
 buffer_pos=1;
 if contiguous_chunks
     fseek(fileid,header_skip,'bof');
-    
 end
 for c=1:length(chunks_to_load)
     if c==1 && numel(chunks_to_load)
@@ -169,11 +173,12 @@ for c=1:length(chunks_to_load)
             fprintf('%%...');
         end
         
-        if ( contiguous_chunks ) 
+        %         if ( contiguous_chunks )
+        if contiguous_chunks 
             fseek(fileid,load_skip_bytes,'cof');
         else
             % fseek(fileid,load_skip_bytes+chunk_with_skip*(chunks_to_load(c)-1)*precision_bytes,'cof');% save time by seeking past the first little tid bit.
-            skip=header_skip+chunk_with_skip*(chunks_to_load(c)-1)*precision_bytes+load_skip_bytes;
+            skip=header_skip+(load_size*precision_bytes+load_skip_bytes)*(chunks_to_load(c)-1)*precision_bytes+load_skip_bytes;
             fseek(fileid,skip,'bof');% a skip from beginning skip
         end
         
@@ -190,8 +195,8 @@ for c=1:length(chunks_to_load)
         end
 %         fid_data=reshape(fid_data,[load_size/(chunk_size+load_skip_size),(chunk_size+load_skip_size)]);
 %         fid_data(1:load_skip_size,:)=[];  % this part is correct.
-        fid_data=reshape(fid_data,[load_size+post_skip_size,loads_per_chunk]); % also probably correct.
-        fid_data(load_size+1:end,:)=[]; %ver unsure about this.
+        fid_data=reshape(fid_data,[load_size/loads_per_chunk,loads_per_chunk]); % in theory we've loaded a whole chunk of stuff here.
+        fid_data(min_load_size+1:end,:)=[]; %ver unsure about this.
         fid_data=reshape(fid_data,[2 numel(fid_data)/2 ]);
 %         fid_data
         if numel(chunks_to_load)==1

@@ -4,6 +4,8 @@ function save_complex(vol,path)
 
 % memusage is vol+2xvol for the complex file, might be 3xvol, for a working
 % space.
+warning('THIS SAVED IMAGINARY FIRST, USE NIFTI COMPLEX IN THE FUTURE');
+pause(3);
     precision='single';
 %     tic
     dims=size(vol);

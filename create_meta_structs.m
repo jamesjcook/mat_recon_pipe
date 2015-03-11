@@ -134,7 +134,7 @@ end
 data_out.output_order=opt_struct.output_order;
 if exist('dimstruct','class')
     data_out.ds=dimstruct(data_out.output_order,d_struct);
-    data_out.output_dimensions=data_out.ds.dim_sizes;
+    data_out.output_dimensions=data_out.ds.Sub(data_out.output_order);
 else
     data_out.output_dimensions=[d_struct.(opt_struct.output_order(1)) d_struct.(opt_struct.output_order(2))...
         d_struct.(opt_struct.output_order(3)) d_struct.(opt_struct.output_order(4))...
@@ -206,9 +206,9 @@ if opt_struct.write_kimage_unfiltered
 %     data_out.RAM_bytes_per_voxel=data_out.RAM_bytes_per_voxel+data_work.precision_bytes*2;
 %     data_work.RAM_bytes_per_voxel=data_work.RAM_bytes_per_voxel+data_work.precision_bytes;
 end
-if opt_struct.write_unscaled || opt_struct.write_unscaled_nD || opt_struct.write_phase|| opt_struct.write_complex 
+if opt_struct.write_unscaled || opt_struct.write_unscaled_nD || opt_struct.write_phase|| opt_struct.write_complex ||opt_struct.write_kimage_unfiltered||opt_struct.write_kimage_unfiltered
 %     output_
-    data_out.RAM_bytes_per_voxel=data_out.RAM_bytes_per_voxel+data_work.precision_bytes;
+%     data_out.RAM_bytes_per_voxel=data_out.RAM_bytes_per_voxel+data_work.precision_bytes;
     data_work.RAM_bytes_per_voxel=data_work.RAM_bytes_per_voxel+data_work.precision_bytes;
 end
 % data_out.volumes=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c;

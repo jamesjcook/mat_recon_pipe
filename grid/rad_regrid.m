@@ -65,6 +65,14 @@ else
     output_order=data_buffer.headfile.('rad_mat_option_output_order');
 end
 
+% if numel(dim_order)<numel(output_order)
+%     for d_num=1:length(output_order)
+%         dpos=strfind(dim_order,output_order(d_num));
+%         if isempty(dpos)
+%             dim_order(end+1)=output_order(d_num);
+%         end
+%     end
+% end
 d_struct=struct;
 d_struct.r=r;
 d_struct.x=x;
@@ -85,10 +93,27 @@ if( ~strcmp(data_buffer.headfile.([data_tag 'vol_type']),'radial'))
 % if( regexp(data_buffer.headfile.([data_tag 'vol_type']),'2D|3D|4D'))
     %% cartesian (literally all non-radial, if other sequences come up we'll have to deal)
     permute_code=zeros(size(dim_order));
-    for d_num=1:length(dim_order)
-%     for d_num=1:length(c_dims)
-        permute_code(d_num)=strfind(dim_order,output_order(d_num));
+%     for d_num=1:length(dim_order)
+%         %     for d_num=1:length(c_dims)
+%         dpos=strfind(output_order,dim_order(d_num));
+% %         dpos=strfind(dim_order,output_order(d_num));
+%         if ~isempty(dpos)
+%             permute_code(d_num)=dpos;
+%         end
+%     end
+%     
+%     
+permute_code=[];
+    for d_num=1:length(output_order)
+        %     for d_num=1:length(c_dims)
+        dpos=strfind(dim_order,output_order(d_num));
+%         dpos=strfind(dim_order,output_order(d_num));
+        if ~isempty(dpos)
+            permute_code(end+1)=dpos;
+        end
     end
+%     permute_code(permute_code==0)=[];
+    
     
     % dimension order should be set in the headfile by the dumpheader perl
     % function.
@@ -132,7 +157,9 @@ if( ~strcmp(data_buffer.headfile.([data_tag 'vol_type']),'radial'))
     data_buffer.data=reshape(data_buffer.data,input_dimensions);
     data_buffer.data=permute(data_buffer.data,permute_code ); % put in image order(or at least in fft order).
     % end
-    data_buffer.data=reshape(data_buffer.data,output_dimensions(1:numel(c_dims)));% x yr z c
+    
+    %following reshap was commented out becuase it seems so unnecessary.
+    %     data_buffer.data=reshape(data_buffer.data,output_dimensions(1:numel(c_dims)));% x yr z c
     
     encoding_sort=false;
     if isfield(data_buffer.input_headfile,'dim_X_encoding_order')

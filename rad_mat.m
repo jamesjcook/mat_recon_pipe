@@ -179,6 +179,7 @@ beta_options={
     'skip_regrid',            ' do not regrid'
     'skip_filter',            ' do not filter data sets.'
     'skip_fft',               ' do not fft data, good short hand when saving kspace files'
+    'skip_postreform',        ' for images requireing a call to refromer, skip that step.'
     'skip_recon',             ' for re-writing headfiles only, implies skip filter, and existing_data'
     'skip_resort',            ' for 3D aspect acquisitions we turn by 90 and resort y and z after fft, this alows that to be skiped'
     'skip_resort_y',          ' for 3D aspect acquisitions we resort z after fft, this alows that to be skiped, other sorting will occur'
@@ -371,6 +372,12 @@ if opt_struct.skip_load
     opt_struct.skip_fft=true;
     opt_struct.skip_regrid=true;
 end
+
+if opt_struct.write_phase && ~opt_struct.skip_filter
+    warning('FILTER FORCED OFF FOR WRITING PHASE IMAGE');
+    pause(opt_struct.warning_pause);
+    opt_struct.skip_filter=true;
+end
 if opt_struct.skip_filter
     
 end
@@ -393,6 +400,8 @@ if opt_struct.skip_write_civm_raw &&...
         ~opt_struct.write_unscaled_nD
     opt_struct.skip_fft=true;
 end
+
+
 %% option sanity checks and cleanup
 if ~opt_struct.chunk_test_max
     opt_struct.chunk_test_max=Inf;
@@ -780,9 +789,9 @@ fprintf('    ... Proceding doing recon with %d chunk(s)\n',recon_strategy.num_ch
 
 clear data_in.ray_length2 data_in.ray_length3 fileInfo bytes_per_vox copies_in_memory kspace.bit_depth kspace.data_type min_chunks system_reserved_memory total_memory_required memory_space_required meminfo measured_filesize kspace_file_size kspace_data data_in.kspace_header_bytes F mul user_response ;
 %% collect gui info (or set testmode)
-if ~isempty(regexp(runno,'^[A-Z][0-9]{5,}.*$', 'once'))
+%if ~isempty(regexp(runno,'^[A-Z][0-9]{5,}.*$', 'once'))
     gui_info_collect(data_buffer,opt_struct);
-end
+%end
 if isfield(data_buffer.headfile,'U_specid')
     if regexp(data_buffer.headfile.U_specid,'.*;.*')
         fprintf('Mutliple specids entered in gui, forcing combine channels off! %s\n',data_buffer.headfile.U_specid);
@@ -888,6 +897,8 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
             file_header=data_in.binary_header_bytes+(recon_num-1)*recon_strategy.min_load_size*(data_in.disk_bit_depth/8);
             chunks_to_load=1:recon_strategy.num_chunks;
             load_chunk_size=recon_strategy.chunk_size;
+        elseif recon_strategy.work_by_chunk
+            chunks_to_load=recon_num;
         else 
             save('/tmp/matlab_debug.mat');
             warning('Unsupported recon condition, saved matlab workspace to /tmp/matlab_debug.mat');
@@ -1187,7 +1198,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         % more accurate especially for cartesian. 
         %%enhance to handle load_whole vs work_by_chunk.
         if ~opt_struct.skip_regrid
-            if recon_strategy.num_chunks>1 %%%&& ~isempty(regexp(vol_type,'.*radial.*', 'once'))
+            if recon_strategy.num_chunks>1 && recon_strategy.recon_operations>1 %%%&& ~isempty(regexp(vol_type,'.*radial.*', 'once'))
                 data_buffer.headfile.processing_chunk=recon_num;
             end
             if recon_num==1 || ~recon_strategy.load_whole
@@ -1521,6 +1532,7 @@ dim_text=dim_text(1:end-1);
             %% fft
             fprintf('Performing FFT on ');
             if strcmp(data_in.vol_type,'2D')
+                %% fft-2D
                 fprintf('%s volumes\n',data_in.vol_type);
                 if ~exist('img','var') || numel(img)==1;
                     img=zeros(data_out.output_dimensions);
@@ -1570,10 +1582,11 @@ dim_text=dim_text(1:end-1);
                 end
                 data_buffer.data=img;
                 clear img;
-             elseif regexp(data_in.vol_type,'.*radial.*')
+            elseif regexp(data_in.vol_type,'.*radial.*')
+                %% fft-radial
                 fprintf('%s volumes\n',data_in.vol_type);
                 fprintf('Radial fft optimizations\n');
-                %% timepoints
+                %%% timepoints handling
                 if isfield(data_buffer.headfile,'processing_chunk')
                     t_s=data_buffer.headfile.processing_chunk;
                     t_e=data_buffer.headfile.processing_chunk;
@@ -1582,7 +1595,7 @@ dim_text=dim_text(1:end-1);
                     t_e=d_struct.t;
                 end
                 %%% when we are over-gridding(almost all the time) we
-                %%% should have a kspace property to work from. 
+                %%% should have a kspace property to work from.
                 if ~isprop(data_buffer,'kspace')
                     fft_input='data';
                 else
@@ -1596,35 +1609,36 @@ dim_text=dim_text(1:end-1);
                 %                 else
                 %                     fft_input='kspace';
                 %                 end
-%                 for time_pt=t_s:t_e %%% this timepoint code only works when we're processing a single timepoint of data.
-                    %% multi-channel only
-                    dims=size(data_buffer.(fft_input));
-                    enddims=dims(4:end);
-                    [c_s,c_e]=center_crop(dims(1),d_struct.x);
-                    if numel(size(data_buffer.(fft_input)))>3
-                        data_buffer.(fft_input)=reshape(data_buffer.(fft_input),[dims(1:3) prod(dims(4:end))]);
-                    end
-                    if numel(data_buffer.data) ~= prod(data_out.output_dimensions)
-                        data_buffer.data=[];
-                        fprintf('Prealocate output data\n');
-                        % data_buffer.data=zeros([ d_struct.x,d_struct.x,d_struct.x  prod(dims(4:end))],'single');
-                        % data_buffer.data=complex(data_buffer.data,data_buffer.data);
-                        data_buffer.data=complex(zeros([ d_struct.x,d_struct.x,d_struct.x  prod(dims(4:end))],'single'));
-                    end
-                    t_fft=tic;
-                    fprintf('\t fft start\n\t');
-                    for v=1:size(data_buffer.(fft_input),4)
-                        fprintf('%d ',v);
-                        temp =fftshift(ifftn(data_buffer.(fft_input)(:,:,:,v)));
-                        data_buffer.data(:,:,:,v)=temp(c_s:c_e,c_s:c_e,c_s:c_e);
-                    end
-%                 end
+                %                 for time_pt=t_s:t_e %%% this timepoint code only works when we're processing a single timepoint of data.
+                %% multi-channel only
+                dims=size(data_buffer.(fft_input));
+                enddims=dims(4:end);
+                [c_s,c_e]=center_crop(dims(1),d_struct.x);
+                if numel(size(data_buffer.(fft_input)))>3
+                    data_buffer.(fft_input)=reshape(data_buffer.(fft_input),[dims(1:3) prod(dims(4:end))]);
+                end
+                if numel(data_buffer.data) ~= prod(data_out.output_dimensions)
+                    data_buffer.data=[];
+                    fprintf('Prealocate output data\n');
+                    % data_buffer.data=zeros([ d_struct.x,d_struct.x,d_struct.x  prod(dims(4:end))],'single');
+                    % data_buffer.data=complex(data_buffer.data,data_buffer.data);
+                    data_buffer.data=complex(zeros([ d_struct.x,d_struct.x,d_struct.x  prod(dims(4:end))],'single'));
+                end
+                t_fft=tic;
+                fprintf('\t fft start\n\t');
+                for v=1:size(data_buffer.(fft_input),4)
+                    fprintf('%d ',v);
+                    temp =fftshift(ifftn(data_buffer.(fft_input)(:,:,:,v)));
+                    data_buffer.data(:,:,:,v)=temp(c_s:c_e,c_s:c_e,c_s:c_e);
+                end
+                %                 end
                 dims=size(data_buffer.data);
                 data_buffer.data=reshape(data_buffer.data,[ dims(1:3) enddims]);
                 fprintf('FFT finished in %f seconds\n',toc(t_fft));
                 data_buffer.headfile.grid_crop=[c_s,c_e];
                 clear c_s c_e dims temp;
             else
+                %% fft-3D+(not radial)
                 fprintf('%s volumes\n',data_in.vol_type);
                 %method 1 fails for more than 3D
                 %                 odims=size(data_buffer.data);
@@ -1663,7 +1677,13 @@ dim_text=dim_text(1:end-1);
                 %                 fprintf('\n');
                 % method 6 is same as 4, working on getting the right
                 % fftshift But givs very wrong result
-                data_buffer.data=fftshift(fftshift(fftshift(ifft(ifft(ifft(data_buffer.data,[],1),[],2),[],3),1),2),3);
+                % data_buffer.data=fftshift(fftshift(fftshift(ifft(ifft(ifft(data_buffer.data,[],1),[],2),[],3),1),2),3);
+                % bad result has in checkerboard LX helped find solution
+                % missing fftshifts prior to fft required.
+                data_buffer.data=fftshift(fftshift(fftshift(ifft(ifft(ifft(fftshift(fftshift(fftshift(data_buffer.data,1),2),3),[],1),[],2),[],3),1),2),3);
+%                 data_buffer.data=fftshift(ifftn(fftshift(data_buffer.data)));%%% THIS WAY IS CORRECT< MUST TEST PHASE (angle) TO PROVE OTHER METHODS.
+                
+                
             end
             %% resort images flip etc
             if strcmp(data_in.vol_type,'3D') && ~opt_struct.skip_resort
@@ -2601,17 +2621,20 @@ end
 % this is not implimented yet.
     
 %% run group reformer for select datasets.
-if recon_strategy.num_chunks>1&&~opt_struct.skip_write %recon_strategy.work_by_chunk
+if recon_strategy.num_chunks>1&&~opt_struct.skip_write&&~opt_struct.skip_write_civm_raw %recon_strategy.work_by_chunk
     if ~exist('runnumbers','var')
         error('Run numbers were not defined, cannot reform_group');
     end
     runnumbers=runnumbers(~cellfun('isempty',runnumbers)) ;
     if numel(runnumbers) >1 && recon_strategy.recon_operations>1
         if size(runnumbers,2)==1
-            system(['reform_group '  strjoin(runnumbers',' ') ])
+            c=sprintf(['reform_group '  strjoin(runnumbers',' ') ]);
         else
-            system(['reform_group '  strjoin(runnumbers,' ') ])
+            c=sprintf(['reform_group '  strjoin(runnumbers,' ') ]);
         end
+    end
+    if ~opt_struct.skip_postreform && exist('c','var')
+        system(c);
     end
 end
 

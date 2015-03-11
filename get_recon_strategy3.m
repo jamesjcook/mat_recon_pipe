@@ -139,18 +139,21 @@ elseif isfield(data_in,'ds')
     % we intend to process our volumes in output_dimension order, 
     % later we have to switch the process order to the input order so the
     % permutations of regrid work correctly.
-    rs.last=recon_strategy;
-    while recon_strategy.memory_space_required < useable_RAM && ...
-            numel(recon_strategy.w_dims) < numel(data_out.output_dimensions)
-        rs.last=recon_strategy;
-        recon_strategy.w_dims(end+1)=data_out.output_order(numel(recon_strategy.w_dims)+1);
-        recon_strategy.memory_space_required=prod(data_in.ds.Sub(recon_strategy.w_dims))...
-            *data_in.RAM_bytes_per_voxel...
-            +prod(data_work.ds.Sub(recon_strategy.w_dims))...
-            *data_work.RAM_bytes_per_voxel...
-            +prod(data_out.ds.Sub(recon_strategy.w_dims))...
-            *data_out.RAM_bytes_per_voxel;
-
+    rs.last=recon_strategy; 
+    td=1;
+    while recon_strategy.memory_space_required < useable_RAM ...
+            && td <= numel(data_out.output_dimensions)
+        if data_out.output_dimensions(td)>1
+            rs.last=recon_strategy;
+            recon_strategy.w_dims(end+1)=data_out.output_order(td);
+            recon_strategy.memory_space_required=prod(data_in.ds.Sub(recon_strategy.w_dims))...
+                *data_in.RAM_bytes_per_voxel...
+                +prod(data_work.ds.Sub(recon_strategy.w_dims))...
+                *data_work.RAM_bytes_per_voxel...
+                +prod(data_out.ds.Sub(recon_strategy.w_dims))...
+                *data_out.RAM_bytes_per_voxel;
+        end
+        td=td+1;
     end
     if recon_strategy.memory_space_required > useable_RAM 
         recon_strategy=rs.last;
@@ -172,7 +175,7 @@ elseif isfield(data_in,'ds')
     %sub_chunks_per_chunk.
     
     %%% calc var skip btween dim_string and w_dims.
-    %%% indicate subchunk skips.... if we got them.
+    %%% indicate subchunk skips..op.. if we got them.
     %%% what is the chunk dimension? previously we always just assumed it.
     recon_strategy.work_by_chunk=false;
     recon_strategy.work_by_sub_chunk=false;
@@ -180,18 +183,19 @@ elseif isfield(data_in,'ds')
     %%% matchup with the possible read data dimensions.
     
     %%%% if 2D we will operate in slice mode.... (code that later).
-    if strcmp(data_in.vol_type,'2D')
-        error('did not do 2D recon strategy. code');
+    if strcmp(data_in.vol_type,'2D')...
+            && recon_strategy.maximum_RAM_requirement > useable_RAM
+        warning('did not do 2D recon strategy. code');
     %%%% if 3D
-    elseif strcmp(data_in.vol_type,'3D')
+    elseif ~isempty(regexp(data_in.vol_type,'(3D|4D)', 'once'))
         if ( recon_strategy.num_chunks ~= prod(data_out.output_dimensions)/prod(data_out.ds.Sub('xyz'))) 
             warning('native fft blocks dont line up with chunks!');
         end
         unique_test_string=data_in.ds.showorder([data_in.ray_blocks data_in.ray_blocks data_in.ray_blocks]);
         unique_test_string=unique_test_string([true diff(unique_test_string)~=0]);%collapses any extra f's to a singluar f'.
-        if strcmp(unique_test_string(end-1),'z')&&strcmp(unique_test_string(end),'f') && recon_strategy.memory_space_required > useable_RAM 
+        if strcmp(unique_test_string(end-1),'z')&&strcmp(unique_test_string(end),'f') ...
+            && recon_strategy.maximum_RAM_requirement > useable_RAM
             recon_strategy.work_by_sub_chunk=true;
-            recon_strategy.load_whole=false;
             %%% this is guessing our GUESSING our ray_block dimension.
             %%% if this this we're working over z, we have to skip over the
             %%% product of anything between x, y and z dimensions of our
@@ -227,16 +231,23 @@ elseif isfield(data_in,'ds')
             %%%% have sub_chunk_skip_points, but we load each chunk in
             %%%% file. Have to pass this off to ourrecon_strat.
             % native_chunk_dimensions?
-        elseif ~strcmp(unique_test_string(end-1),'x')&&~strcmp(unique_test_string(end-1),'y')&&~strcmp(unique_test_string(end-1),'z')&&strcmp(unique_test_string(end),'f')
+        elseif ~strcmp(unique_test_string(end-1),'x')...
+                && ~strcmp(unique_test_string(end-1),'y')...
+                && ~strcmp(unique_test_string(end-1),'z') ...
+                && strcmp(unique_test_string(end),'f')
             %%% so long as the chunk dimension is not x y or z, loading and
             %%% load skipping should be okay.
-            warning('DID NOT FIX NORMAL CHUNKING YET');
+            warning('NORMAL CHUNK ORDERING NOT VERIFIED');
             % num_chunks=ray_blocks and life is relatively easy.
+            recon_strategy.work_by_chunk=true;
+            pause(3);
         else
             warning('UNHANDLED CHUNK CONDIDTION :(%s)',unique_test_string(end-1));
         end
     end
-    
+    if recon_strategy.work_by_chunk || recon_strategy.work_by_sub_chunk
+        recon_strategy.load_whole=false;
+    end
     
 elseif true
     % set variables
@@ -369,7 +380,7 @@ elseif true
     end
     clear rd;
 else
- %%
+ %% undo
  recon_strategy.min_chunks=ceil(maximum_RAM_requirement/useable_RAM);
     recon_strategy.memory_space_required=(maximum_RAM_requirement/min_chunks); % this is our maximum memory requirements
     % max_loadable_chunk_size=(data_input.sample_points*d_struct.c*(kspace.bit_depth/8))/min_chunks;
