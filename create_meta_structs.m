@@ -131,11 +131,16 @@ else
             d_struct.(data_in.input_order(5)) d_struct.(data_in.input_order(6))];
     end
 end
-data_out.output_order=opt_struct.output_order;
 if exist('dimstruct','class')
-    data_out.ds=dimstruct(data_out.output_order,d_struct);
-    data_out.output_dimensions=data_out.ds.Sub(data_out.output_order);
+    data_out.ds=dimstruct(opt_struct.output_order,d_struct);
+    n1d=data_out.ds.dim_sizes;
+    n1d(n1d==1)=[];
+    n1o=data_out.ds.showorder(n1d);
+    data_out.ds.dim_order=[n1o data_out.ds.Rem(n1o)];
+    data_out.output_order=data_out.ds.dim_order;
+    data_out.output_dimensions=data_out.ds.Sub(data_out.ds.dim_order);
 else
+    data_out.output_order=opt_struct.output_order;
     data_out.output_dimensions=[d_struct.(opt_struct.output_order(1)) d_struct.(opt_struct.output_order(2))...
         d_struct.(opt_struct.output_order(3)) d_struct.(opt_struct.output_order(4))...
         d_struct.(opt_struct.output_order(5)) d_struct.(opt_struct.output_order(6))];
