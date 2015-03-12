@@ -156,10 +156,7 @@ elseif isfield(data_in,'ds')
         td=td+1;
     end
     if recon_strategy.memory_space_required > useable_RAM 
-        recon_strategy=rs.last;
-    end
-    if numel(recon_strategy.w_dims)<numel(data_out.output_order)
-        recon_strategy.op_dims=data_out.output_order(numel(recon_strategy.w_dims)+1:end);
+        recon_strategy=rs.last; clear rs td;
     end
     %%%% get recon strategy permute code?
     to=[];
@@ -168,6 +165,10 @@ elseif isfield(data_in,'ds')
         to=[to ti];
     end
     recon_strategy.w_dims=data_in.input_order(sort(to));
+    if numel(recon_strategy.w_dims)<numel(data_out.output_order)
+        %         recon_strategy.op_dims=data_out.output_order(numel(recon_strategy.w_dims)+1:end);
+        recon_strategy.op_dims=data_out.ds.Rem(recon_strategy.w_dims);
+    end
     %     recon_strategy.dim_string=data_out.ds.showorder(recon_strategy.w_dims);
     recon_strategy.recon_operations=prod(data_out.ds.dim_sizes)/prod(data_out.ds.Sub(recon_strategy.w_dims));
     %%%
