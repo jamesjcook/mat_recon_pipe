@@ -178,6 +178,7 @@ beta_options={
     'skip_load'               ' do not load data, implies skip regrid, skip filter, skip recon and skip resort'
     'skip_regrid',            ' do not regrid'
     'skip_filter',            ' do not filter data sets.'
+    'force_filter',           ' if we specify phase filter is set to off, and we dont write civm raw, this inverts that behavior.' 
     'skip_fft',               ' do not fft data, good short hand when saving kspace files'
     'skip_postreform',        ' for images requireing a call to refromer, skip that step.'
     'skip_recon',             ' for re-writing headfiles only, implies skip filter, and existing_data'
@@ -221,6 +222,11 @@ planned_options={
     'roll_with_centroid',     ' calculate roll value using centroid(regionprops) method instead of by the luke/russ handy quick way'
 %     'allow_headfile_override' ' Allow arbitrary options to be passed which will overwrite headfile values once the headfile is created/loaded'
     'force_write_archive_tag',' force archive tag write even if we didnt do antyhing'
+    'debug_stop_load',        ' sets debug point just prior to running load'
+    'debug_stop_regrid',      ' sets debug point just prior to regridding(reshapping)'
+    'debug_stop_filter',      ' sets debug point just prior to running filter'
+    'debug_stop_fft',         ' sets debug point just prior to running fft'
+    'debug_stop_save',        ' sets debug point just prior to saving'
     '',                       ''
     };
 %% set option defaults
@@ -353,17 +359,18 @@ end
 clear all_options beta_options beta_options_string e err_string o_num option parts planned_options planned_options_string specific_text standard_options standard_options_string value w warn_string;
 
 %% set implied options
-% output implication
-if opt_struct.skip_write_civm_raw &&...
-        ~opt_struct.write_complex &&...
-        ~opt_struct.write_kimage &&...
-        ~opt_struct.write_kimage_unfiltered &&...
-        ~opt_struct.write_unscaled &&...
-        ~opt_struct.write_unscaled_nD
-    opt_struct.skip_fft=true;
+
+if opt_struct.write_phase && ~opt_struct.skip_filter && ~opt_struct.force_filter
+    warning('FILTER FORCED OFF FOR WRITING PHASE IMAGE');
+    pause(opt_struct.warning_pause);
+    opt_struct.skip_filter=true;
+    opt_struct.skip_write_civm_raw=true;
+    opt_struct.write_unscaled=true;
 end
 
+% output implication
 % input implication
+
 if opt_struct.skip_recon
     opt_struct.skip_load=true;
 end
@@ -371,15 +378,27 @@ if opt_struct.skip_load
     opt_struct.skip_filter=true;
     opt_struct.skip_fft=true;
     opt_struct.skip_regrid=true;
+    opt_struct.write_kimage=false;
+    opt_struct.write_kimage_unfiltered=false;
+end
+if opt_struct.skip_write_civm_raw &&...
+        ~opt_struct.write_complex &&... 
+        ~opt_struct.write_phase &&...
+        ~opt_struct.write_unscaled &&...
+        ~opt_struct.write_unscaled_nD
+    %         ~opt_struct.write_kimage &&...
+    %         ~opt_struct.write_kimage_unfiltered &&...
+    opt_struct.skip_fft=true;
+end
+if opt_struct.write_kimage && opt_struct.skip_filter
+    opt_struct.write_kimage=false;
+    opt_struct.write_kimage_unfiltered=true;
 end
 
-if opt_struct.write_phase && ~opt_struct.skip_filter
-    warning('FILTER FORCED OFF FOR WRITING PHASE IMAGE');
-    pause(opt_struct.warning_pause);
-    opt_struct.skip_filter=true;
-end
 if opt_struct.skip_filter
-    
+    warning('Skipping filter, you may not be able to compare data with other runs');
+%     opt_struct.skip_write_civm_raw=true;
+%     opt_struct.write_unscaled=true;
 end
 if opt_struct.skip_regrid
 end
@@ -390,15 +409,6 @@ if opt_struct.skip_fft && ~opt_struct.reprocess_rp
     opt_struct.write_phase=false;
     opt_struct.write_unscaled=false;
     opt_struct.write_unscaled_nD=false;
-end
-
-if opt_struct.skip_write_civm_raw &&...
-        ~opt_struct.write_complex &&...
-        ~opt_struct.write_kimage &&...
-        ~opt_struct.write_kimage_unfiltered &&...
-        ~opt_struct.write_unscaled &&...
-        ~opt_struct.write_unscaled_nD
-    opt_struct.skip_fft=true;
 end
 
 
@@ -459,6 +469,11 @@ if islogical(opt_struct.pre_defined_headfile)
 %         error('You wanted a pre_defined_headfile but you forgot to specify one');
 %     end
 %     opt_struct.pre_defined_headfile='';
+end
+if ~opt_struct.skip_filter
+    opt_struct.filter_imgtag='';
+else
+    opt_struct.filter_imgtag='_unfiltered';
 end
 clear possible_dimensions warn_string err_string char ks e o_num parts all_options beta_options beta_options_string planned_options planned_options_string standard_options standard_options_string temp test value w
 %% dependency loading
@@ -885,6 +900,11 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         fprintf('Loading data\n');
         %load data with skips function, does not reshape, leave that to regridd
         %program.
+        if opt_struct.debug_stop_load
+            [l,n,f]=get_dbline('rad_mat');
+            eval(sprintf('dbstop in %s at %d',f,l+3));
+            warning('Debug stop requested.');
+        end
         time_l=tic;
         file_chunks=recon_strategy.num_chunks; %load_chunks may not be used for aything helpful, here or in load_file. ...
         load_chunk_size=recon_strategy.chunk_size;
@@ -1198,6 +1218,11 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         % more accurate especially for cartesian. 
         %%enhance to handle load_whole vs work_by_chunk.
         if ~opt_struct.skip_regrid
+            if opt_struct.debug_stop_regrid
+                [l,n,f]=get_dbline('rad_mat');
+                eval(sprintf('dbstop in %s at %d',f,l+3));
+                warning('Debug stop requested.');
+            end
             if recon_strategy.num_chunks>1 && recon_strategy.recon_operations>1 %%%&& ~isempty(regexp(vol_type,'.*radial.*', 'once'))
                 data_buffer.headfile.processing_chunk=recon_num;
             end
@@ -1396,14 +1421,16 @@ dim_text=dim_text(1:end-1);
 %             data_buffer.kspace_unfiltered=data_buffer.data;
 %             
             %%% should move the kspace writing code to here with a check if it already exists, in the case we're iterating over it for some reason.
-            fprintf('\twrite_kimage make_nii\n');
-            nii=make_nii(log(abs(squeeze(data_buffer.data))));
-            fprintf('\t\t save_nii\n');
+           
             kimg_code='';
             if recon_strategy.recon_operations>1 || length(recon_strategy.recon_operations)>1
-                kimg_code=sprintf(['_%' num2str(length(recon_strategy.recon_operations)) 'd'],recon_num);
+                kimg_code=sprintf(['_r%' num2str(length(recon_strategy.recon_operations)) 'd'],recon_num);
             end
-            save_nii(nii,[work_dir_img_path_base kimg_code '_kspace_unfiltered.nii']);clear nii;
+            kimg_path=[work_dir_img_path_base kimg_code '_kspace' opt_struct.filter_imgtag '.nii'];
+            fprintf('\twrite_kimage make_nii\n');
+            fprintf('\t\t save_nii\n');
+            nii=make_nii(log(abs(squeeze(data_buffer.data))));
+            save_nii(nii,kimg_path);clear nii kimg_path;
         end
         %% combine dimensions in kspace
         % combine kspace by letter string, 
@@ -1428,6 +1455,12 @@ dim_text=dim_text(1:end-1);
         end
         %% filter kspace data
         if ~opt_struct.skip_filter
+            if opt_struct.debug_stop_filter
+                [l,n,f]=get_dbline('rad_mat');
+                eval(sprintf('dbstop in %s at %d',f,l+3));
+                warning('Debug stop requested.');
+            end
+            
             if ~isprop(data_buffer,'kspace')
                 filter_input='data';
             else
@@ -1512,7 +1545,8 @@ dim_text=dim_text(1:end-1);
             fprintf('skipping fermi filter\n');
         end
         %% write kspace image log(abs(img))
-        if opt_struct.write_kimage%%% should move the kspace writing code to here with a check if it already exists, in the case we're iterating over it for some reason.
+        if opt_struct.write_kimage && ~( opt_struct.write_kimage_unfiltered && opt_struct.skip_filter)
+            %%% should move the kspace writing code to here with a check if it already exists, in the case we're iterating over it for some reason.
             %             if  ~isprop(data_buffer,'kspace')
             %                 data_buffer.addprop('kspace');
             %                 data_buffer.kspace=data_buffer.data;
@@ -1530,6 +1564,11 @@ dim_text=dim_text(1:end-1);
         %% fft, resort, cut bad data, and display
         if ~opt_struct.skip_fft
             %% fft
+            if opt_struct.debug_stop_fft
+                [l,n,f]=get_dbline('rad_mat');
+                eval(sprintf('dbstop in %s at %d',f,l+3));
+                warning('Debug stop requested.');
+            end
             fprintf('Performing FFT on ');
             if strcmp(data_in.vol_type,'2D')
                 %% fft-2D
@@ -1915,6 +1954,11 @@ dim_text=dim_text(1:end-1);
     % this needs a bunch of work, for now it is just assuming the whole pile of
     % data is sitting in memory awaiting saving, does not handle chunks or
     % anything correctly just now.
+    if opt_struct.debug_stop_save
+        [l,n,f]=get_dbline('rad_mat');
+        eval(sprintf('dbstop in %s at %d',f,l+3));
+        warning('Debug stop requested.');
+    end
     %% sort headfile details
     %  mag=abs(raw_data(i).data);
     if opt_struct.skip_combine_channels
@@ -1964,10 +2008,10 @@ dim_text=dim_text(1:end-1);
         d_s.c=1;
         channel_code='';
     end
+    m_code='';
     max_mnumber=d_struct.t*d_struct.p-1;% should generalize this to any dimension except xyzc
     m_length=length(num2str(max_mnumber));
     if recon_strategy.work_by_chunk || recon_strategy.work_by_sub_chunk
-        
         if exist('d_s','var')
             m_number=(d_s.t-1)*d_struct.p+d_s.p-1;
         else
@@ -1976,13 +2020,14 @@ dim_text=dim_text(1:end-1);
         if d_struct.t> 1 || d_struct.p >1
             m_code=sprintf(['_m%0' num2str(m_length) '.0f'], m_number);
         else
-            m_code='';
         end
-    
-    if ~opt_struct.skip_combine_channels && d_struct.c>1
-        data_buffer.headfile.([data_tag 'volumes'])=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c;
-        d_struct.c=1;
+        
+        if ~opt_struct.skip_combine_channels && d_struct.c>1
+            data_buffer.headfile.([data_tag 'volumes'])=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c;
+            d_struct.c=1;
+        end
     end
+    
     space_dir_img_name =[ runno channel_code m_code];
     data_buffer.headfile.U_runno=space_dir_img_name;
     
@@ -1990,7 +2035,7 @@ dim_text=dim_text(1:end-1);
     work_dir_img_name_per_vol =[ runno channel_code m_code];
     work_dir_img_path_per_vol=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '.work/' space_dir_img_name 'images' ];
     work_dir_img_path=[work_dir_img_path_base channel_code m_code];
-    end
+    
     if d_struct.c > 1
         data_buffer.headfile.work_dir=data_buffer.engine_constants.engine_work_directory;
         data_buffer.headfile.runno_base=runno;
@@ -2008,18 +2053,19 @@ dim_text=dim_text(1:end-1);
         data_buffer.headfile.fovz=data_buffer.headfile.dim_Z;
     end
     %% load rp file for reprocessing
+    rp_path=[work_dir_img_path opt_struct.filter_imgtag '.rp.out'];
     if opt_struct.skip_load && opt_struct.reprocess_rp ...
-            && exist([work_dir_img_path '.rp.out'],'file') 
+            && exist(rp_path,'file') 
         if ~isprop(data_buffer,'data')
             data_buffer.addprop('data');
         end
         fprintf('Loading rp.out for reprocessing');
         % other load_complex calls ignore extra options, presubably rp.out is standardish.
-        data_buffer.data=load_complex([work_dir_img_path '.rp.out'], ...
+        data_buffer.data=load_complex(rp_path, ...
             data_out.ds.Sub(recon_strategy.w_dims),'single','l',false,false); 
         % ,'single','b',0); 
     end
-    
+    clear rp_path;
     %% save outputs
     fprintf('Reconstruction %d of %d Finished!',recon_num,recon_strategy.recon_operations);
     if ~opt_struct.skip_write
@@ -2032,7 +2078,7 @@ dim_text=dim_text(1:end-1);
                     data_buffer.headfile.fovx/d_struct.x ...
                     data_buffer.headfile.fovy/d_struct.y ...
                     data_buffer.headfile.fovz/d_struct.z]); % insert fov settings here ffs....
-                save_nii(nii,[work_dir_img_path_base '.nii']);
+                save_nii(nii,[work_dir_img_path_base opt_struct.filter_imgtag '.nii']);
             else
                 warning('Combined Image already exists and overwrite disabled');
             end
@@ -2078,32 +2124,32 @@ dim_text=dim_text(1:end-1);
                         end
                     end
                 else
-                for tn=1:d_struct.t
-                    dim_select.t=tn;
-                    for cn=1:d_struct.c
-                        dim_select.c=cn;
-                        for pn=1:d_struct.p
-                            dim_select.p=pn;
-                            tmp=abs(squeeze(data_buffer.data(...
-                                dim_select.(opt_struct.output_order(1)),...
-                                dim_select.(opt_struct.output_order(2)),...
-                                dim_select.(opt_struct.output_order(3)),...
-                                dim_select.(opt_struct.output_order(4)),...
-                                dim_select.(opt_struct.output_order(5)),...
-                                dim_select.(opt_struct.output_order(6))...
-                                )));
-                            tmp=sort(tmp(:));
-                            m_tmp=max(tmp);
-                            p_tmp=prctile(tmp,opt_struct.histo_percent);
-                            if m_tmp>data_buffer.headfile.group_max_intensity
-                                data_buffer.headfile.group_max_intensity=m_tmp;
-                            end
-                            if data_buffer.headfile.group_max_atpct<p_tmp
-                                data_buffer.headfile.group_max_atpct=p_tmp;
+                    for tn=1:d_struct.t
+                        dim_select.t=tn;
+                        for cn=1:d_struct.c
+                            dim_select.c=cn;
+                            for pn=1:d_struct.p
+                                dim_select.p=pn;
+                                tmp=abs(squeeze(data_buffer.data(...
+                                    dim_select.(opt_struct.output_order(1)),...
+                                    dim_select.(opt_struct.output_order(2)),...
+                                    dim_select.(opt_struct.output_order(3)),...
+                                    dim_select.(opt_struct.output_order(4)),...
+                                    dim_select.(opt_struct.output_order(5)),...
+                                    dim_select.(opt_struct.output_order(6))...
+                                    )));
+                                tmp=sort(tmp(:));
+                                m_tmp=max(tmp);
+                                p_tmp=prctile(tmp,opt_struct.histo_percent);
+                                if m_tmp>data_buffer.headfile.group_max_intensity
+                                    data_buffer.headfile.group_max_intensity=m_tmp;
+                                end
+                                if data_buffer.headfile.group_max_atpct<p_tmp
+                                    data_buffer.headfile.group_max_atpct=p_tmp;
+                                end
                             end
                         end
                     end
-                end
                 end
                 if ( opt_struct.write_unscaled_nD && ~opt_struct.skip_recon ) %|| opt_struct.skip_write_civm_raw
                     fprintf('Writing debug outputs to %s\n',data_buffer.headfile.work_dir_path);
@@ -2221,7 +2267,7 @@ dim_text=dim_text(1:end-1);
             %% complex save
             if ( opt_struct.write_complex  || recon_strategy.work_by_chunk || recon_strategy.work_by_sub_chunk ) && ~opt_struct.skip_recon && ~opt_struct.skip_load
                 fprintf('\twrite_complex (radish_format) save\n');
-                save_complex(tmp,[ work_dir_img_path '.rp.out']);
+                save_complex(tmp,[ work_dir_img_path opt_struct.filter_imgtag '.rp.out']);
             end
             
             if opt_struct.write_phase && ~opt_struct.skip_recon
@@ -2231,7 +2277,7 @@ dim_text=dim_text(1:end-1);
                     data_buffer.headfile.fovy/d_struct.y ...
                     data_buffer.headfile.fovz/d_struct.z]); % insert fov settings here ffs....
                 fprintf('\t\t save_nii\n');
-                save_nii(nii,[work_dir_img_path '_phase.nii']);
+                save_nii(nii,[work_dir_img_path opt_struct.filter_imgtag '_phase.nii']);
                 clear nii;
             end
             
@@ -2246,7 +2292,7 @@ dim_text=dim_text(1:end-1);
                     data_buffer.headfile.fovy/d_struct.y ...
                     data_buffer.headfile.fovz/d_struct.z]); % insert fov settings here ffs....
                 fprintf('\t\t save_nii\n');
-                save_nii(nii,[work_dir_img_path '.nii']);
+                save_nii(nii,[work_dir_img_path opt_struct.filter_imgtag '.nii']);
                 clear nii;
             end
             %% civmraw save
@@ -2315,6 +2361,11 @@ dim_text=dim_text(1:end-1);
             
         else
             %% timepointonlychunksave
+%             if (numel(data_buffer.data) == prod(data_out.output_dimensions) )
+%             data_bufer.data=reshape(data_buffer.data,data_out.output_dimensions);
+%             else
+%                 warning('data_out dimensions issue');
+%             end
         % this could be changed to some kind of generic chunk along
         % dimension, then we could do a chunked dimension lookup using
         % dim_select.(chunk_d)
@@ -2343,15 +2394,15 @@ dim_text=dim_text(1:end-1);
                     if ~opt_struct.skip_recon && ( opt_struct.write_complex || opt_struct.write_unscaled || ~opt_struct.skip_write_civm_raw)
                         fprintf('Extracting image channel:%0.0f param:%0.0f timepoint:%0.0f\n',cn,pn,tn);
                         tmp=squeeze(data_buffer.data(...
-                            dim_select.(opt_struct.output_order(1)),...
-                            dim_select.(opt_struct.output_order(2)),...
-                            dim_select.(opt_struct.output_order(3)),...
-                            dim_select.(opt_struct.output_order(4)),...
-                            dim_select.(opt_struct.output_order(5)),...
-                            dim_select.(opt_struct.output_order(6))...
+                            dim_select.(data_out.output_order(1)),...
+                            dim_select.(data_out.output_order(2)),...
+                            dim_select.(data_out.output_order(3)),...
+                            dim_select.(data_out.output_order(4)),...
+                            dim_select.(data_out.output_order(5)),...
+                            dim_select.(data_out.output_order(6))...
                             ));% pulls out one volume at a time.
                         %                         end
-                        if numel(tmp)<prod(data_out.output_dimensions(1:3))
+                        if numel(tmp)<prod(data_out.ds.Sub('xyz')) %output_dimensions(1:3))
                             error('Save file not right, chunking error likly');
                         end
                     else
