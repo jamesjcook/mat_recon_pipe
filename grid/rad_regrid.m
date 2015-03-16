@@ -92,7 +92,7 @@ end
 if( ~strcmp(data_buffer.headfile.([data_tag 'vol_type']),'radial'))
 % if( regexp(data_buffer.headfile.([data_tag 'vol_type']),'2D|3D|4D'))
     %% cartesian (literally all non-radial, if other sequences come up we'll have to deal)
-    permute_code=zeros(size(dim_order));
+%     permute_mask=zeros(size(dim_order));
 %     for d_num=1:length(dim_order)
 %         %     for d_num=1:length(c_dims)
 %         dpos=strfind(output_order,dim_order(d_num));
@@ -160,6 +160,26 @@ permute_code=[];
     
     %following reshap was commented out becuase it seems so unnecessary.
     %     data_buffer.data=reshape(data_buffer.data,output_dimensions(1:numel(c_dims)));% x yr z c
+    %%%%%
+    %%%%%
+    %squeeze data, might cause issues!
+    data_buffer.data=squeeze(data_buffer.data);
+    output_order_init=output_order;
+    output_order=char(zeros(1,numel(size(data_buffer.data))));
+    end_dims=char(zeros(1,numel(output_order_init)-numel(output_order)));
+    edc=1;
+    odc=1;
+    for d_num=1:numel(output_order_init)
+        if d_struct.(output_order_init(d_num)) ~= 1
+            output_order(odc)=output_order_init(d_num);
+            odc=odc+1;
+        else
+            end_dims(edc)=output_order_init(d_num);
+            edc=edc+1;
+        end
+    end
+    output_order=[output_order, end_dims];
+    %%%%%
     
     encoding_sort=false;
     if isfield(data_buffer.input_headfile,'dim_X_encoding_order')
@@ -187,6 +207,7 @@ permute_code=[];
         zenc=':';
     end
     if encoding_sort
+        
         data_buffer.data(xenc,yenc,zenc,:,:,:)=data_buffer.data;
     end
 else

@@ -1572,10 +1572,11 @@ dim_text=dim_text(1:end-1);
             if strcmp(data_in.vol_type,'2D')
                 %% fft-2D
                 fprintf('%s volumes\n',data_in.vol_type);
-                if ~exist('img','var') || numel(img)==1;
-                    img=zeros(data_out.output_dimensions);
-                end
+%                 if ~exist('img','var') || numel(img)==1;
+%                     img=zeros(data_out.output_dimensions);
+%                 end
                 %         xyzcpt
+                if ( exist('old_way','var')  ) 
                 dim_select.z=':';
                 dim_select.x=':';
                 dim_select.y=':';
@@ -1621,8 +1622,17 @@ dim_text=dim_text(1:end-1);
                         end
                     end
                 end
-                data_buffer.data=img;
-                clear img;
+                else
+%                     w_dims=size(data_buffer.data);
+%                     if ( numel(w_dims)> 4 ) 
+                    data_buffer.data=fftshift(fftshift(ifft(ifft(fftshift(fftshift(data_buffer.data,1),2),[],1),[],2),1),2);
+                    if opt_struct.debug_mode>=20
+                        fprintf('\n');
+                    end
+                    clear w_dims;
+                end
+%                 data_buffer.data=img;
+%                 clear img;
             elseif regexp(data_in.vol_type,'.*radial.*')
                 %% fft-radial
                 fprintf('%s volumes\n',data_in.vol_type);
@@ -2024,12 +2034,12 @@ dim_text=dim_text(1:end-1);
         else
         end
         
-        if ~opt_struct.skip_combine_channels && d_struct.c>1
-            data_buffer.headfile.([data_tag 'volumes'])=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c;
-            d_struct.c=1;
-        end
+        
     end
-    
+    if ~opt_struct.skip_combine_channels && d_struct.c>1
+        data_buffer.headfile.([data_tag 'volumes'])=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c;
+        d_struct.c=1;
+    end
     space_dir_img_name =[ runno channel_code m_code];
     data_buffer.headfile.U_runno=space_dir_img_name;
     
@@ -2100,7 +2110,12 @@ dim_text=dim_text(1:end-1);
                 % this for unscaled nd? its unscaled!
                 data_buffer.headfile.group_max_atpct=0;
                 if ~exist('old_way','var')
-                    for vn=1:numel(data_buffer.data)/prod(data_out.ds.Sub(recon_strategy.w_dims))
+                    if ~opt_struct.skip_combine_channels 
+                        c_div=data_out.ds.Sub('c');
+                    else
+                        c_div=1;
+                    end
+                    for vn=1:numel(data_buffer.data)/(prod(data_out.ds.Sub(recon_strategy.w_dims))/c_div)
                         d_pos=indx_calc(vn,data_out.ds.Sub(recon_strategy.op_dims));
                         % for dx=1:length(recon_strategy.op_dims)
                         %     d_s.(recon_strategy.op_dims(dx))=d_pos(dx);
@@ -2530,6 +2545,7 @@ dim_text=dim_text(1:end-1);
                         %%%%phasewrite(tmp,[work_dir_img_path
                     end
                     %%% kimage_
+                    if isprop(data_buffer,'kspace')
                     if opt_struct.write_kimage && ~opt_struct.skip_filter && ~opt_struct.skip_load
                         fprintf('\twrite_kimage make_nii\n');
                         nii=make_nii(log(abs(data_buffer.kspace(...
@@ -2543,6 +2559,8 @@ dim_text=dim_text(1:end-1);
                         fprintf('\t\t save_nii\n');
                         save_nii(nii,[work_dir_img_path '_kspace.nii']);
                     end
+                    end
+                    if isprop(data_buffer,'kspace_unfiltered')
                     %%% kimage_unfiltered
                     if opt_struct.write_kimage_unfiltered  && ~opt_struct.skip_load
                         fprintf('\twrite_kimage_unfiltered make_nii\n');
@@ -2556,6 +2574,7 @@ dim_text=dim_text(1:end-1);
                                 ))));
                         fprintf('\t\t save_nii\n');
                         save_nii(nii,[work_dir_img_path '_kspace_unfiltered.nii']);
+                    end
                     end
                     %%% unscaled_nii_save
                     if ( opt_struct.write_unscaled && ~opt_struct.skip_recon ) %|| opt_struct.skip_write_civm_raw
