@@ -6,9 +6,10 @@ all_methods={'AdjRefG','DtiEpi','DtiStandard','EPI','FC2D_ANGIO','FLASH',...
     'RAREVTR','SINGLEPULSE','T1_EPI','UTE','UTE3D','ute3d_keyhole',''};
 fprintf('All Methods\n ');
 fprintf('%s,\n ',all_methods{:});
-% known_methods={'MDEFT','MGE','MSME','RARE','UTE3D','ute3d_keyhole'};
+known_methods={'MDEFT','MGE','MSME','RARE','UTE3D','ute3d_keyhole'};
 % known_methods={'MGE'};
-known_methods={'ute3d_keyhole','UTE3D'};
+% known_methods={'ute3d_keyhole','UTE3D'};
+
 fprintf('Known/tested Methods\n ');
 fprintf('%s,\n ',known_methods{:});
 dataroot='/opt/PV5.1/data/nmrsu/nmr/';
