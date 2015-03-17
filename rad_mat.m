@@ -470,10 +470,10 @@ if islogical(opt_struct.pre_defined_headfile)
 %     end
 %     opt_struct.pre_defined_headfile='';
 end
-if ~opt_struct.skip_filter
-    opt_struct.filter_imgtag='';
-else
+if opt_struct.skip_filter && ~opt_struct.reprocess_rp
     opt_struct.filter_imgtag='_unfiltered';
+else
+    opt_struct.filter_imgtag='';
 end
 clear possible_dimensions warn_string err_string char ks e o_num parts all_options beta_options beta_options_string planned_options planned_options_string standard_options standard_options_string temp test value w
 %% dependency loading
@@ -2055,9 +2055,15 @@ dim_text=dim_text(1:end-1);
         data_buffer.headfile.fovz=data_buffer.headfile.dim_Z;
     end
     %% load rp file for reprocessing
+    rp_path2=[work_dir_img_path  '.rp.out'];
     rp_path=[work_dir_img_path opt_struct.filter_imgtag '.rp.out'];
+    if ~exist('rp_path','file')
+        rp_path=rp_path2;
+        opt_struct.skip_filter=false;
+    end
+        
     if opt_struct.skip_load && opt_struct.reprocess_rp ...
-            && exist(rp_path,'file') 
+            && exist(rp_path,'file')
         if ~isprop(data_buffer,'data')
             data_buffer.addprop('data');
         end
@@ -2067,7 +2073,7 @@ dim_text=dim_text(1:end-1);
             data_out.ds.Sub(recon_strategy.w_dims),'single','l',false,false); 
         % ,'single','b',0); 
     end
-    clear rp_path;
+    clear rp_path rp_path2;
     %% save outputs
     fprintf('Reconstruction %d of %d Finished!',recon_num,recon_strategy.recon_operations);
     if ~opt_struct.skip_write
