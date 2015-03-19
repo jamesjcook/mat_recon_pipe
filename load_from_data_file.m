@@ -76,7 +76,7 @@ else
     precision_bytes=0;
 end
 loads_per_chunk=chunk_size/(min_load_size+post_skip_bytes/precision_bytes);%+load_skip);
-post_skip_size=post_skip_bytes/precision_bytes;
+post_skip_size=post_skip_bytes/precision_bytes;% should be 2x npoints skiped because complex.
 if mod(load_skip_bytes,precision_bytes)==0 && mod(post_skip_bytes,precision_bytes)==0  && ~force_standard
     load_skip_size=load_skip_bytes/precision_bytes;
     % modifieds load_skip to be in data values
@@ -178,8 +178,20 @@ for c=1:length(chunks_to_load)
             fseek(fileid,load_skip_bytes,'cof');
         else
             % fseek(fileid,load_skip_bytes+chunk_with_skip*(chunks_to_load(c)-1)*precision_bytes,'cof');% save time by seeking past the first little tid bit.
-            skip=header_skip+(load_size*precision_bytes+load_skip_bytes)*(chunks_to_load(c)-1)*precision_bytes+load_skip_bytes;
-            fseek(fileid,skip,'bof');% a skip from beginning skip
+            skip=header_skip+(load_size*precision_bytes+load_skip_bytes)*(chunks_to_load(c)-1)+load_skip_bytes;
+            % seek past file header, and (blockheader + block ) * (block to  load -1) + block header
+            st=fseek(fileid,skip,'bof');% a skip from beginning skip
+            if st<0
+                error('Seek operation failed!%s\n ',ferror(fileid));
+            end
+            data_buffer.headfile.(['chunkskip_' num2str(chunks_to_load(c))])=skip;
+            if (chunks_to_load(c)>=total_chunks) 
+                expected_endpoint=skip+load_size*precision_bytes;% no block header as its incoperated into load skip. +load_skip_bytes;
+                if expected_endpoint ~= data_buffer.headfile.kspace_file_size
+                    warning('filesize %d doesnt match parameters, %d , %d .',data_buffer.headfile.kspace_file_size,expected_endpoint,(ftell(fileid)+load_size*precision_bytes));
+                    pause(3);
+                end
+            end
         end
         
         % fseek per chunk usnt too bad, but we could be better off and not

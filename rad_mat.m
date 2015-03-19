@@ -753,7 +753,7 @@ if isempty(fileInfo)
     error('puller did not get data, check pull cmd and scanner');
 end
 measured_filesize    =fileInfo.bytes;
-
+data_buffer.headfile.kspace_file_size=measured_filesize;
 if kspace_file_size~=measured_filesize
     aspect_remainder=138443;% a constant amount of bytes that aspect scans have to spare.
     remainder=measured_filesize-kspace_file_size;
@@ -2693,6 +2693,7 @@ clear img_s;
     if (recon_strategy.num_chunks>1)
         fprintf('chunk_time:%0.2f\n',toc(time_chunk));
     end
+    clear tmp;
 end
 
 %% stich chunks together
@@ -2835,3 +2836,4 @@ end
 img=abs(data_buffer.data);
 success_status=true;
 fprintf('\nTotal rad_mat time is %f second\n',toc(rad_start));
+fprintf('\n');
