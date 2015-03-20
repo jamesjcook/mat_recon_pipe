@@ -2548,6 +2548,13 @@ dim_text=dim_text(1:end-1);
                     end
                     if opt_struct.write_phase && ~opt_struct.skip_recon
                         fprintf('\twrite_phase \n');
+                        nii=make_nii(angle(tmp), [ ...
+                            data_buffer.headfile.fovx/d_struct.x ...
+                            data_buffer.headfile.fovy/d_struct.y ...
+                            data_buffer.headfile.fovz/d_struct.z]); % insert fov settings here ffs....
+                        fprintf('\t\t save_nii\n');
+                        save_nii(nii,[work_dir_img_path opt_struct.filter_imgtag '_phase.nii']);
+                        clear nii;
                         %%%%phasewrite(tmp,[work_dir_img_path
                     end
                     %%% kimage_
@@ -2602,7 +2609,7 @@ dim_text=dim_text(1:end-1);
                             data_buffer.headfile.fovy/d_struct.y ...
                             data_buffer.headfile.fovz/d_struct.z]); % insert fov settings here ffs....
                         fprintf('\t\t save_nii\n');
-                        save_nii(nii,[work_dir_img_path '.nii']);
+                        save_nii(nii,[work_dir_img_path opt_struct.filter_imgtag '.nii']);
                     end
                     
                     %%% civmraw save
