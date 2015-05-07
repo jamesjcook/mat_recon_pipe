@@ -1,14 +1,22 @@
-function puller(data_buffer,opt_struct,scanner,puller_data)
-%pull the data to local machine
-work_dir_name= [data_buffer.headfile.U_runno '.work'];
-data_buffer.headfile.work_dir_path=[data_buffer.engine_constants.engine_work_directory '/' work_dir_name];
+function puller(data_buffer,opt_struct,scanner,puller_data,output)
+% function puller(data_buffer,opt_struct,scanner,puller_data)
+% pull the data to local machine
+
+if ~exist('output','var')
+    output=data_buffer.headfile.work_dir_path;
+    if ~isfield(data_buffer.headfile,'work_dir_path')&& isfield(data_buffer.headfile,'U_runno')
+    work_dir_name= [data_buffer.headfile.U_runno '.work'];
+    data_buffer.headfile.work_dir_path=[data_buffer.engine_constants.engine_work_directory '/' work_dir_name];
+    end
+end
 if opt_struct.overwrite
     opt_struct.puller_option_string=[' -o ' opt_struct.puller_option_string];
 end
 if opt_struct.existing_data && exist(data_buffer.headfile.work_dir_path,'dir') %||opt_struct.skip_recon
     opt_struct.puller_option_string=[' -e ' opt_struct.puller_option_string];
 end
-cmd_list=['puller_simple ' opt_struct.puller_option_string ' ' scanner ' ''' puller_data ''' ' data_buffer.headfile.work_dir_path];
+
+cmd_list=['puller_simple ' opt_struct.puller_option_string ' ' scanner ' ''' puller_data ''' ' output];
 data_buffer.headfile.comment{end+1}=['# \/ pull cmd ' '\/'];
 data_buffer.headfile.comment{end+1}=['# ' cmd_list ];
 data_buffer.headfile.comment{end+1}=['# /\ pull cmd ' '/\'];
