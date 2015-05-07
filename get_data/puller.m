@@ -3,10 +3,10 @@ function puller(data_buffer,opt_struct,scanner,puller_data,output)
 % pull the data to local machine
 
 if ~exist('output','var')
-    output=data_buffer.headfile.work_dir_path;
     if ~isfield(data_buffer.headfile,'work_dir_path')&& isfield(data_buffer.headfile,'U_runno')
     work_dir_name= [data_buffer.headfile.U_runno '.work'];
     data_buffer.headfile.work_dir_path=[data_buffer.engine_constants.engine_work_directory '/' work_dir_name];
+    output=data_buffer.headfile.work_dir_path;
     end
 end
 if opt_struct.overwrite
