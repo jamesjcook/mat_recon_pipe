@@ -140,10 +140,10 @@ elseif isfield(data_in,'ds')
     % later we have to switch the process order to the input order so the
     % permutations of regrid work correctly.
     rs.last=recon_strategy; 
-    td=1;
+    td=1;% index var for the output dimensions
     while recon_strategy.memory_space_required < useable_RAM ...
             && td <= numel(data_out.output_dimensions)
-        if data_out.output_dimensions(td)>1
+        if data_out.output_dimensions(td)>1 % skip dimensions of size 1
             rs.last=recon_strategy;
             recon_strategy.w_dims(end+1)=data_out.output_order(td);
             recon_strategy.memory_space_required=prod(data_in.ds.Sub(recon_strategy.w_dims))...
@@ -158,8 +158,8 @@ elseif isfield(data_in,'ds')
     if recon_strategy.memory_space_required > useable_RAM 
         recon_strategy=rs.last; clear rs td;
     end
-    %%%% get recon strategy permute code?
-    to=[];
+    %%%% get mapping of input order ot output order becuase we find our ram in output order.
+    to=[]; % indices of our working dims in the input_order.
     for d=1:length(recon_strategy.w_dims)
         ti=strfind(data_in.input_order,recon_strategy.w_dims(d));
         to=[to ti];
@@ -239,8 +239,9 @@ elseif isfield(data_in,'ds')
             %%% so long as the chunk dimension is not x y or z, loading and
             %%% load skipping should be okay.
             warning('NORMAL CHUNK ORDERING NOT VERIFIED');
-            % num_chunks=ray_blocks and life is relatively easy.
-            recon_strategy.work_by_chunk=true;
+            %%% num_chunks=ray_blocks and life is relatively easy.
+            % recon_strategy.work_by_chunk=true; % this was disabled, i
+            % think its a bug.
             pause(3);
         else
             warning('UNHANDLED CHUNK CONDIDTION :(%s)',unique_test_string(end-1));
