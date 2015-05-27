@@ -2403,7 +2403,7 @@ dim_text=dim_text(1:end-1);
         % need to change this around so that any piece can be the selected 
         % dimension for chunking on.
         for tn=t_s:t_e
-            if recon_strategy.num_chunks>1
+            if recon_strategy.num_chunks>1&&recon_strategy.recon_operations>1
                 dim_select.t=1;
             else
                 dim_select.t=tn;
@@ -2677,20 +2677,23 @@ clear img_s;
                     
                 end
             end
-        end
-        end
-        %% save ijmacro
-        if recon_num==1 && exist('work_dir_img_path_base','var')
-            openmacro_path=sprintf('%s%s',work_dir_img_path_base ,'.ijm');
-            if opt_struct.overwrite && exist(openmacro_path,'file')
-                delete(openmacro_path);
-            else
-                warning('macro exists at:%s\n did you mean to enable overwrite?',openmacro_path);
+            %% save ijmacro
+            if recon_num==1 && exist('work_dir_img_path_base','var')
+                openmacro_path=sprintf('%s%s',work_dir_img_path_base ,'.ijm');
+                if opt_struct.overwrite && exist(openmacro_path,'file') ...
+                        && recon_num==1 && recon_strategy.recon_operations==1 && tn==1
+                    delete(openmacro_path);
+                elseif exist(openmacro_path,'file')
+                    warning('macro exists at:%s\n did you mean to enable overwrite?',openmacro_path);
+                end
+                if exist('hf_path','var') ...
+                        && recon_num==1 && recon_strategy.recon_operations==1 && tn==1
+                    write_convenience_macro(data_buffer,openmacro_path,opt_struct,hf_path);
+                end
             end
-            if exist('hf_path','var')
-                write_convenience_macro(data_buffer,openmacro_path,opt_struct,hf_path);
-            end
         end
+        end
+
     elseif opt_struct.skip_write && ( ~opt_struct.skip_recon || ~opt_struct.skip_fft )
         fprintf('No outputs written.\n');
         stop here to allow a manual save during execution.
