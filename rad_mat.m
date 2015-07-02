@@ -616,7 +616,6 @@ clear local_space_bytes df_field;
 %% load_data parameter determination
 display('Checking file size and calcualting RAM requirements...');
 data_prefix=data_buffer.headfile.(['U_' 'prefix']);
-meminfo=imaqmem; %check available memory
 
 %%   determine padding
 % block_factors=factor(data_in.ray_blocks);
@@ -778,6 +777,7 @@ end
 clear data_in.kspace_header_bytes kspace_file_size fileInfo measured_filesize;
 
 %% set the recon strategy dependent on memory requirements
+meminfo=imaqmem; %check available memory
 [recon_strategy,opt_struct]=get_recon_strategy3(data_buffer,opt_struct,d_struct,data_in,data_work,data_out,meminfo);
 if recon_strategy.recon_operations>data_buffer.headfile.([data_tag 'volumes'])
     save([data_buffer.headfile.work_dir_path '/insufficient_mem_stop.mat']);
@@ -909,7 +909,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
             file_header=data_in.binary_header_bytes+(recon_num-1)*recon_strategy.min_load_size*(data_in.disk_bit_depth/8);
             chunks_to_load=1:recon_strategy.num_chunks;
             load_chunk_size=recon_strategy.chunk_size;
-        elseif recon_strategy.work_by_chunk
+        elseif recon_strategy.work_by_chunk|| ~recon_strategy.load_whole
             chunks_to_load=recon_num;
         else 
             save('/tmp/matlab_debug.mat');
@@ -1218,8 +1218,10 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
             if recon_strategy.num_chunks>1 && recon_strategy.recon_operations>1 %%%&& ~isempty(regexp(vol_type,'.*radial.*', 'once'))
                 data_buffer.headfile.processing_chunk=recon_num;
             end
-            if recon_num==1 || ~recon_strategy.load_whole
-                rad_regrid(data_buffer,recon_strategy.w_dims);
+            if ~recon_strategy.load_whole
+                rad_regrid(data_buffer,recon_strategy.w_dims);%%%% w_dims is WRONG for load whole!!!
+            elseif recon_num==1 && recon_strategy.load_whole
+                rad_regrid(data_buffer,data_in.input_order);%%%% w_dims is WRONG for load whole!!!
             end
             if  regexp(data_in.vol_type,'.*radial.*')
                 if recon_strategy.num_chunks==1
@@ -2198,7 +2200,7 @@ dim_text=dim_text(1:end-1);
             end
         end
         %% save volumes
-        if recon_strategy.work_by_chunk||recon_strategy.work_by_sub_chunk
+        if recon_strategy.work_by_chunk||recon_strategy.work_by_sub_chunk|| ~recon_strategy.load_whole
             %% arbitrarychunksave.
             warning('this saving code a work in progress for chunks');
             %if length(w_dims)>3  foreach outputimage , saveimgae.
@@ -2329,7 +2331,7 @@ dim_text=dim_text(1:end-1);
                 % insert validate_header perl script check here?
             end
             if ~opt_struct.skip_write_civm_raw && (~opt_struct.skip_recon || opt_struct.reprocess_rp)
-                fprintf('\tcivm_raw save\n');
+                fprintf('\tconvert_info_histo save\n');
                 histo_bins=numel(tmp);
                 if opt_struct.independent_scaling || recon_strategy.work_by_chunk || recon_strategy.work_by_sub_chunk
                     img_s=sort(abs(tmp(:)));
@@ -2358,6 +2360,7 @@ dim_text=dim_text(1:end-1);
                 fprintf(ofid,' rad_mat convert_info_histo dump 2013/11/05\n');
                 fclose(ofid);
                 if ~recon_strategy.work_by_chunk && ~recon_strategy.work_by_sub_chunk
+                    fprintf('\tcivm_raw save\n');
                     % alternatively,
                     % ~recon_stragey.recon_operations>1    % : p
                     complex_to_civmraw(tmp,data_buffer.headfile.U_runno , ...
@@ -2623,7 +2626,7 @@ dim_text=dim_text(1:end-1);
                         % insert validate_header perl script check here?
                     end
                     if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon
-                        fprintf('\tcivm_raw save\n');
+                        fprintf('\tconvert_info_histo save\n');
                         histo_bins=numel(tmp);
                         if opt_struct.independent_scaling
                             img_s=sort(abs(tmp(:)));
@@ -2652,6 +2655,7 @@ clear img_s;
                         fprintf(ofid,' rad_mat convert_info_histo dump 2013/11/05\n');
                         fclose(ofid);
                         if ~recon_strategy.work_by_chunk && ~recon_strategy.work_by_sub_chunk
+                            fprintf('\tcivm_raw save\n');
                             % alternatively,
                             % ~recon_stragey.recon_operations>1    % : p
                             complex_to_civmraw(tmp,data_buffer.headfile.U_runno , ...
