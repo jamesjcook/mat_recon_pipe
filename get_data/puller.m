@@ -12,16 +12,19 @@ end
 if opt_struct.overwrite
     opt_struct.puller_option_string=[' -o ' opt_struct.puller_option_string];
 end
-if opt_struct.existing_data && exist(data_buffer.headfile.work_dir_path,'dir') %||opt_struct.skip_recon
+if opt_struct.existing_data && exist(output,'dir') %||opt_struct.skip_recon
     opt_struct.puller_option_string=[' -e ' opt_struct.puller_option_string];
 end
 
 cmd_list=['puller_simple ' opt_struct.puller_option_string ' ' scanner ' ''' puller_data ''' ' output];
+if ~isfield(data_buffer.headfile,'comment')
+    data_buffer.headfile.comment='';
+end
 data_buffer.headfile.comment{end+1}=['# \/ pull cmd ' '\/'];
 data_buffer.headfile.comment{end+1}=['# ' cmd_list ];
 data_buffer.headfile.comment{end+1}=['# /\ pull cmd ' '/\'];
-if ~opt_struct.existing_data || ~exist(data_buffer.headfile.work_dir_path,'dir')  %&&~opt_struct.skip_recon
-    if ~exist(data_buffer.headfile.work_dir_path,'dir') && opt_struct.existing_data
+if ~opt_struct.existing_data || ~exist(output,'dir')  %&&~opt_struct.skip_recon
+    if ~exist(output,'dir') && opt_struct.existing_data
         warning('You wanted existing data BUT IT WASNT THERE!\n\tContinuing by tring to fetch new.');
         pause(1);
     end
