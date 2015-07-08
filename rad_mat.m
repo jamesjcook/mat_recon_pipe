@@ -1,5 +1,5 @@
 function [success_status,img, data_buffer]=rad_mat(scanner,runno,input_data,options)
-% [img, s, buffer]=RAD_MAT(scanner,runno,input,options)
+% [s,img, buffer]=RAD_MAT(scanner,runno,input,options)
 % Reconstruct All Devices in MATlab
 % rad_mat, a quasi generic reconstruction/reformating scanner to archive
 % pipeline.
@@ -57,17 +57,10 @@ function [success_status,img, data_buffer]=rad_mat(scanner,runno,input_data,opti
 % supports Aspect data, bruker data, or agilent data location convention.
 %
 % TODO's
-% scaling fix/verify
 % testing
-% param file support
 % testing
-% agilent support
 % testing
-% arbitrary headfile variables through options cellarray
 % testing
-% load arbitrary headfile for overriding
-% testing
-% fix up regridding to be a  meaninful step other than reshape very
 % testing
 % specifically for GRE aspect and RARE Bruker scans
 % testing
@@ -75,7 +68,7 @@ function [success_status,img, data_buffer]=rad_mat(scanner,runno,input_data,opti
 % testing
 % did i mention testing?
 if verLessThan('matlab', '8.1.0.47')
-    error('Requires Matlab version 8.1.0.47 (2013a) or newer');
+    error('Requires Matlab version 8.1.0.47 (2013a) or newer. Relies heavily on string handling functions new in 2013. They could be re-implemented if you''re so inclined.');
 end
 %% arg check or help
 if ( nargin<3)
