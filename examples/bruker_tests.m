@@ -15,6 +15,7 @@ fprintf('%s,\n ',known_methods{:});
 dataroot='/opt/PV5.1/data/nmrsu/nmr/';
 verbosity=0;
 scanner_list={'dory','nemo'};
+scanner_list={'nemo'};
 fail_list='';
 test_brukerextract=false;
 test_rad_mat=true;
