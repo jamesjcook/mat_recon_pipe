@@ -633,9 +633,21 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
         % have now seen with a 400x2channel acq padding of 96
         mul=2^6*2;
         [F,~]=log2(d_struct.c*data_in.ray_length/(mul));
+        % somehow for john's rare acquisition the data_in.rays_per_block includes
+        % the channel information, This causes my line_points to be off,
+        % which caues my min_load_bytes to be off. We'll set special var
+        % here to fix that. 
+        % Alex had an acquisition fail due to this.       d_struct.c*<1 
+        % Modifing to divide out the channels and hope padding holds.
+        effective_c=d_struct.c;
+%         if isfield(data_buffer.headfile,'B_rare_factor')&& ~strcmp(data_in.vol_type,'radial')
+%             if data_buffer.headfile.B_rare_factor==1 %&& exist('neverrun_var','var')
+%                 effective_c=1;
+%             end
+%         end
         if mod(d_struct.c*data_in.ray_length,(mul))>0&& F ~= 0.5
-            data_in.line_points2 = 2^ceil(log2(d_struct.c*data_in.ray_length));
-            data_in.line_points3 = ceil(((d_struct.c*(data_in.ray_length)))/(mul))*mul;
+            data_in.line_points2 = 2^ceil(log2(effective_c*data_in.ray_length));
+            data_in.line_points3 = ceil(((effective_c*(data_in.ray_length)))/(mul))*mul;
             data_in.line_points2 = min(data_in.line_points2,data_in.line_points3);
             data_in=rmfield(data_in,'line_points3');
         else
@@ -651,10 +663,18 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
         % somehow for john's rare acquisition the data_in.rays_per_block includes
         % the channel information, This causes my line_points to be off,
         % which caues my min_load_bytes to be off. We'll set special var
-        % here to fix that.
+        % here to fix that. 
+        % Alex had an acquisition fail due to this.       d_struct.c*<1 
+        % Modifing to divide out the channels and hope padding holds.
+        % it seems more correct to just not calculate in the channels to
+        % begin with, tha tis done above.
         if isfield(data_buffer.headfile,'B_rare_factor')&& ~strcmp(data_in.vol_type,'radial')
-            if data_buffer.headfile.B_rare_factor==1
-                data_in.line_points   = data_in.ray_length;
+            if data_buffer.headfile.B_rare_factor==1 && strcmp(data_buffer.headfile.S_PSDname,'MDEFT') 
+
+                % && exist('neverrun_var','var')
+%                 data_in.line_points   = data_in.ray_length;
+                data_in.line_points  = data_in.line_points/d_struct.c;
+                data_in.line_pad     = data_in.line_pad/d_struct.c;
                 data_in.total_points = data_in.ray_length*data_in.rays_per_block*data_in.ray_blocks;
                 % data_in.min_load_bytes= 2*data_in.line_points*data_in.rays_per_block*(data_in.disk_bit_depth/8);
             end

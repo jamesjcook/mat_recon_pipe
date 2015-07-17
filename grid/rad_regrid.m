@@ -163,8 +163,8 @@ permute_code=[];
     data_buffer.data=permute(data_buffer.data,permute_code ); % put in image order(or at least in fft order).
     % end
     
-    %following reshap was commented out becuase it seems so unnecessary.
-    %     data_buffer.data=reshape(data_buffer.data,output_dimensions(1:numel(c_dims)));% x yr z c
+    %following reshape is what remove rare facor dimension
+        data_buffer.data=reshape(data_buffer.data,output_dimensions(1:numel(c_dims)));% x yr z c
     %%%%%
     %%%%%
     %squeeze data, might cause issues!
@@ -187,38 +187,62 @@ permute_code=[];
     %%%%%
     
     encoding_sort=false;
-    if isfield(data_buffer.input_headfile,'dim_X_encoding_order')
-        fprintf('Found X encoding order\n');
-        xenc=data_buffer.input_headfile.dim_X_encoding_order;
-        xenc=xenc+min(xenc)+1;
-        encoding_sort=true;
-    else
-        xenc=':';
+    es_f={'X','Y','Z'};
+    for es_n=1:length(es_f) % foreach encoding X Y Z
+        eid=es_f{es_n}; %encoding letter.
+        if isfield(data_buffer.input_headfile,['dim_' eid '_encoding_order'])
+            fprintf('Found %s encoding order\n',eid);
+            enc.(eid)=data_buffer.input_headfile.(['dim_' eid '_encoding_order']);
+            enc.(eid)=enc.(eid)-min(enc.(eid))+1;
+            if ~seqtest(enc.(eid))
+                warning('ENCODING BANDAID IN EFFECT, ENCODING FOR %s, SPECIFIED BUT SEQUENTIAL, IT WILL BE IGNORED!',eid);
+                encoding_sort=true;
+            end
+        else
+            enc.(eid)=':';
+        end
     end
-    if isfield(data_buffer.input_headfile,'dim_Y_encoding_order')
-        fprintf('Found Y encoding order\n');
-        yenc=data_buffer.input_headfile.dim_Y_encoding_order;
-        yenc=yenc-min(yenc)+1;
-        encoding_sort=true;
-    else
-        yenc=':';
-    end
-    if isfield(data_buffer.input_headfile,'dim_Z_encoding_order')
-        fprintf('Found Z encoding order\n');
-        zenc=data_buffer.input_headfile.dim_Z_encoding_order;
-        zenc=zenc-min(zenc)+1;
-        encoding_sort=true;
-    else
-        zenc=':';
+    if exist('barkeala','var')
+        if isfield(data_buffer.input_headfile,'dim_X_encoding_order')
+            fprintf('Found X encoding order\n');
+            xenc=data_buffer.input_headfile.dim_X_encoding_order;
+            xenc=xenc+min(xenc)+1;
+            if ~seqtest(xenc)
+                warning('ENCODING BANDAID IN EFFECT, ENCODING %s,SPECIFIED BUT SEQUENTIAL, SO IT WAS IGNORED!',enc.(eid));
+                encoding_sort=true;
+            end
+        else
+            xenc=':';
+        end
+        if isfield(data_buffer.input_headfile,'dim_Y_encoding_order')
+            fprintf('Found Y encoding order\n');
+            yenc=data_buffer.input_headfile.dim_Y_encoding_order;
+            yenc=yenc-min(yenc)+1;
+            if ~seqtest(yenc)
+                warning('ENCODING BANDAID IN EFFECT, ENCODING %s,SPECIFIED BUT SEQUENTIAL, SO IT WAS IGNORED!',enc.(eid));
+                encoding_sort=true;
+            end
+        else
+            yenc=':';
+        end
+        if isfield(data_buffer.input_headfile,'dim_Z_encoding_order')
+            fprintf('Found Z encoding order\n');
+            zenc=data_buffer.input_headfile.dim_Z_encoding_order;
+            zenc=zenc-min(zenc)+1;
+            if ~seqtest(zenc)
+                encoding_sort=true;
+            end
+        else
+            zenc=':';
+        end
     end
     if encoding_sort
-        
-        data_buffer.data(xenc,yenc,zenc,:,:,:)=data_buffer.data;
+        data_buffer.data(enc.X,enc.Y,enc.Z,:,:,:)=data_buffer.data;
     end
 else
     %% radial regridding.
     warning('Radial regridding! Still very experimental.')
-        
+    
     oversample_factor=3;
     if isfield(data_buffer.headfile,'radial_grid_oversample_factor')
         fprintf('Using oversampling of ');
@@ -561,3 +585,18 @@ else
     warning('Not bruker and Not Aspect no regid yet.');
 end
 fprintf('\n');
+end
+
+function [status,c,d]=seqtest(q)
+status=0;
+a=diff(q);
+
+b=find([a inf]>1);
+
+c=diff([0 b]);% length of the sequences
+if numel(c)==1 && c==length(q)
+    status=1;
+end
+
+d=cumsum(c);% endpoints of the sequences
+end
