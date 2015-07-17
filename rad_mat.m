@@ -2823,7 +2823,16 @@ if opt_struct.force_write_archive_tag || (~opt_struct.skip_write_civm_raw && ~op
                 new_center=get_wrapped_volume_center(data_vol);
             end
             %%%% could use hist followed by extrema or derivative and find
-            center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
+            % center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
+%             center=size(data_buffer.data)/2;
+            center=[data_out.output_dimensions(strfind(data_out.output_order,'x')),...
+                data_out.output_dimensions(strfind(data_out.output_order,'y')),...
+                data_out.output_dimensions(strfind(data_out.output_order,'z'))]/2;
+            for cidx=numel(center):-1:1
+                if center(cidx)<1
+                    center(cidx)=[];
+                end
+            end
             diff=new_center-center;
             %         diff(3)=-diff(3);
             %         diff(2)=-diff(2);
@@ -2831,6 +2840,11 @@ if opt_struct.force_write_archive_tag || (~opt_struct.skip_write_civm_raw && ~op
                 if diff(di)<0
                     diff(di)=diff(di)+size(data_buffer.data,di);
                 end
+            end
+            if numel(diff)<3
+                t=diff;
+                diff=zeros(3,1);
+                diff(1:numel(t))=t;
             end
             roll.x(c_r)=round(diff(1));
             roll.y(c_r)=round(diff(2));
