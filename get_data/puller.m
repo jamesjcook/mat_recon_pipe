@@ -4,11 +4,14 @@ function puller(data_buffer,opt_struct,scanner,puller_data,output)
 
 if ~exist('output','var')
     if ~isfield(data_buffer.headfile,'work_dir_path')&& isfield(data_buffer.headfile,'U_runno')
-    work_dir_name= [data_buffer.headfile.U_runno '.work'];
-    data_buffer.headfile.work_dir_path=[data_buffer.engine_constants.engine_work_directory '/' work_dir_name];
-    output=data_buffer.headfile.work_dir_path;
+        work_dir_name= [data_buffer.headfile.U_runno '.work'];
+        data_buffer.headfile.work_dir_path=[data_buffer.engine_constants.engine_work_directory '/' work_dir_name];
+        output=data_buffer.headfile.work_dir_path;
     end
+else
+    data_buffer.headfile.work_dir_path=output;
 end
+
 if opt_struct.overwrite
     opt_struct.puller_option_string=[' -o ' opt_struct.puller_option_string];
 end
@@ -18,7 +21,7 @@ end
 
 cmd_list=['puller_simple ' opt_struct.puller_option_string ' ' scanner ' ''' puller_data ''' ' output];
 if ~isfield(data_buffer.headfile,'comment')
-    data_buffer.headfile.comment='';
+    data_buffer.headfile.comment={};
 end
 data_buffer.headfile.comment{end+1}=['# \/ pull cmd ' '\/'];
 data_buffer.headfile.comment{end+1}=['# ' cmd_list ];
