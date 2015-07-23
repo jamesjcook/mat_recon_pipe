@@ -203,7 +203,8 @@ elseif ~isempty(regexp(data_in.vol_type,'(3D|4D)', 'once'))
     
     %%% if the chunk dimension is z we have to work by sub_chunks, this has
     %%% come up once.
-    if strcmp(unique_test_string(end-1),'z')&&strcmp(unique_test_string(end),'f') ...
+    if (   (numel(unique_test_string)>=2 && strcmp(unique_test_string(end-1),'z')&&strcmp(unique_test_string(end),'f') )...
+            || (numel(unique_test_string)>=1 &&strcmp(unique_test_string(end),'f') )   )...
             && recon_strategy.maximum_RAM_requirement > useable_RAM
         recon_strategy.work_by_sub_chunk=true;
         %%% this is guessing our ray_block dimension.
@@ -242,10 +243,12 @@ elseif ~isempty(regexp(data_in.vol_type,'(3D|4D)', 'once'))
         %%%% have sub_chunk_skip_points, but we load each chunk in
         %%%% file. Have to pass this off to ourrecon_strat.
         % native_chunk_dimensions?
-    elseif ~strcmp(unique_test_string(end-1),'x')...
+    elseif (   numel(unique_test_string)>=2 &&  ~strcmp(unique_test_string(end-1),'x')...
             && ~strcmp(unique_test_string(end-1),'y')...
             && ~strcmp(unique_test_string(end-1),'z') ...
-            && strcmp(unique_test_string(end),'f')
+            && strcmp(unique_test_string(end),'f')   )... 
+            || (   numel(unique_test_string)>=1 && strcmp(unique_test_string(end),'f')   )
+        
         %%% so long as the chunk dimension is not x y or z, loading and
         %%% load skipping should be okay.
         warning('NORMAL CHUNK ORDERING NOT VERIFIED');
@@ -254,6 +257,7 @@ elseif ~isempty(regexp(data_in.vol_type,'(3D|4D)', 'once'))
         % think its a bug.
         pause(3);
     else
+        
         warning('UNHANDLED CHUNK CONDIDTION :(%s)',unique_test_string(end-1));
     end
 end

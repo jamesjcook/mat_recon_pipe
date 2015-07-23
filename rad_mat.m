@@ -24,7 +24,7 @@ function [success_status,img, data_buffer]=rad_mat(scanner,runno,input_data,opti
 %
 % status   - status 1 for success, and 0 for failures.
 %            (following matlab boolean, true/false)
-% img      - output volume in the output_order, in chunked recon will only
+% img      - complex output volume in the output_order, in chunked recon will only
 %            be the last chunk
 % buffer   - the databuffer, including the headfile writeen to disk any any
 %            other data left inside it. For all at once recons buffer.data 
@@ -80,7 +80,7 @@ if ( nargin<3)
     
 end
 %% data reference setup
-img=0;
+% img=0;
 % success_status=false;
 data_buffer=large_array;
 % if ~isprop(data_buffer,'data')
@@ -163,6 +163,7 @@ beta_options={
     'combine_kspace',         ' combine dimensions in kspace, use combine_kspace=text, text is a string at least one character long. Remember p is used for changing parameters'
     'combine_kspace_method',  ' mechod to combine kspace, should be comma separated list if there is more than one.'
     'skip_combine_channels',  ' do not combine the channel images'
+    'omit_channels',          ' ignore bad channels. a comma separated list, ex omit_channels=2,3,4'
     'write_complex',          ' should the complex output be written to th work directory. Will be written as rp(or near rp file) format.'
     'do_aspect_freq_correct', ' perform aspect frequency correction.'
     'param_file',             ' GUI param file input'
@@ -330,7 +331,14 @@ for o_num=1:length(options)
     %%% since we're a struct its easy to add options that dont exist etc,
     %%% we'll just error because they were recongnized as unexpected above.
     if ~isnan(str2double(value))
-        value=str2double(value);
+        va=str2num(value);
+        vb=str2double(value);
+        if numel(va)>numel(vb)
+            value=va;
+        else
+            value=vb;
+        end
+        clear va vb;
     end
     opt_struct.(option)=value;
 end
@@ -436,6 +444,14 @@ else
         error(kspace_shift_string);
     else
         warning(kspace_shift_string);
+    end
+end
+if ~islogical(opt_struct.omit_channels)
+%     opt_struct.omit_channels=str2num(opt_struct.omit_channels);
+    if numel(opt_struct.omit_channels)<1 || ~isnumeric(opt_struct.omit_channels)
+        error('omit channels failed to process');
+    else 
+        fprintf('Omitting channels :\n\t');fprintf('%i ',opt_struct.omit_channels);fprintf('\n');
     end
 end
 
@@ -913,7 +929,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         %load data with skips function, does not reshape, leave that to regridd
         %program.
         if opt_struct.debug_stop_load
-            [l,n,f]=get_dbline('rad_mat');
+            [l,~,f]=get_dbline('rad_mat');
             eval(sprintf('dbstop in %s at %d',f,l+3));
             warning('Debug stop requested.');
         end
@@ -1231,7 +1247,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         %%enhance to handle load_whole vs work_by_chunk.
         if ~opt_struct.skip_regrid
             if opt_struct.debug_stop_regrid
-                [l,n,f]=get_dbline('rad_mat');
+                [l,~,f]=get_dbline('rad_mat');
                 eval(sprintf('dbstop in %s at %d',f,l+3));
                 warning('Debug stop requested.');
             end
@@ -1242,6 +1258,52 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 rad_regrid(data_buffer,recon_strategy.w_dims);%%%% w_dims is WRONG for load whole!!!
             elseif recon_num==1 && recon_strategy.load_whole
                 rad_regrid(data_buffer,data_in.input_order);%%%% w_dims is WRONG for load whole!!!
+            end
+            %% when omitting channgles, as in the case we have bad channel data,
+            % remove the bad channel data, and fix the data objects to refer to the reduced number of channels.
+            if opt_struct.omit_channels
+                % fix data_work, data_out, recon_srategy?
+                channel_dim=strfind(data_out.output_order,'c');
+                total_channels=data_work.ds.dim_sizes(channel_dim);
+                
+                data_work.ds.dim_sizes(channel_dim)=data_work.ds.dim_sizes(channel_dim)-numel(opt_struct.omit_channels);
+                data_work.volumes=data_work.ds.dim_sizes(channel_dim)*data_work.volumes/total_channels;
+                
+                data_out.ds.dim_sizes(channel_dim)=data_out.ds.dim_sizes(channel_dim)-numel(opt_struct.omit_channels);
+                data_out.output_dimensions(channel_dim)=data_out.output_dimensions(channel_dim)-numel(opt_struct.omit_channels);
+                data_out.volumes=data_out.ds.dim_sizes(channel_dim)*data_out.volumes/total_channels;
+                data_buffer.headfile.A_channels=data_buffer.headfile.A_channels-numel(opt_struct.omit_channels);
+                d_struct.c=d_struct.c-numel(opt_struct.omit_channels);
+                
+%                 recon_strategy.op_dims
+                
+                % get a permute code to move the channel dimension to the
+                % front of the array.
+                pc=1:ndims(data_buffer.data);
+                pc(channel_dim)=[];
+                pc=[ pc channel_dim];
+                ds=size(data_buffer.data); % get the sizes to reshape by.
+                ds=ds(pc);
+                data_buffer.data=permute(data_buffer.data,pc);
+                data_buffer.data=reshape(data_buffer.data,[prod(ds(1:end-1)), ds(end)] );
+                % sort these descending as we'll be eliminating indices.
+                tc=sort(opt_struct.omit_channels,2,'descend');
+                if exist('slowremovechannel','var')
+                    for chsk=1:length(opt_struct.omit_channels)
+                        data_buffer.data(:,tc(chsk))=[];
+                        fprintf('remove channel %i...\n',tc(chsk));
+                        %                     tmp=data_buffer.data(:,:,:,1,:);
+                    end
+                else
+                    % A=setxor(A,B)
+                    % A=A(setdiff(1:length(A),ind));
+                    data_buffer.data=data_buffer.data(:,setdiff(1:size(data_buffer.data,ndims(data_buffer.data)),opt_struct.omit_channels));
+                end
+                ds(end)=ds(end)-numel(opt_struct.omit_channels);% we put channels last so the dimension to fix will always be end
+                data_buffer.data=reshape(data_buffer.data,ds);
+                data_buffer.data = ipermute(data_buffer.data,pc);
+                fprintf('Channel removal complete!\n');
+                clear ds pc tc chsk;
             end
             if  regexp(data_in.vol_type,'.*radial.*')
                 if recon_strategy.num_chunks==1
@@ -1470,7 +1532,7 @@ dim_text=dim_text(1:end-1);
         %% filter kspace data
         if ~opt_struct.skip_filter
             if opt_struct.debug_stop_filter
-                [l,n,f]=get_dbline('rad_mat');
+                [l,~,f]=get_dbline('rad_mat');
                 eval(sprintf('dbstop in %s at %d',f,l+3));
                 warning('Debug stop requested.');
             end
@@ -1579,7 +1641,7 @@ dim_text=dim_text(1:end-1);
         if ~opt_struct.skip_fft
             %% fft
             if opt_struct.debug_stop_fft
-                [l,n,f]=get_dbline('rad_mat');
+                [l,~,f]=get_dbline('rad_mat');
                 eval(sprintf('dbstop in %s at %d',f,l+3));
                 warning('Debug stop requested.');
             end
@@ -1654,11 +1716,11 @@ dim_text=dim_text(1:end-1);
                 fprintf('Radial fft optimizations\n');
                 %%% timepoints handling
                 if isfield(data_buffer.headfile,'processing_chunk')
-                    t_s=data_buffer.headfile.processing_chunk;
-                    t_e=data_buffer.headfile.processing_chunk;
+                    %                     t_s=data_buffer.headfile.processing_chunk;
+                    %                     t_e=data_buffer.headfile.processing_chunk;
                 else
-                    t_s=1;
-                    t_e=d_struct.t;
+                    %                     t_s=1;
+                    %                     t_e=d_struct.t;
                 end
                 %%% when we are over-gridding(almost all the time) we
                 %%% should have a kspace property to work from.
@@ -1915,14 +1977,14 @@ dim_text=dim_text(1:end-1);
                     end
                 else
                     fprintf('Radial channel combine');
-                    tind=strfind(opt_struct.output_order,'t'); 
-                    dind=strfind(opt_struct.output_order,'c'); 
+                    %                     tind=strfind(opt_struct.output_order,'t');
+                    dind=strfind(opt_struct.output_order,'c');
                     if isfield(data_buffer.headfile,'processing_chunk')
-                        t_s=data_buffer.headfile.processing_chunk;
-                        t_e=data_buffer.headfile.processing_chunk;
+                        %                         t_s=data_buffer.headfile.processing_chunk;
+                        %                         t_e=data_buffer.headfile.processing_chunk;
                     else
-                        t_s=1;
-                        t_e=d_struct.t;
+                        %                         t_s=1;
+                        %                         t_e=d_struct.t;
                     end
                     % for time_pt=1:d_struct.t
 %                     for time_pt=t_s:t_e
@@ -1982,7 +2044,7 @@ dim_text=dim_text(1:end-1);
     % data is sitting in memory awaiting saving, does not handle chunks or
     % anything correctly just now.
     if opt_struct.debug_stop_save
-        [l,n,f]=get_dbline('rad_mat');
+        [l,~,f]=get_dbline('rad_mat');
         eval(sprintf('dbstop in %s at %d',f,l+3));
         warning('Debug stop requested.');
     end
@@ -2059,8 +2121,8 @@ dim_text=dim_text(1:end-1);
     data_buffer.headfile.U_runno=space_dir_img_name;
     
     space_dir_img_folder=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '/' space_dir_img_name 'images' ];
-    work_dir_img_name_per_vol =[ runno channel_code m_code];
-    work_dir_img_path_per_vol=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '.work/' space_dir_img_name 'images' ];
+    %     work_dir_img_name_per_vol =[ runno channel_code m_code];
+    %     work_dir_img_path_per_vol=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '.work/' space_dir_img_name 'images' ];
     work_dir_img_path=[work_dir_img_path_base channel_code m_code];
     
     if d_struct.c > 1
@@ -2225,8 +2287,8 @@ dim_text=dim_text(1:end-1);
             warning('this saving code a work in progress for chunks');
             %if length(w_dims)>3  foreach outputimage , saveimgae.
             if ( length(recon_strategy.w_dims)>3 )
-                [l,n,f]=get_dbline('rad_mat');
-%                 eval(sprintf('dbstop in %s at %d',f,l+3));
+                [l,~,f]=get_dbline('rad_mat');
+                eval(sprintf('dbstop in %s at %d',f,l+3));
                 warning('w_dims CANT BE BIGGER THAN 3 YET!');
             end
             %%%% HAHA for each dim of w_dims outside xyz! we can
@@ -2521,8 +2583,8 @@ dim_text=dim_text(1:end-1);
                     data_buffer.headfile.U_runno=space_dir_img_name;
 
                     space_dir_img_folder=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '/' space_dir_img_name 'images' ];
-                    work_dir_img_name_per_vol =[ runno channel_code m_code];
-                    work_dir_img_path_per_vol=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '.work/' space_dir_img_name 'images' ];
+%                     work_dir_img_name_per_vol =[ runno channel_code m_code];
+%                     work_dir_img_path_per_vol=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '.work/' space_dir_img_name 'images' ];
                     work_dir_img_path=[work_dir_img_path_base channel_code m_code];
                     if d_struct.c > 1
                         data_buffer.headfile.work_dir=data_buffer.engine_constants.engine_work_directory;

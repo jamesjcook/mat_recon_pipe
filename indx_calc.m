@@ -9,5 +9,5 @@ for rd=1:length(rdims)
     if rout(rd)==0
         rout(rd)=rdims(rd);
     end
-        rpos=1+(rpos-rout(rd))/rdims(1);
+    rpos=1+(rpos-rout(rd))/rdims(1);
 end
