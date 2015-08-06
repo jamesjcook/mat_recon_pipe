@@ -2067,6 +2067,8 @@ dim_text=dim_text(1:end-1);
     data_buffer.headfile.F_imgformat=datatype;
     %%%set channel header settings and mnumber codes for the filename
     d_pos=indx_calc(recon_num,data_out.ds.Sub(recon_strategy.op_dims));
+    d_s=struct; % we later check for fields, but this is only defined if we have operation dimensions left after our working dimensions. 
+    %for all at once recons we wont have any dimensions to operate over.
     for dx=1:length(recon_strategy.op_dims)
         d_s.(recon_strategy.op_dims(dx))=d_pos(dx);
     end
