@@ -163,20 +163,21 @@ recon_strategy.recon_operations=prod(data_out.ds.dim_sizes)/prod(data_out.ds.Sub
 
 %%%% code above works well, and as intended. it calculates how much data we 
 %%%% can load symetrically. Incorporating both input, working and output
-%%%% memory requiremnts equally. Now lets see if wec an get more input data
+%%%% memory requiremnts equally. Now lets see if we can get more input data
 %%%% into memory.
 % w_dims will be our working dimensions that we can fit
 % op_dims will be any dims which cannot fit in memory.
 % recon_operations will be the number of times the main processing loop has to run
 % memory_space_required is an operational minimum. We havnt checked yet if
 % we can load the whole volume.
-if ( useable_RAM < ...
-        (recon_strategy.memory_space_required + data_in.total_bytes_RAM - data_in.single_vol_RAM ) )
-    recon_strategy.load_whole=false;
-else 
-    recon_strategy.memory_space_required=recon_strategy.memory_space_required + data_in.total_bytes_RAM - data_in.single_vol_RAM ;
+if ( recon_strategy.memory_space_required < recon_strategy.maximum_RAM_requirement)
+    if ( useable_RAM < ...
+            (recon_strategy.memory_space_required + data_in.total_bytes_RAM - data_in.single_vol_RAM ) )
+        recon_strategy.load_whole=false;
+    else
+        recon_strategy.memory_space_required=recon_strategy.memory_space_required + data_in.total_bytes_RAM - data_in.single_vol_RAM ;
+    end
 end
-
 %%%
 %chunks_per_vol
 %sub_chunks_per_chunk.
@@ -269,12 +270,13 @@ end
 if ~recon_strategy.load_whole 
     if ~recon_strategy.work_by_sub_chunk
         recon_strategy.work_by_chunk=true;
+        recon_strategy.recon_operations=recon_strategy.num_chunks;
     end
 end
 
 
 
-if recon_strategy.num_chunks>1
+if recon_strategy.recon_operations>1
     fprintf('\tmemory_required :%0.02fM, split into %d problems\n',recon_strategy.memory_space_required/1024/1024,recon_strategy.recon_operations);
     pause(3);
 end
