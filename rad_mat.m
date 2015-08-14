@@ -2081,13 +2081,13 @@ dim_text=dim_text(1:end-1);
             end
             m_exp=strjoin(m_s_exp,';');
             m_exp=['^' m_exp '$'];
-            if regexp(data_buffer.input_headfile.U_specid,m_exp)
-                specid_s=strsplit(data_buffer.input_headfile.U_specid,';');
+            if regexp(data_buffer.headfile.U_specid,m_exp)
+                specid_s=strsplit(data_buffer.headfile.U_specid,';');
                 data_buffer.headfile.U_specid=specid_s{cn};
-                data_buffer.headfile.U_specid_list=data_buffer.input_headfile.U_specid;
-                fprintf('Multi specid found in multi channel, assigning singular specid on output %s <= %s\n',data_buffer.headfile.U_specid,data_buffer.input_headfile.U_specid);
+                data_buffer.headfile.U_specid_list=data_buffer.headfile.U_specid;
+                fprintf('Multi specid found in multi channel, assigning singular specid on output %s <= %s\n',data_buffer.headfile.U_specid,data_buffer.headfile.U_specid);
             elseif regexp(data_buffer.headfile.U_specid,'.*;.*')
-                warning('Multi specid found in multi channel, but not the right number for the number of channels, \n\ti.e %s did not match regex. %s\n',data_buffer.input_headfile.U_specid,m_exp);
+                warning('Multi specid found in multi channel, but not the right number for the number of channels, \n\ti.e %s did not match regex. %s\n',data_buffer.headfile.U_specid,m_exp);
                 
             end
             clear s_exp m_s_exp;
@@ -2521,13 +2521,13 @@ dim_text=dim_text(1:end-1);
                             end
                             m_exp=strjoin(m_s_exp,';');
                             m_exp=['^' m_exp '$'];
-                            if regexp(data_buffer.input_headfile.U_specid,m_exp)
-                                specid_s=strsplit(data_buffer.input_headfile.U_specid,';');
+                            if regexp(data_buffer.headfile.U_specid,m_exp)
+                                specid_s=strsplit(data_buffer.headfile.U_specid,';');
                                 data_buffer.headfile.U_specid=specid_s{cn};
-                                data_buffer.headfile.U_specid_list=data_buffer.input_headfile.U_specid;
-                                fprintf('Multi specid found in multi channel, assigning singular specid on output %s <= %s\n',data_buffer.headfile.U_specid,data_buffer.input_headfile.U_specid);
+                                data_buffer.headfile.U_specid_list=data_buffer.headfile.U_specid;
+                                fprintf('Multi specid found in multi channel, assigning singular specid on output %s <= %s\n',data_buffer.headfile.U_specid,data_buffer.headfile.U_specid);
                             elseif regexp(data_buffer.headfile.U_specid,'.*;.*')
-                                warning('Multi specid found in multi channel, but not the right number for the number of channels, \n\ti.e %s did not match regex. %s\n',data_buffer.input_headfile.U_specid,m_exp);
+                                warning('Multi specid found in multi channel, but not the right number for the number of channels, \n\ti.e %s did not match regex. %s\n',data_buffer.headfile.U_specid,m_exp);
 
                             end
                             clear s_exp m_s_exp;
