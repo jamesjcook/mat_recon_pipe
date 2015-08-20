@@ -1,11 +1,30 @@
 function [d_struct,data_in,data_work,data_out]=create_meta_structs(data_buffer,opt_struct)
 
+
+data_tag=data_buffer.headfile.S_scanner_tag;
+% some of this might belong in the load data function we're going to need
+data_in.vol_type=data_buffer.headfile.([data_tag 'vol_type']);
+if opt_struct.vol_type_override~=0
+    data_in.vol_type=opt_struct.vol_type_override;
+    warning('Using override volume_type %s',opt_struct.vol_type_override);
+end
+% vol_type can be 2D or 3D or radial.
+data_in.scan_type=data_buffer.headfile.([data_tag 'vol_type_detail']);
+% vol_type_detail says the type of volume we're dealing with,
+% this is set in the header parser perl modules the type can be
+% single
+% DTI
+% MOV
+% slab
+% multi-vol
+% multi-echo are normally interleaved, so we cut our chunk size in necho pieces
+
+
 %% read dimensions to shorthand struct
 d_struct=struct;
 d_struct.x=data_buffer.headfile.dim_X;
 d_struct.y=data_buffer.headfile.dim_Y;
 d_struct.z=data_buffer.headfile.dim_Z;
-data_tag=data_buffer.headfile.S_scanner_tag;
 d_struct.c=data_buffer.headfile.([data_tag 'channels'] );
 if isfield (data_buffer.headfile,[data_tag 'varying_parameter'])
     varying_parameter=data_buffer.headfile.([data_tag 'varying_parameter']);
@@ -24,7 +43,12 @@ else
     fprintf('No varying parameter\n');
     d_struct.p=1;
 end
+if strcmp(opt_struct.regrid_method,'scott') &&  strcmp(data_in.vol_type,'radial')
+    vx=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c/d_struct.p;
+    data_buffer.headfile.([data_tag 'volumes'])=(vx-data_buffer.headfile.ray_blocks_per_volume+1)*d_struct.c*d_struct.p;clear vx;
+end
 d_struct.t=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c/d_struct.p;
+
 % dont need rare factor here, its only used in the regrid section
 % if  isfield (data_buffer.headfile,[data_tag 'rare_factor'])
 %     r=data_buffer.headfile.([data_tag 'rare_factor']);
@@ -33,22 +57,6 @@ d_struct.t=data_buffer.headfile.([data_tag 'volumes'])/d_struct.c/d_struct.p;
 % end
 %% read input acquisition type from our header
 data_in.input_order=data_buffer.headfile.([data_tag 'dimension_order' ]);
-% some of this might belong in the load data function we're going to need
-data_in.vol_type=data_buffer.headfile.([data_tag 'vol_type']);
-if opt_struct.vol_type_override~=0
-    data_in.vol_type=opt_struct.vol_type_override;
-    warning('Using override volume_type %s',opt_struct.vol_type_override);
-end
-% vol_type can be 2D or 3D or radial.
-data_in.scan_type=data_buffer.headfile.([data_tag 'vol_type_detail']);
-% vol_type_detail says the type of volume we're dealing with,
-% this is set in the header parser perl modules the type can be
-% single
-% DTI
-% MOV
-% slab
-% multi-vol
-% multi-echo are normally interleaved, so we cut our chunk size in necho pieces
 
 % translate scanner terminology to matlab
 data_in.disk_bit_depth=data_buffer.headfile.([data_tag 'kspace_bit_depth']);
@@ -112,6 +120,7 @@ data_in.precision_string=[data_in.disk_data_type num2str(data_in.disk_bit_depth)
 data_in.binary_header_bytes  =data_buffer.headfile.binary_header_size; %distance to first data point in bytes-standard block header.
 data_in.ray_block_hdr_bytes  =data_buffer.headfile.block_header_size;  %distance between blocks of rays in file in bytes
 data_in.ray_blocks           =data_buffer.headfile.ray_blocks;         %number of blocks of rays total, sometimes nvolumes, sometimes nslices, somtimes nechoes, ntrs nalphas
+data_in.ray_blocks_per_volume=data_buffer.headfile.ray_blocks_per_volume; % number of ray blocks to make a full acquisition. really only used for radial.
 data_in.rays_per_block       =data_buffer.headfile.rays_per_block;     %number or rays per block of input data,
 data_in.ray_length           =data_buffer.headfile.ray_length;         %number of samples on a ray, or trajectory
 
@@ -121,6 +130,8 @@ if strcmp(data_in.vol_type,'radial')
     % if radial
     data_in.input_dimensions=[data_in.ray_length d_struct.(data_in.input_order(2))...
         d_struct.(data_in.input_order(3)) data_in.rays_per_block data_in.ray_blocks];
+    data_in.input_order='xcpbt'; % raylenght, channels, params, block length, blocks(nacq*nkeys)
+    data_in.ds=dimstruct(data_in.input_order,d_struct);
 else
     if exist('dimstruct','class')
         data_in.ds=dimstruct(data_in.input_order,d_struct);
