@@ -1,5 +1,5 @@
 function [success_status,img, data_buffer]=rad_mat(scanner,runno,input_data,options)
-% [s,img, buffer]=RAD_MAT(scanner,runno,input,options)
+% [success_status,img, buffer]=RAD_MAT(scanner,runno,input,options)
 % Reconstruct All Devices in MATlab
 % rad_mat, a quasi generic reconstruction/reformating scanner to archive
 % pipeline.
@@ -77,7 +77,6 @@ if ( nargin<3)
     else
         rad_mat('','','','help');
     end
-    
 end
 %% data reference setup
 % img=0;
@@ -104,6 +103,7 @@ clear ans;
 %% insert rad_mat call into headfile comment.
 data_buffer.headfile.B_recon_type='rad_mat'; % warning, can only be 16 chars long.
 data_buffer.headfile.U_runno=runno;
+data_buffer.headfile.U_scanner=scanner;
 data_buffer.headfile.comment={'# Rad_Mat Matlab recon'};
 data_buffer.headfile.comment{end+1}=['# Reconstruction start time ' datestr(now,'yyyy-mm-dd HH:MM:SS')];
 % version=  ''; % get version from v file name on disk
@@ -142,6 +142,8 @@ standard_options={
     'write_unscaled_nD',      ' save unscaled multi-dimensional nifti in the work directory '
     'display_kspace',         ' display re-gridded kspace data prior to reconstruction, will showcase errors in regrid and load functions'
     'display_output',         ' display reconstructed image after the resort and transform operations'
+    'regrid_method',          ' redgrid function used, scott or sdc3_mat'
+    'radial_mode',            ' radial regrid mode, fast or good. A simple parameter swap based on Scott''s recommendations.'
     'grid_oversample_factor', ' oversample grid multiplier, only used for radial regrid has a default of 3'
     '',                       ''
     };
@@ -264,6 +266,8 @@ if ischar(opt_struct.filter_window)
 elseif ~opt_struct.filter_window
     opt_struct.filter_window='';
 end
+opt_struct.radial_mode='good';
+opt_struct.regrid_method='scott';
 % opt_struct.combine_method='square_and_sum';
 %% handle options cellarray.
 % look at all before erroring by placing into cellarray err_strings or
@@ -459,7 +463,7 @@ if length(opt_struct.output_order)<length(possible_dimensions)
     for char=1:length(possible_dimensions)
         test=strfind(opt_struct.output_order,possible_dimensions(char));
         if isempty(test)
-            warning('mission dimension %s, appending to end of list',possible_dimensions(char));
+            warning('missing dimension %s, appending to end of list',possible_dimensions(char));
             opt_struct.output_order=sprintf('%s%s',opt_struct.output_order,possible_dimensions(char));
         end
     end
@@ -628,6 +632,13 @@ elseif local_space_bytes-data_out.disk_total_bytes < 0.1*local_space_bytes % war
 else
     error('not enough free local disk space to reconstruct data, delete some files and try again');
 end
+
+if strcmp(data_in.vol_type,'radial') && strcmp(opt_struct.regrid_method,'scott')
+    fprintf('Radial scott recon, standard filter disabled, using scott filter. Standard fft code disabled, using scott iterative\n');
+    opt_struct.skip_filter=true;
+    opt_struct.skip_fft=true;
+end
+
 clear local_space_bytes df_field;
 %% load_data parameter determination
 display('Checking file size and calcualting RAM requirements...');
@@ -817,9 +828,12 @@ meminfo=imaqmem; %check available memory
 [recon_strategy,opt_struct]=get_recon_strategy3(data_buffer,opt_struct,d_struct,data_in,data_work,data_out,meminfo);
 if recon_strategy.recon_operations>data_buffer.headfile.([data_tag 'volumes'])
     save([data_buffer.headfile.work_dir_path '/insufficient_mem_stop.mat']);
-    [l,n,f]=get_dbline('rad_mat');
-    eval(sprintf('dbstop in %s at %d',f,l+3));
-    warning('Cannot proceede sanely on this recon engine due to insufficient RAM');
+    %     [l,n,f]=get_dbline('rad_mat');
+    %     eval(sprintf('dbstop in %s at %d',f,l+3));
+    if ~opt_struct.ignore_errors
+        db_inplace('rad_mat');
+        warning('Cannot proceede sanely on this recon engine due to insufficient RAM');
+    end
 end
 %% mem purging when we expect to fit.
 %%% first just try a purge to free enough space.
@@ -1013,7 +1027,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         fprintf('Data loading took %f seconds\n',toc(time_l));
         clear l_time logm temp_chunks temp_size;
         %% load trajectory and do dcf calculation
-        if( regexp(data_in.vol_type,'.*radial.*'))
+        if( ~isempty(regexp(data_in.vol_type,'.*radial.*', 'once')))
             %% Load trajectory and shape it up.
 
             fprintf('Loading trajectory\n');
@@ -1121,11 +1135,12 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 data_buffer.cutoff_filter=logical(cutoff_filter);
                 clear cutoff_filter;
             end
-            %% Calculate/load dcf
+            %% Calculate/load dcf 
+            % this is the sdc3_MAT code, which is depreciated. This was never completed to full satisfaction.
             % data_buffer.dcf=sdc3_MAT(data_buffer.trajectory, opt_struct.iter, x, 0, 2.1, ones(data_in.ray_length, data_buffer.headfile.rays_acquired_in_total));
             iter=data_buffer.headfile.radial_dcf_iterations;
           
-            if ~isprop(data_buffer,'dcf')
+            if ~isprop(data_buffer,'dcf') && strcmp(opt_struct.regrid_method,'sdc3_mat')
                 dcf_file_path=[trajectory_file_path '_dcf_I' num2str(iter) opt_struct.radial_filter_postfix '.mat' ];
                 if opt_struct.dcf_by_key
                     data_buffer.trajectory=reshape(data_buffer.trajectory,[3,...
@@ -1222,7 +1237,9 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 fprintf('\tdcf in memory.\n');
             end
             data_buffer.trajectory=reshape(data_buffer.trajectory,[3,data_in.ray_length,data_in.rays_per_block,data_buffer.headfile.ray_blocks_per_volume]);
-            data_buffer.dcf=reshape(data_buffer.dcf,[data_in.ray_length,data_in.rays_per_block,data_buffer.headfile.ray_blocks_per_volume]);
+            if  isprop(data_buffer,'dcf')
+                data_buffer.dcf=reshape(data_buffer.dcf,[data_in.ray_length,data_in.rays_per_block,data_buffer.headfile.ray_blocks_per_volume]);
+            end
         end
         %% prep keyhole trajectory
         if ( regexp(data_in.scan_type,'keyhole'))
@@ -1231,7 +1248,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
             % data_buffer.addprop('vcf_mask');
             % data_buffer.vcf_mask=calcmask;
             % frequency. Just ignoring right now
-            if( ~regexp(data_in.vol_type,'.*radial.*'))
+            if( isempty(regexp(data_in.vol_type,'.*radial.*', 'once')))
                 error('Non-radial keyhole not supported yet');
             end
 %             data_buffer.trajectoryectory=reshape(data_buffer.trajectoryectory,[3 ,data_buffer.headfile.ray_blocks_per_volume,data_buffer.headfile.ray_length]);
@@ -1247,17 +1264,23 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         %%enhance to handle load_whole vs work_by_chunk.
         if ~opt_struct.skip_regrid
             if opt_struct.debug_stop_regrid
-                [l,~,f]=get_dbline('rad_mat');
-                eval(sprintf('dbstop in %s at %d',f,l+3));
-                warning('Debug stop requested.');
+%                 [l,~,f]=get_dbline('rad_mat');
+%                 eval(sprintf('dbstop in %s at %d',f,l+3));
+                db_inplace('rad_mat','Debug stop requested.');
             end
             if recon_strategy.num_chunks>1 && recon_strategy.recon_operations>1 %%%&& ~isempty(regexp(vol_type,'.*radial.*', 'once'))
                 data_buffer.headfile.processing_chunk=recon_num;
             end
-            if ~recon_strategy.load_whole
-                rad_regrid(data_buffer,recon_strategy.w_dims);%%%% w_dims is WRONG for load whole!!!
-            elseif recon_num==1 && recon_strategy.load_whole
-                rad_regrid(data_buffer,data_in.input_order);%%%% w_dims is WRONG for load whole!!!
+            if ~strcmp(data_in.vol_type,'radial') || strcmp(opt_struct.regrid_method,'sdc3_mat')
+                if ~recon_strategy.load_whole
+                    rad_regrid(data_buffer,recon_strategy.w_dims);%%%% w_dims is WRONG for load whole!!!
+                elseif recon_num==1 && recon_strategy.load_whole
+                    rad_regrid(data_buffer,data_in.input_order);%%%% w_dims is WRONG for load whole!!!
+                end
+            elseif strcmp(data_in.vol_type,'radial') && strcmp(opt_struct.regrid_method,'scott')
+                scott_grid(data_buffer,opt_struct,data_in,data_work,data_out); % lets make scott grid responsible for loading and closing system matrices.
+            else 
+                db_inplace('rad_mat','Unknown grid error');
             end
             %% when omitting channgles, as in the case we have bad channel data,
             % remove the bad channel data, and fix the data objects to refer to the reduced number of channels.
@@ -1305,7 +1328,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 fprintf('Channel removal complete!\n');
                 clear ds pc tc chsk;
             end
-            if  regexp(data_in.vol_type,'.*radial.*')
+            if  ~isempty(regexp(data_in.vol_type,'.*radial.*', 'once')) && strcmp(opt_struct.regrid_method,'sdc3_mat')
                 if recon_strategy.num_chunks==1
                     fprintf('Clearing traj,dcf and radial kspace data\n');
                     data_buffer.trajectory=[];
@@ -1710,7 +1733,7 @@ dim_text=dim_text(1:end-1);
                 end
 %                 data_buffer.data=img;
 %                 clear img;
-            elseif regexp(data_in.vol_type,'.*radial.*')
+            elseif ~isempty(regexp(data_in.vol_type,'.*radial.*', 'once'))
                 %% fft-radial
                 fprintf('%s volumes\n',data_in.vol_type);
                 fprintf('Radial fft optimizations\n');
@@ -2029,7 +2052,7 @@ dim_text=dim_text(1:end-1);
             %                 fprintf('\tComplete\n');
             %             end
         else
-           fprintf('Skipped fft');
+           fprintf('Skipped fft\n');
            if opt_struct.remove_slice
                % even though we skipped the recon this will keep our
                % headfile value up to date.
@@ -2164,7 +2187,7 @@ dim_text=dim_text(1:end-1);
     end
     clear rp_path rp_path2;
     %% save outputs
-    fprintf('Reconstruction %d of %d Finished!',recon_num,recon_strategy.recon_operations);
+    fprintf('Reconstruction %d of %d Finished!\n',recon_num,recon_strategy.recon_operations);
     if ~opt_struct.skip_write
         fprintf('Saving...\n');
         %% save uncombined channel niis.
@@ -2195,13 +2218,13 @@ dim_text=dim_text(1:end-1);
                 % this for unscaled nd? its unscaled!
                 data_buffer.headfile.group_max_atpct=0;
                 if ~exist('old_way','var')
-                    if ~opt_struct.skip_combine_channels 
+                    if opt_struct.skip_combine_channels 
                         c_div=data_out.ds.Sub('c');
                     else
                         c_div=1;
                     end
-                    for vn=1:numel(data_buffer.data)/(prod(data_out.ds.Sub(recon_strategy.w_dims))/c_div)
-                        d_pos=indx_calc(vn,data_out.ds.Sub(recon_strategy.op_dims));
+                    for vn=1:prod(data_in.ds.Sub(recon_strategy.op_dims))% for vn=1:numel(data_buffer.data)/(prod(data_out.ds.Sub(recon_strategy.w_dims))/c_div)
+                        d_pos=indx_calc(vn,data_out.ds.Sub(recon_strategy.op_dims));%matlab has a function for this... its used int he mouse stitch code. i forgot it now .
                         % for dx=1:length(recon_strategy.op_dims)
                         %     d_s.(recon_strategy.op_dims(dx))=d_pos(dx);
                         % end
@@ -2226,6 +2249,7 @@ dim_text=dim_text(1:end-1);
                         end
                     end
                 else
+                    error('old_way bad');
                     for tn=1:d_struct.t
                         dim_select.t=tn;
                         for cn=1:d_struct.c
@@ -2496,6 +2520,17 @@ dim_text=dim_text(1:end-1);
                     %% pull single vol to save
                     if ~opt_struct.skip_recon && ( opt_struct.write_complex || opt_struct.write_unscaled || ~opt_struct.skip_write_civm_raw)
                         fprintf('Extracting image channel:%0.0f param:%0.0f timepoint:%0.0f\n',cn,pn,tn);
+                        if ~isempty(regexp(data_in.vol_type,'.*radial.*', 'once')) && strcmp(opt_struct.regrid_method,'scott')&& recon_num==1
+                            oo=[ data_out.ds.Rem('c') 'c'];
+                            data_out.output_dimensions(strfind(data_out.output_order,'c'))=1;
+                            data_out.ds.dim_sizes=data_out.output_dimensions;
+                            data_out.ds.dim_sizes=data_out.ds.Sub(oo);
+                            data_out.ds.dim_order=oo;
+                            data_out.output_dimensions=data_out.ds.Sub(oo);
+                            data_out.output_order=oo;
+                        elseif  ~isempty(regexp(data_in.vol_type,'.*radial.*', 'once')) && strcmp(opt_struct.regrid_method,'scott')&& recon_num~=1
+                            warning('POSSIBLE REGRID RADIAL ERROR');
+                        end
                         tmp=squeeze(data_buffer.data(...
                             dim_select.(data_out.output_order(1)),...
                             dim_select.(data_out.output_order(2)),...
@@ -2504,9 +2539,10 @@ dim_text=dim_text(1:end-1);
                             dim_select.(data_out.output_order(5)),...
                             dim_select.(data_out.output_order(6))...
                             ));% pulls out one volume at a time.
+                        
                         %                         end
-                        if numel(tmp)<prod(data_out.ds.Sub('xyz')) %output_dimensions(1:3))
-                            error('Save file not right, chunking error likly');
+                        if numel(tmp)<prod(data_out.ds.Sub('xyz')) && ~strcmp(opt_struct.radial_mode,'fast')%output_dimensions(1:3))
+                            error('Save file not right, chunking error likely');
                         end
                     else
                         tmp='RECON_DISABLED';
