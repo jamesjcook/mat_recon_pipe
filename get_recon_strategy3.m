@@ -153,14 +153,19 @@ for d=1:length(recon_strategy.w_dims)
     ti=strfind(data_in.input_order,recon_strategy.w_dims(d));
     to=[to ti];
 end
-recon_strategy.w_dims=data_in.input_order(sort(to));
+if ~strcmp(data_in.vol_type,'radial')
+    recon_strategy.w_dims=data_in.input_order(sort(to));
+end
 if numel(recon_strategy.w_dims)<numel(data_out.output_order)
     %         recon_strategy.op_dims=data_out.output_order(numel(recon_strategy.w_dims)+1:end);
     recon_strategy.op_dims=data_out.ds.Rem(recon_strategy.w_dims);
 end
 %     recon_strategy.dim_string=data_out.ds.showorder(recon_strategy.w_dims);
-recon_strategy.recon_operations=prod(data_out.ds.dim_sizes)/prod(data_out.ds.Sub(recon_strategy.w_dims));
-
+if ~strcmp(data_in.vol_type,'radial')
+    recon_strategy.recon_operations=prod(data_out.ds.dim_sizes)/prod(data_out.ds.Sub(recon_strategy.w_dims));
+else 
+    recon_strategy.recon_operations=1;%13, would recon window 1,13,26,39;2,14,27,40;3,15,28,41;
+end
 %%%% code above works well, and as intended. it calculates how much data we 
 %%%% can load symetrically. Incorporating both input, working and output
 %%%% memory requiremnts equally. Now lets see if we can get more input data
