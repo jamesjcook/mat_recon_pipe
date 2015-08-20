@@ -15,27 +15,28 @@ if islogical(opt_struct.param_file) && ~opt_struct.testmode
         warn('You tried to specifiy a param file, but forgot to enter it.');
         pause( opt_struct.warning_pause ) ;
     end
-    if opt_struct.debug_mode>=10 
+    if opt_struct.debug_mode>=10
         display('Gathering gui info ...');
     end
     data_buffer.engine_constants.engine_recongui_menu_path;
-gui_cmd=sprintf(['$GUI_APP ' ...
+    gui_cmd=sprintf(['$GUI_APP ' ...
         ' ''' data_buffer.engine_constants.engine_constants_path ...
         ' ' data_buffer.engine_constants.engine_recongui_menu_path ...
         ' ' data_buffer.scanner_constants.scanner_tesla ...
         ' ''']);
-fprintf('%s\n',gui_cmd);
+    fprintf('%s\n',gui_cmd);
     [~, gui_dump]=system(gui_cmd);
     use_GUI_DUMP=true;
     %opt_struct.param_file
-elseif ~islogical(opt_struct.param_file) 
+elseif ~islogical(opt_struct.param_file)
     if ~exist([ data_buffer.engine_constants.engine_recongui_paramfile_directory '/' opt_struct.param_file ],'file')
         %%% this should also support regen of param file....
         [~, param_file_name, e]=fileparts(opt_struct.param_file);
         param_file_name=[param_file_name e ];
+%         data_buffer.scanner_constants.scanner_host_name
         [~]=system(sprintf('%s '' %s %s %s'' ',getenv('GUI_APP') ,...
             data_buffer.engine_constants.engine_constants_path ,...%    ec.engine_recongui_menu_path ,...
-            data_buffer.scanner_constants.scanner_host_name ,... %     ' ' sc.scanner_tesla ...
+            data_buffer.headfile.U_scanner ,... %     ' ' sc.scanner_tesla ...
             param_file_name ...
             ));
     end
@@ -46,11 +47,11 @@ elseif ~islogical(opt_struct.param_file)
     pf=read_headfile([ data_buffer.engine_constants.engine_recongui_paramfile_directory '/' opt_struct.param_file ]);
     data_buffer.input_headfile=combine_struct(data_buffer.input_headfile,pf,'U_');
     data_buffer.headfile      =combine_struct(data_buffer.headfile,pf,'U_');
-% pf.fields=fieldnames(pf);
-% gui_info_lines=cell(numel(pf.fields),1);
-% for fn=1:numel(pf.fields)
-%     gui_info_lines{fn}=[pf.fields(fn) ':::' pf.(pf.fields{fn}) ];
-% end
+    % pf.fields=fieldnames(pf);
+    % gui_info_lines=cell(numel(pf.fields),1);
+    % for fn=1:numel(pf.fields)
+    %     gui_info_lines{fn}=[pf.fields(fn) ':::' pf.(pf.fields{fn}) ];
+    % end
 elseif opt_struct.testmode
     display('this recon will not be archiveable, rerun same command with skip_recon to rewrite just the headfile using the gui settings.');
     %     data_buffer.engine_constants.engine_recongui_menu_path;
