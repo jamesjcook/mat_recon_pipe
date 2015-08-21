@@ -103,7 +103,7 @@ end
 % rad_bunch_data.runno_text=strjoin(runno_list);
 rad_bunch_data.runno_list=runno_list;
 %% combine output into single image, scaleit save it.
-cmd=sprintf('reform_group %s', runno_text);
+cmd=sprintf('reform_group %s', strjoin(runno_list));
 system(cmd);
 toc(ts)
 
