@@ -2312,7 +2312,7 @@ dim_text=dim_text(1:end-1);
             %% arbitrarychunksave.
             warning('this saving code a work in progress for chunks');
             %if length(w_dims)>3  foreach outputimage , saveimgae.
-            if ( length(recon_strategy.w_dims)>3 )
+            if ( length(recon_strategy.w_dims)>3 && islogical(opt_struct.omit_channels) )
                 [l,~,f]=get_dbline('rad_mat');
                 eval(sprintf('dbstop in %s at %d',f,l+3));
                 warning('w_dims CANT BE BIGGER THAN 3 YET!');
