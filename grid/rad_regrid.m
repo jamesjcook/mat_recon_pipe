@@ -157,6 +157,8 @@ permute_code=[];
     if numel(data_buffer.data)~=prod(input_dimensions)
         [l,n,f]=get_dbline('rad_regrid');
         eval(sprintf('dbstop in %s at %d',f,l+3));
+        %%%% this happens when the recon strategy fails to properly
+        %%%% set up the work to be done. 
         warning('YOUR RECON WILL NOT COMPLETE PROPERLY GET JAMES RIGHT NOW. YOU HAVE BEEN PUT INTO DEBUG MODE TO SOLVE THE PROBLEM ON THE FLY.');
     end
     data_buffer.data=reshape(data_buffer.data,input_dimensions);
