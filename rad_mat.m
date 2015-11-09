@@ -503,7 +503,14 @@ data_buffer.headfile.comment{end+1}='# see reconstruciton_ variables for engind_
 data_buffer.headfile.comment{end+1}='# see scanner_ variables for engind_dependencies';
 
 %%% stuff special dependency variables into headfile
-data_buffer.headfile.S_tesla=data_buffer.scanner_constants.scanner_tesla_image_code;
+if isfield(data_buffer.scanner_constants,'scanner_tesla_image_code')
+    data_buffer.headfile.S_tesla=data_buffer.scanner_constants.scanner_tesla_image_code;
+else
+    data_buffer.headfile.S_tesla='';
+    data_buffer.scanner_constants.scanner_tesla='';
+    data_buffer.scanner_constants.scanner_tesla_image_code='';
+end
+
 
 clear o_num options option all_options standard_options standard_options_string beta_options beta_options_string planned_options planned_options_string specific_text value err_strings warn_strings e w parts;
 
@@ -519,15 +526,14 @@ if isfield(data_buffer.headfile,'U_specid')
 end
 
 %% data pull and build header from input
-if strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
-    if ~regexpi(input_data{end},'fid')
-        % if ! endswith fid, add fid
-        dirext='.fid';
-    else
-        dirext='';
+ dirext='';
+if isfield(data_buffer.scanner_constants,'scanner_vendor')
+    if strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
+        if ~regexpi(input_data{end},'fid')
+            % if ! endswith fid, add fid
+            dirext='.fid';
+        end
     end
-else
-    dirext='';
 end
 if numel(input_data)==1
     input_data= strsplit(input_data{1},'/');
@@ -964,9 +970,9 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         if recon_strategy.load_whole 
             %&& recon_strategy.num_chunks>1 && ~recon_strategy.work_by_sub_chunk && recon_strategy.load_skip==0
             % this is a speed optimization, and clouding the problem. 
-            file_chunks=1;
-            load_chunk_size=recon_strategy.chunk_size*recon_strategy.num_chunks;
-            chunks_to_load=1;
+%             file_chunks=1;
+%             load_chunk_size=(recon_strategy.chunk_size+recon_strategy.load_skip)*recon_strategy.num_chunks;
+            chunks_to_load=1:recon_strategy.num_chunks;
         elseif recon_strategy.work_by_sub_chunk 
             file_header=data_in.binary_header_bytes+(recon_num-1)*recon_strategy.min_load_size*(data_in.disk_bit_depth/8);
             chunks_to_load=1:recon_strategy.num_chunks;

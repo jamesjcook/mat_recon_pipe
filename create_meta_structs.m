@@ -120,7 +120,6 @@ data_in.precision_string=[data_in.disk_data_type num2str(data_in.disk_bit_depth)
 data_in.binary_header_bytes  =data_buffer.headfile.binary_header_size; %distance to first data point in bytes-standard block header.
 data_in.ray_block_hdr_bytes  =data_buffer.headfile.block_header_size;  %distance between blocks of rays in file in bytes
 data_in.ray_blocks           =data_buffer.headfile.ray_blocks;         %number of blocks of rays total, sometimes nvolumes, sometimes nslices, somtimes nechoes, ntrs nalphas
-data_in.ray_blocks_per_volume=data_buffer.headfile.ray_blocks_per_volume; % number of ray blocks to make a full acquisition. really only used for radial.
 data_in.rays_per_block       =data_buffer.headfile.rays_per_block;     %number or rays per block of input data,
 data_in.ray_length           =data_buffer.headfile.ray_length;         %number of samples on a ray, or trajectory pulse
 
@@ -153,6 +152,8 @@ end
 % if( ~regexp(data_in.vol_type,'.*radial.*'))
 if strcmp(data_in.vol_type,'radial')
     % if radial
+    data_in.ray_blocks_per_volume=data_buffer.headfile.ray_blocks_per_volume; % number of ray blocks to make a full acquisition. really only used for radial.
+
     data_in.input_dimensions=[data_in.ray_length d_struct.(data_in.input_order(2))...
         d_struct.(data_in.input_order(3)) data_in.rays_per_block data_in.ray_blocks];
     data_in.input_order='xcpbt'; % raylenght, channels, params, block length, blocks(nacq*nkeys)

@@ -309,7 +309,7 @@ if meminfo.AvailPhys < meminfo.TotalPhys-system_reserved_RAM ... %*.85 ...  %mem
     system('purge');
     meminfo=imaqmem;
 end
-
+memparam='TotalPhys';
 %%% try to operate without a change to current system memory load from other sources...
 if meminfo.AvailPhys >= maximum_RAM_requirement
     memparam='AvailPhys';
