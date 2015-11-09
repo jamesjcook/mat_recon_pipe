@@ -503,7 +503,14 @@ data_buffer.headfile.comment{end+1}='# see reconstruciton_ variables for engind_
 data_buffer.headfile.comment{end+1}='# see scanner_ variables for engind_dependencies';
 
 %%% stuff special dependency variables into headfile
-data_buffer.headfile.S_tesla=data_buffer.scanner_constants.scanner_tesla_image_code;
+if isfield(data_buffer.scanner_constants,'scanner_tesla_image_code')
+    data_buffer.headfile.S_tesla=data_buffer.scanner_constants.scanner_tesla_image_code;
+else
+    data_buffer.headfile.S_tesla='';
+    data_buffer.scanner_constants.scanner_tesla='';
+    data_buffer.scanner_constants.scanner_tesla_image_code='';
+end
+
 
 clear o_num options option all_options standard_options standard_options_string beta_options beta_options_string planned_options planned_options_string specific_text value err_strings warn_strings e w parts;
 
@@ -519,15 +526,14 @@ if isfield(data_buffer.headfile,'U_specid')
 end
 
 %% data pull and build header from input
-if strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
-    if ~regexpi(input_data{end},'fid')
-        % if ! endswith fid, add fid
-        dirext='.fid';
-    else
-        dirext='';
+ dirext='';
+if isfield(data_buffer.scanner_constants,'scanner_vendor')
+    if strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
+        if ~regexpi(input_data{end},'fid')
+            % if ! endswith fid, add fid
+            dirext='.fid';
+        end
     end
-else
-    dirext='';
 end
 if numel(input_data)==1
     input_data= strsplit(input_data{1},'/');
@@ -785,7 +791,7 @@ end
 data_in.kspace_data=2*(data_in.line_points*data_in.rays_per_block)*data_in.ray_blocks*(data_in.disk_bit_depth/8); % data bytes in file (not counting header bytes)
 % data_in.kspace_data          =recon_strategy.min_load_size*max_loads_per_chunk;
 % total bytes used in data only(no header/meta info)
-kspace_file_size     =data_in.kspace_header_bytes+data_in.kspace_data; % total ammount of bytes in data file.
+calculated_kspace_file_size     =data_in.kspace_header_bytes+data_in.kspace_data; % total ammount of bytes in data file.
 
 fileInfo = dir(data_buffer.headfile.kspace_data_path);
 if isempty(fileInfo)
@@ -793,14 +799,14 @@ if isempty(fileInfo)
 end
 measured_filesize    =fileInfo.bytes;
 data_buffer.headfile.kspace_file_size=measured_filesize;
-if kspace_file_size~=measured_filesize
+if calculated_kspace_file_size~=measured_filesize
     aspect_remainder=138443;% a constant amount of bytes that aspect scans have to spare.
-    remainder=measured_filesize-kspace_file_size;
-    if (measured_filesize>kspace_file_size && opt_struct.ignore_kspace_oversize) || opt_struct.ignore_errors % measured > expected provisional continue
-        warning('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=\t%d\nCalculated=\t%d\n',measured_filesize,kspace_file_size);
+    remainder=measured_filesize-calculated_kspace_file_size;
+    if (measured_filesize>calculated_kspace_file_size && opt_struct.ignore_kspace_oversize) || opt_struct.ignore_errors % measured > expected provisional continue
+        warning('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=\t%d\nCalculated=\t%d\n',measured_filesize,calculated_kspace_file_size);
         % extra warning when acaual is greater than 10% of exptected
         
-        if remainder/kspace_file_size> 0.1 && remainder~=aspect_remainder
+        if remainder/calculated_kspace_file_size> 0.1 && remainder~=aspect_remainder
             msg=sprintf(['Big difference between measured and calculated!\n' ...
                 '\tSUCCESS UNLIKELY!\n' ...
                 'ignore_kspace_oversize enabled, but more than 10%% data will be ignored']);
@@ -813,9 +819,9 @@ if kspace_file_size~=measured_filesize
         end
     else %if measured_filesize<kspace_file_size    %if measured < exected fail.
         if strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect') && remainder==aspect_remainder
-            warning('Measured data file size and calculated dont match. However this is Aspect data, and we match our expected remainder! \nMeasured=\t%d\nCalculated=\t%d\n\tAspect_remainder=%d\n',measured_filesize,kspace_file_size,aspect_remainder);
+            warning('Measured data file size and calculated dont match. However this is Aspect data, and we match our expected remainder! \nMeasured=\t%d\nCalculated=\t%d\n\tAspect_remainder=%d\n',measured_filesize,calculated_kspace_file_size,aspect_remainder);
         else
-            error('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=\t%d\nCalculated=\t%d\n',measured_filesize,kspace_file_size);
+            error('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=\t%d\nCalculated=\t%d\n',measured_filesize,calculated_kspace_file_size);
         end
     end
 else
@@ -951,19 +957,33 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         file_chunks=recon_strategy.num_chunks; %load_chunks may not be used for aything helpful, here or in load_file. ...
         load_chunk_size=recon_strategy.chunk_size;
         file_header=data_in.binary_header_bytes;
-        if recon_strategy.load_whole && recon_strategy.num_chunks>1 && ~recon_strategy.work_by_sub_chunk && recon_strategy.load_skip==0
-            file_chunks=1;
-            load_chunk_size=recon_strategy.chunk_size*recon_strategy.num_chunks;
-            chunks_to_load=1;
+        %%%  
+        % loader section configure to handle possibilities. 
+        % shorthand of names, load_whole=lh, workbychunk=wbc, workbysubchunk=wbsc
+        % load whole, process whole, lh=t,wbc=f,wbsc=f
+        % load whole, process chunk, lh=t,wbc=t,wbsc=f
+        % load chunk, process chunk, lh=f, wbc=t,wbsc=f
+        % load chunk, process by subchunk, ? lh=f wbc=t,wbsc=t
+        % load partial, process by subchunk, lh=f, wtc=f, wbsc=f\
+        % really only conerened with what parts to load, 
+        % so we either load whole, load chunk or we load partial. 
+        if recon_strategy.load_whole 
+            %&& recon_strategy.num_chunks>1 && ~recon_strategy.work_by_sub_chunk && recon_strategy.load_skip==0
+            % this is a speed optimization, and clouding the problem. 
+%             file_chunks=1;
+%             load_chunk_size=(recon_strategy.chunk_size+recon_strategy.load_skip)*recon_strategy.num_chunks;
+            chunks_to_load=1:recon_strategy.num_chunks;
         elseif recon_strategy.work_by_sub_chunk 
             file_header=data_in.binary_header_bytes+(recon_num-1)*recon_strategy.min_load_size*(data_in.disk_bit_depth/8);
             chunks_to_load=1:recon_strategy.num_chunks;
             load_chunk_size=recon_strategy.chunk_size;
-        elseif recon_strategy.work_by_chunk|| ~recon_strategy.load_whole
+        elseif recon_strategy.work_by_chunk % || ~recon_strategy.load_whole
             chunks_to_load=recon_num;
         else 
-            save('/tmp/matlab_debug.mat');
-            warning('Unsupported recon condition, saved matlab workspace to /tmp/matlab_debug.mat');
+            [debug_base,~,~]=fileparts(data_buffer.headfile.kspace_data_path);
+            debug_file=sprintf('%s/matlab_debug_loading.mat',debug_base);
+            save(debug_file);
+            warning('Unsupported recon condition, saved matlab workspace to %s',debug_file);
         end
         %         temp_chunks=recon_strategy.num_chunks;
         %         temp_size=recon_strategy.chunk_size;

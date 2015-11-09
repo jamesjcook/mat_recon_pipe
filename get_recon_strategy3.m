@@ -68,17 +68,9 @@ function [recon_strategy, opt_struct]=get_recon_strategy3(data_buffer,opt_struct
 
 %% get memory info
 recon_strategy.maximum_RAM_requirement = data_in.total_bytes_RAM+data_out.total_bytes_RAM+data_work.total_bytes_RAM;
-% system_reserved_memory=2*1024*1024*1024;% reserve 2gb for the system while we work.
 
-if meminfo.AvailPhys> meminfo.TotalPhys*.05 % if mem is relatively clear
-    memparam='TotalPhys';
-else
-    warning('Lots of memory occupied, trying to squeek by anyway');
-    memparam='AvailPhys'; % if mem is not clear.
-end
-system_reserved_RAM=max(2*1024*1024*1024,meminfo.TotalPhys*0.3); % reserve at least 2gb for the system while we work
+[useable_RAM]=load_check(recon_strategy.maximum_RAM_requirement,meminfo);
 
-useable_RAM=meminfo.(memparam)-system_reserved_RAM;
 fprintf('\tdata_input.sample_points(Complex kspace points):%d output_voxels:%d\n',data_in.total_points,data_out.total_voxel_count);
 fprintf('\ttotal_memory_required for all at once:%0.02fM, system memory(- reserve):%0.2fM\n',recon_strategy.maximum_RAM_requirement/1024/1024,(useable_RAM)/1024/1024);
 % handle ignore memory limit options
@@ -107,7 +99,11 @@ recon_strategy.post_scaling=false; % unused
 recon_strategy.recon_operations=1; % how many times through the main fft loop code.
 recon_strategy.op_dims=''; % the non-working dimensions
 
-recon_strategy.chunk_size=2*data_in.line_points*data_in.rays_per_block;  % chunk_size in # of values (eg, 2*complex_points).
+if isfield(data_in,'ray_block_order')
+    recon_strategy.chunk_size=2*prod(data_in.ds.Sub(data_in.ray_block_order));
+else
+    recon_strategy.chunk_size=2*data_in.line_points*data_in.rays_per_block;  % chunk_size in # of values (eg, 2*complex_points).
+end
 recon_strategy.min_load_size=recon_strategy.chunk_size; % minimum_load_size in data samples. this is the biggest piece of data we can load between header bytes.
 
 recon_strategy.load_skip=data_in.ray_block_hdr_bytes;
@@ -209,9 +205,10 @@ elseif ~isempty(regexp(data_in.vol_type,'(3D|4D)', 'once'))
     
     %%% if the chunk dimension is z we have to work by sub_chunks, this has
     %%% come up once.
-    if (   (numel(unique_test_string)>=2 && strcmp(unique_test_string(end-1),'z')&&strcmp(unique_test_string(end),'f') )...
+    if (   (numel(unique_test_string)>=2 && strcmp(unique_test_string(end-1),'z')...
+            &&strcmp(unique_test_string(end),'f') )...
             || (numel(unique_test_string)>=1 &&strcmp(unique_test_string(end),'f') )   )...
-            && recon_strategy.maximum_RAM_requirement > useable_RAM
+            && recon_strategy.memory_space_required > useable_RAM %maximum_RAM_requirement
         recon_strategy.work_by_sub_chunk=true;
         %%% this is guessing our ray_block dimension.
         %%% if our block dimension is z, we have to skip over the
@@ -255,11 +252,19 @@ elseif ~isempty(regexp(data_in.vol_type,'(3D|4D)', 'once'))
             && strcmp(unique_test_string(end),'f')   )... 
             || (   numel(unique_test_string)>=1 && strcmp(unique_test_string(end),'f')   )
         
+        if (       isempty(strfind(recon_strategy.w_dims,'z')) ...
+                || isempty(strfind(recon_strategy.w_dims,'y')) ...
+                || isempty(strfind(recon_strategy.w_dims,'x')) ) 
+            % if numel(recon_strategy.w_dims)<3
+            error('COULDNT FIT XYZ IN MEMORY! TRY TO FREE UP MEMORY, CLOSE EVERYTHING AND START MATLAB FRESH START OR RESTART COMPUTER');
+        end
         %%% so long as the chunk dimension is not x y or z, loading and
         %%% load skipping should be okay.
         warning('NORMAL CHUNK ORDERING NOT VERIFIED');
         %%% num_chunks=ray_blocks and life is relatively easy.
-        % recon_strategy.work_by_chunk=true; % this was disabled, i
+        if ( recon_strategy.recon_operations>1 )
+            recon_strategy.work_by_chunk=true; % this was disabled, i
+        end
         % think its a bug.
         pause(3);
     else
@@ -268,7 +273,8 @@ elseif ~isempty(regexp(data_in.vol_type,'(3D|4D)', 'once'))
     end
 end
 
-if recon_strategy.work_by_chunk || recon_strategy.work_by_sub_chunk
+%if recon_strategy.work_by_chunk || recon_strategy.work_by_sub_chunk
+if recon_strategy.work_by_sub_chunk
     recon_strategy.load_whole=false;
 end
 
@@ -286,3 +292,34 @@ if recon_strategy.recon_operations>1
     pause(3);
 end
 clear maximum_RAM_requirement useable_RAM ;
+end
+
+function useable_RAM = load_check(maximum_RAM_requirement,meminfo)
+% system_reserved_memory=2*1024*1024*1024;% reserve 2gb for the system while we work.
+system_reserved_RAM=max(2*1024*1024*1024,meminfo.TotalPhys*0.3); % reserve at least 2gb for the system while we work
+
+if meminfo.AvailPhys < meminfo.TotalPhys-system_reserved_RAM ... %*.85 ...  %mem clogged check
+        && meminfo.AvailPhys < maximum_RAM_requirement              % not enough avail mem check
+    % avail < max required
+    % avail < reasonable
+    fprintf('\n\n');
+    warning('Lots of memory occupied, trying to free up memory');
+    fprintf('\n\n');
+    pause(opt_struct.warning_pause);
+    system('purge');
+    meminfo=imaqmem;
+end
+memparam='TotalPhys';
+%%% try to operate without a change to current system memory load from other sources...
+if meminfo.AvailPhys >= maximum_RAM_requirement
+    memparam='AvailPhys';
+    system_reserved_RAM=0;
+    %%% if mem is relatively clear but we dont fit ...
+elseif meminfo.AvailPhys > meminfo.TotalPhys-system_reserved_RAM ... %*.85 ...  %mem clogged check
+        && meminfo.AvailPhys < maximum_RAM_requirement              % not enough avail mem check
+    memparam='TotalPhys';
+    %%% memory is clogged and we wont fit in the available.
+end
+useable_RAM=meminfo.(memparam)-system_reserved_RAM;
+return;
+end
