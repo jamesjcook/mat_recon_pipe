@@ -76,7 +76,9 @@ fprintf('\ttotal_memory_required for all at once:%0.02fM, system memory(- reserv
 % handle ignore memory limit options
 if opt_struct.skip_mem_checks;
     display('you have chosen to ignore this machine''s memory limits, this machine may crash');
-    recon_strategy.maximum_RAM_requirement=1;
+    %recon_strategy.maximum_RAM_requirement=1;
+    useable_RAM=Inf;
+    
 end
 
 %% set the recon strategy dependent on memory requirements
@@ -203,12 +205,20 @@ elseif ~isempty(regexp(data_in.vol_type,'(3D|4D)', 'once'))
     unique_test_string=data_in.ds.showorder([data_in.ray_blocks data_in.ray_blocks data_in.ray_blocks]);
     unique_test_string=unique_test_string([true diff(unique_test_string)~=0]);%collapses any extra f's to a singluar f'.
     
-    %%% if the chunk dimension is z we have to work by sub_chunks, this has
-    %%% come up once.
+    %%% if the chunk dimension includes z we have to work by sub_chunks, this
+    %%% occurs with MGRE agilent.
     if (   (numel(unique_test_string)>=2 && strcmp(unique_test_string(end-1),'z')...
             &&strcmp(unique_test_string(end),'f') )...
-            || (numel(unique_test_string)>=1 &&strcmp(unique_test_string(end),'f') )   )...
-            && recon_strategy.memory_space_required > useable_RAM %maximum_RAM_requirement
+            || (numel(unique_test_string)>=1 &&strcmp(unique_test_string(end),'f') )   ) ...
+            && (    recon_strategy.memory_space_required > useable_RAM ...  %maximum_RAM_requirement
+            || recon_strategy.num_chunks ~= prod(data_out.output_dimensions)/prod(data_out.ds.Sub('xyz') )    )
+        %    || prod(data_out.ds.Sub(recon_strategy.op_dims))>1     )
+        %%% tried test condition to be true any time we're
+        %%% working over secondary dimensions. That is a mistake. This
+        %%% patches mgre behavior. I think I need a more complicated test to see
+        %%% if xyz are not contigusous in the input. Tring the test for
+        %%% non-native fft chunks in additoin to the insufficient memory. 
+        
         recon_strategy.work_by_sub_chunk=true;
         %%% this is guessing our ray_block dimension.
         %%% if our block dimension is z, we have to skip over the
@@ -305,7 +315,7 @@ if meminfo.AvailPhys < meminfo.TotalPhys-system_reserved_RAM ... %*.85 ...  %mem
     fprintf('\n\n');
     warning('Lots of memory occupied, trying to free up memory');
     fprintf('\n\n');
-    pause(opt_struct.warning_pause);
+%    pause(opt_struct.warning_pause);
     system('purge');
     meminfo=imaqmem;
 end
