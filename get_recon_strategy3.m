@@ -69,7 +69,7 @@ function [recon_strategy, opt_struct]=get_recon_strategy3(data_buffer,opt_struct
 %% get memory info
 recon_strategy.maximum_RAM_requirement = data_in.total_bytes_RAM+data_out.total_bytes_RAM+data_work.total_bytes_RAM;
 
-[useable_RAM]=load_check(recon_strategy.maximum_RAM_requirement,meminfo);
+[useable_RAM]=load_check(recon_strategy.maximum_RAM_requirement,meminfo,opt_struct);
 
 fprintf('\tdata_input.sample_points(Complex kspace points):%d output_voxels:%d\n',data_in.total_points,data_out.total_voxel_count);
 fprintf('\ttotal_memory_required for all at once:%0.02fM, system memory(- reserve):%0.2fM\n',recon_strategy.maximum_RAM_requirement/1024/1024,(useable_RAM)/1024/1024);
@@ -210,8 +210,10 @@ elseif ~isempty(regexp(data_in.vol_type,'(3D|4D)', 'once'))
     if (   (numel(unique_test_string)>=2 && strcmp(unique_test_string(end-1),'z')...
             &&strcmp(unique_test_string(end),'f') )...
             || (numel(unique_test_string)>=1 &&strcmp(unique_test_string(end),'f') )   ) ...
-            && (    recon_strategy.memory_space_required > useable_RAM ...  %maximum_RAM_requirement
-            || recon_strategy.num_chunks ~= prod(data_out.output_dimensions)/prod(data_out.ds.Sub('xyz') )    )
+            && ~recon_strategy.load_whole && (    recon_strategy.memory_space_required > useable_RAM ...    %memory_space_required or maximum_RAM_requirement
+            || recon_strategy.num_chunks ~= prod(data_out.output_dimensions)/prod(data_out.ds.Sub('xyz') ))
+        %  %memory_space_required or maximum_RAM_requirement
+        % switched out for a test of load_whole
         %    || prod(data_out.ds.Sub(recon_strategy.op_dims))>1     )
         %%% tried test condition to be true any time we're
         %%% working over secondary dimensions. That is a mistake. This
@@ -304,7 +306,7 @@ end
 clear maximum_RAM_requirement useable_RAM ;
 end
 
-function useable_RAM = load_check(maximum_RAM_requirement,meminfo)
+function useable_RAM = load_check(maximum_RAM_requirement,meminfo,opt_struct)
 % system_reserved_memory=2*1024*1024*1024;% reserve 2gb for the system while we work.
 system_reserved_RAM=max(2*1024*1024*1024,meminfo.TotalPhys*0.3); % reserve at least 2gb for the system while we work
 
