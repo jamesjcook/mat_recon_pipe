@@ -155,11 +155,9 @@ permute_code=[];
     %     data_buffer.data=permute(data_buffer.data,permute_code_with_rare);
     % else
     if numel(data_buffer.data)~=prod(input_dimensions)
-        [l,n,f]=get_dbline('rad_regrid');
-        eval(sprintf('dbstop in %s at %d',f,l+3));
         %%%% this happens when the recon strategy fails to properly
         %%%% set up the work to be done. 
-        warning('YOUR RECON WILL NOT COMPLETE PROPERLY GET JAMES RIGHT NOW. YOU HAVE BEEN PUT INTO DEBUG MODE TO SOLVE THE PROBLEM ON THE FLY.');
+        db_inplace('rad_regrid','YOUR RECON WILL NOT COMPLETE PROPERLY GET JAMES RIGHT NOW. YOU HAVE BEEN PUT INTO DEBUG MODE TO SOLVE THE PROBLEM ON THE FLY.');
     end
     data_buffer.data=reshape(data_buffer.data,input_dimensions);
     data_buffer.data=permute(data_buffer.data,permute_code ); % put in image order(or at least in fft order).
