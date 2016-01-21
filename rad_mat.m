@@ -385,6 +385,7 @@ if opt_struct.skip_load
     opt_struct.skip_regrid=true;
     opt_struct.write_kimage=false;
     opt_struct.write_kimage_unfiltered=false;
+    opt_struct.skip_write=true;
 end
 if opt_struct.skip_write_civm_raw &&...
         ~opt_struct.write_complex &&... 
@@ -2834,7 +2835,7 @@ clear img_s;
 
     elseif opt_struct.skip_write && ( ~opt_struct.skip_recon || ~opt_struct.skip_fft )
         fprintf('No outputs written.\n');
-        stop here to allow a manual save during execution.
+%         stop here to allow a manual save during execution.
     else
         fprintf('No outputs written.\n');
     end
@@ -2995,7 +2996,12 @@ end
 %% End of line set output
 %%% handle image return type at somepoint in future using image_return_type
 %%% option, for now we're just going to magnitude. 
-img=abs(data_buffer.data);
+if ~isprop('data_buffer','data') 
+    fprintf('no data outputs\n');
+    img=0;
+elseif numel(data_buffer.data)>0
+    img=abs(data_buffer.data);
+end
 success_status=true;
 fprintf('\nTotal rad_mat time is %f second\n',toc(rad_start));
 fprintf('\n');
