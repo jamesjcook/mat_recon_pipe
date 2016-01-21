@@ -200,7 +200,7 @@ for c=1:length(chunks_to_load)
         [fid_data, points_read]= fread(fileid, load_size, [data_precision '=>single']);
 %         fprintf('filepos after read our chunk %d',ftell(fileid));
         if  points_read ~= load_size && (load_size-points_read)>floor(post_skip_bytes/precision_bytes)
-            error('Did not correctly read file, load_size(%d) ~= points_read(%d) load size is %f times the size of read points',load_size,points_read,(load_size/points_read));
+            error('Did not correctly read file, load_size(%d) ~= points_read(%d) load size is %f times the size of successfully read points',load_size,points_read,(load_size/points_read));
         elseif points_read ~= load_size && (load_size-points_read)<=floor(post_skip_bytes/precision_bytes)
             warning('Did not as much data as requested, chunk_size(%d) ~= points_read(%d)',load_size,points_read);
             fid_data=[fid_data; zeros(load_size-points_read,1)];
