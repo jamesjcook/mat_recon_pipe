@@ -837,8 +837,7 @@ if recon_strategy.recon_operations>data_buffer.headfile.([data_tag 'volumes'])
     %     [l,n,f]=get_dbline('rad_mat');
     %     eval(sprintf('dbstop in %s at %d',f,l+3));
     if ~opt_struct.ignore_errors
-        db_inplace('rad_mat');
-        warning('Cannot proceede sanely on this recon engine due to insufficient RAM');
+        db_inplace('rad_mat','Cannot proceede sanely on this recon engine due to insufficient RAM');
     end
 end
 %% mem purging when we expect to fit.
