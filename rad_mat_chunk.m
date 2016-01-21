@@ -1,8 +1,10 @@
 function [success_status,img, buffer]=rad_mat_chunk(scanner,runno,input,options)
 % function [success_status,img, buffer]=RAD_MAT_CHUNK(scanner,runno,input,options)
-% hacky recon multi-part bruker
+% hacky  multi-part bruker recon
+%
 % Should add support directly into rad_mat in the future for multi-part fetch load of files.
-% this currently operates just like rad_mat with the caveat, input is 
+% this currently operates just like rad_mat with the caveat, input is
+% patientid, and a vector of scanids
 
 %%% this test set actually worked. The only sucessful test.
 % can test straight from comandline using
@@ -21,14 +23,14 @@ if ~iscell(input) && strcmp(input,'testdata')
     % and
     % will write an log scale absolute image of kspace as a nifti to see that we read kspace
     % properly.
-    partial_options={};
+    partial_options={'testmode'};
     %%% to skip reconning the partials, uncomment following line
     %%% THIS WILL SPEED THINGS UP A LOT.
 else
     testing_options={};
     patient_id=input{1};
     scan_ids=input{2};
-    partial_options={'skip_recon'};
+    partial_options={'skip_recon','testmode'};
 end
 if ~exist('options','var')
     options={};
@@ -37,7 +39,7 @@ if ~strcmp(scanner,'nemo')...
         && ~strcmp(scanner,'centospc')
     error('THIS HAS ONLY BEEN DONE ON THE BRUKER SCANNER NEMO. WE ONLY EXPECT IT TO WORK ON THE nemo OR centospc SCANNER!');
 end
-rad_mat_options={};
+rad_mat_options={'warning_pause=0',['param_file=rad_mat_chunk_',patient_id,strjoin(strsplit(num2str(14:18),' '),'_')]};
 rad_mat_options_full_only={};
 %% options for rad mat split up into chunks.
 required_options_for_unknown_sequence={'debug_mode=50'};
@@ -59,7 +61,15 @@ data_dir=getenv('BIGGUS_DISKUS');
 data_files=cell(1,length(scan_ids));
 pull_dir=cell(1,length(scan_ids));
 pda=cell(1,length(scan_ids));
-parfor sn=1:length(scan_ids)
+sn=1;
+pull_dir{sn}=sprintf('/%s/%s_%i.work/',data_dir,runno,scan_ids(sn));
+[~,~,pda{sn}]=rad_mat(scanner,sprintf('%s_%i',runno,scan_ids(sn)),sprintf ('%s/%i',patient_id,scan_ids(sn)) ,...
+    [ testing_options,'skip_recon',...
+    rad_mat_options,...
+    required_options_for_unknown_sequence,...
+    options]);
+data_files{sn}=sprintf('%s/fid',pull_dir{sn});
+parfor sn=2:length(scan_ids)
     pull_dir{sn}=sprintf('/%s/%s_%i.work/',data_dir,runno,scan_ids(sn));
     [~,~,pda{sn}]=rad_mat(scanner,sprintf('%s_%i',runno,scan_ids(sn)),sprintf ('%s/%i',patient_id,scan_ids(sn)) ,...
         [ testing_options,partial_options,...
