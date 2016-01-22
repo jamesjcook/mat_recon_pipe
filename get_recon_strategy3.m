@@ -308,7 +308,7 @@ end
 
 function useable_RAM = load_check(maximum_RAM_requirement,meminfo,opt_struct)
 % system_reserved_memory=2*1024*1024*1024;% reserve 2gb for the system while we work.
-system_reserved_RAM=max(2*1024*1024*1024,meminfo.TotalPhys*0.3); % reserve at least 2gb for the system while we work
+system_reserved_RAM=min(6*1024*1024*1024,meminfo.TotalPhys*0.3); % reserve at least 2gb for the system while we work
 
 if meminfo.AvailPhys < meminfo.TotalPhys-system_reserved_RAM ... %*.85 ...  %mem clogged check
         && meminfo.AvailPhys < maximum_RAM_requirement              % not enough avail mem check
