@@ -39,7 +39,8 @@ dim_order=data_buffer.input_headfile.([data_tag 'dimension_order' ]);
 if numel(c_dims)<numel(dim_order)
     dim_order=c_dims;
 end
-if  isfield (data_buffer.input_headfile,[data_tag 'rare_factor'])
+if  isfield (data_buffer.input_headfile,[data_tag 'rare_factor']) ...
+        && data_buffer.input_headfile.([data_tag 'rare_factor'])~=1
     r=data_buffer.input_headfile.([data_tag 'rare_factor']);
     % report_order=data_buffer.input_headfile.([data_tag 'axis_report_order']);
     % report order should already be handled by the dimension_order handwaving
@@ -122,8 +123,17 @@ permute_code=[];
     d_struct.y=d_struct.y/d_struct.r;
     input_dimensions=zeros(size(dim_order));
     for d_num=1:numel(dim_order)
-        input_dimensions(d_num)=d_struct.(dim_order(d_num));
+        if ~isempty(dim_order(d_num))...
+                && ~strcmp(dim_order(d_num),'')...
+                && ~strcmp(dim_order(d_num),' ')...
+                && ~strcmp(dim_order(d_num),0)
+            input_dimensions(d_num)=d_struct.(dim_order(d_num));
+        else
+            db_inplace('Empty dimension data check!');
+            input_dimensions(d_num)=0;
+        end
     end
+    input_dimensions(input_dimensions==0)=[];
     % these two lines are unnecessary so long as we dont try to use the
     % dimension struct again in this function. They are here to make sure
     % that should the function be expanded d_struct has accurate contents.
