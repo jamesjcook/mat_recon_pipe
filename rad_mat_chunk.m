@@ -69,7 +69,8 @@ pull_dir{sn}=sprintf('/%s/%s_%i.work/',data_dir,runno,scan_ids(sn));
     required_options_for_unknown_sequence,...
     options]);
 data_files{sn}=sprintf('%s/fid',pull_dir{sn});
-parfor sn=2:length(scan_ids)
+% initally was parfor because it too SOOOO long, Unfortunately we crashed(or brought to crawl) the lascola magnet.
+for sn=2:length(scan_ids)
     pull_dir{sn}=sprintf('/%s/%s_%i.work/',data_dir,runno,scan_ids(sn));
     [~,~,pda{sn}]=rad_mat(scanner,sprintf('%s_%i',runno,scan_ids(sn)),sprintf ('%s/%i',patient_id,scan_ids(sn)) ,...
         [ testing_options,partial_options,...
@@ -79,29 +80,29 @@ parfor sn=2:length(scan_ids)
     data_files{sn}=sprintf('%s/fid',pull_dir{sn});
 end
 runno_workdir= sprintf('/%s/%s.work',data_dir,runno);
-system(sprintf('mkdir -p %s',runno_workdir));
-cmd=sprintf('cp -Ppf %s/* %s',pull_dir{end},runno_workdir);
-fprintf('%s\n\n',cmd);
-system(cmd);
+if ~exist([ runno_workdir '/fid' ])
+  system(sprintf('mkdir -p %s',runno_workdir));
+  cmd=sprintf('cp -Ppf %s/* %s',pull_dir{end},runno_workdir);
+  fprintf('%s\n\n',cmd);
+  system(cmd);
 
-cmd=sprintf('rm %s/fid',runno_workdir);
-fprintf('%s\n\n',cmd);
-system(cmd);
+  cmd=sprintf('rm %s/fid',runno_workdir);
+  fprintf('%s\n\n',cmd);
+  system(cmd);
 
+  %% concatenate data to new file
+  cmd=sprintf('cat %s > %s/fid',strjoin(data_files,' '),runno_workdir);
+  fprintf('%s\n\n',cmd);
+  system(cmd);
 
-%% concatenate data to new file
-cmd=sprintf('cat %s > %s/fid',strjoin(data_files,' '),runno_workdir);
-fprintf('%s\n\n',cmd);
-system(cmd);
-
-%fh=read_headfile(sprintf('%s/bruker.headfile',runno_workdir));
-% fh=pda.headfile;
-
-
+  %fh=read_headfile(sprintf('%s/bruker.headfile',runno_workdir));
+  % fh=pda.headfile;
+end
+delete(gcp('nocreate'));
 %% customized rad_mat call
 % 
 required_options_to_multi_part=[required_options_to_multi_part,{sprintf('ray_blocks=%i', pda{end}.headfile.dim_Z*numel(scan_ids)),sprintf('dim_Z=%i',pda{end}.headfile.dim_Z*numel(scan_ids))}];
-[success_status,img, buffer]=rad_mat(scanner,runno,['rad_mat_chunk',patient_id,strjoin(strsplit(num2str(scan_is),' '),'_')],[ {'existing_data','overwrite'},...
+[success_status,img, buffer]=rad_mat(scanner,runno,['rad_mat_chunk',patient_id,strjoin(strsplit(num2str(scan_ids),' '),'_')],[ {'existing_data','overwrite'},...
     testing_options,...
     rad_mat_options,...
     rad_mat_options_full_only,...
