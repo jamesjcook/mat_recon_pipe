@@ -321,7 +321,10 @@ for o_num=1:length(options)
             e=false;
             if ~isempty(str2double(value)) && ~isnan(str2double(value))
                 value=str2double(value);
+            elseif ismatrix(eval(['[' value ']']))  % try to turn it into a matrix... 
+               value = eval(['[' value ']']);
             end
+            
             unrecognized_fields.(option)=value;
             specific_text=sprintf('%s Maybe it is used in some secondary code which did not update the allowed options here.\n continuing.',specific_text);
         end
