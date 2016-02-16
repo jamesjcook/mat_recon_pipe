@@ -660,8 +660,13 @@ alt_agilent_channel_code=true;
 data_in.line_pad=0;
 if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
     %% calculate padding for bruker
-    if ( strcmp(data_buffer.headfile.([data_prefix 'GS_info_dig_filling']),'Yes')...
-            || ~opt_struct.ignore_errors )...
+    
+    %~strcmp(data_buffer.headfile.([data_prefix 'GO_block_size']),'continuous')
+    if (  ( ~isempty(regexpi(data_buffer.headfile.([data_prefix 'GO_block_size']),'standard'))  ...
+            &&  strcmp(data_buffer.headfile.([data_prefix 'GS_info_dig_filling']),'Yes') )...
+            ) %&& ~opt_struct.ignore_errors )
+    %if ( strcmp(data_buffer.headfile.([data_prefix 'GS_info_dig_filling']),'Yes')...
+            %|| ~opt_struct.ignore_errors )
 %             && ~regexp(data_in.vol_type,'.*radial.*')  %PVM_EncZfRead=1 for fill, or 0 for no fill, generally we fill( THIS IS NOT WELL TESTED)
         %bruker data is usually padded out to a power of 2 or multiples of
         %powers of 2.
@@ -723,9 +728,12 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
         data_in=rmfield(data_in,'line_points2');
         clear mul F;
     else
-        error(['Found no pad option with bruker scan for the first time,' ...
+        data_in.line_points  = d_struct.c*data_in.ray_length;
+        %data_in.ray_blocks=*data_in.ray_blocks;
+        data_in.total_points = data_in.ray_length*data_in.rays_per_block*d_struct.c*data_in.ray_blocks;
+        warning(['Found no pad option with bruker scan for the first time,' ...
             'Tell james let this continue in test mode']);
-        
+                
 %         data_input.sample_points = data_in.ray_length*data_in.rays_per_block/d_struct.c*data_in.ray_blocks;
 %         % because data_in.ray_length is number of complex points have to doubled this.
 %         recon_strategy.min_load_size=   data_in.line_points*data_in.rays_per_block/d_struct.c*(kspace.bit_depth/8);
@@ -2655,15 +2663,15 @@ dim_text=dim_text(1:end-1);
                     end
                     %%% set param value in output
                     % if te
-                    if isfield(data_buffer.headfile,'te_sequence')
+                    if isfield(data_buffer.headfile,'te_sequence') && numel(data_buffer.headfile.te_sequence)>=pn
                         data_buffer.headfile.te=data_buffer.headfile.te_sequence(pn);
                     end
                     % if tr
-                    if isfield(data_buffer.headfile,'tr_sequence')
+                    if isfield(data_buffer.headfile,'tr_sequence') && numel(data_buffer.headfile.tr_sequence)>=pn
                         data_buffer.headfile.tr=data_buffer.headfile.tr_sequence(pn);
                     end
                     % if alpha
-                    if isfield(data_buffer.headfile,'alpha_sequence')
+                    if isfield(data_buffer.headfile,'alpha_sequence')&& numel(data_buffer.headfile.alpha_sequence)>=pn
                         data_buffer.heafdile.alpha=data_buffer.headfile.alpha_sequence(pn);
                     end
                     
@@ -2999,7 +3007,7 @@ end
 %% End of line set output
 %%% handle image return type at somepoint in future using image_return_type
 %%% option, for now we're just going to magnitude. 
-if ~isprop('data_buffer','data') 
+if ~isprop(data_buffer,'data') 
     fprintf('no data outputs\n');
     img=0;
 elseif numel(data_buffer.data)>0
