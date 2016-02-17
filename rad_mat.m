@@ -321,8 +321,14 @@ for o_num=1:length(options)
             e=false;
             if ~isempty(str2double(value)) && ~isnan(str2double(value))
                 value=str2double(value);
-            elseif ismatrix(eval(['[' value ']']))  % try to turn it into a matrix... 
-               value = eval(['[' value ']']);
+            else
+                try
+                    vx=eval(['[' value ']']); %the simplified eval statment can cause errors on string entries.
+                catch
+                end
+                if exist('vx','var') % try to turn it into a matrix...
+                    value = eval(['[' value ']']);
+                end
             end
             
             unrecognized_fields.(option)=value;
