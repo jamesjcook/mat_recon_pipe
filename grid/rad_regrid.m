@@ -42,6 +42,7 @@ end
 if  isfield (data_buffer.input_headfile,[data_tag 'rare_factor']) ...
         && data_buffer.input_headfile.([data_tag 'rare_factor'])~=1
     r=data_buffer.input_headfile.([data_tag 'rare_factor']);
+    r=1;
     % report_order=data_buffer.input_headfile.([data_tag 'axis_report_order']);
     % report order should already be handled by the dimension_order handwaving
     % which has gone on elsewhere.
@@ -205,8 +206,9 @@ permute_code=[];
             enc.(eid)=data_buffer.input_headfile.(['dim_' eid '_encoding_order']);
             enc.(eid)=enc.(eid)-min(enc.(eid))+1;
             if ~seqtest(enc.(eid))
-                warning('ENCODING BANDAID IN EFFECT, ENCODING FOR %s, SPECIFIED BUT SEQUENTIAL, IT WILL BE IGNORED!',eid);
                 encoding_sort=true;
+            else
+                warning('ENCODING BANDAID IN EFFECT, ENCODING FOR %s, SPECIFIED BUT SEQUENTIAL, IT WILL BE IGNORED!',eid);
             end
         else
             enc.(eid)=':';
