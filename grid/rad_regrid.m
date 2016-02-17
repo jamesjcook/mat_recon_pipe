@@ -26,6 +26,8 @@ if regexpi(varying_parameter,'.*echo.*')% strcmp(varying_parameter,'echos') || s
     params=data_buffer.input_headfile.ne;
 elseif strcmp(varying_parameter,'alpha')
     params=length(data_buffer.input_headfile.alpha_sequence);
+elseif strcmp(varying_parameter,'dti')
+    params=data_buffer.headfile.([data_tag 'diffusion_scans']);
 elseif strcmp(varying_parameter,'tr')
     params=length(data_buffer.input_headfile.tr_sequence);
 elseif regexpi(varying_parameter,',')

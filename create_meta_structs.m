@@ -35,6 +35,8 @@ if regexpi(varying_parameter,'.*echo.*')% strcmp(varying_parameter,'echos') || s
     d_struct.p=data_buffer.headfile.ne;
 elseif strcmp(varying_parameter,'alpha')
     d_struct.p=length(data_buffer.headfile.alpha_sequence);
+elseif strcmp(varying_parameter,'dti')
+    d_struct.p=data_buffer.headfile.([data_tag 'diffusion_scans']);
 elseif strcmp(varying_parameter,'tr')
     d_struct.p=length(data_buffer.headfile.tr_sequence);
 elseif regexpi(varying_parameter,',')
