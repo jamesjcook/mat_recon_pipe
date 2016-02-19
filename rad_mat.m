@@ -671,6 +671,22 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
     if (  ( ~isempty(regexpi(data_buffer.headfile.([data_prefix 'GO_block_size']),'standard'))  ...
             &&  strcmp(data_buffer.headfile.([data_prefix 'GS_info_dig_filling']),'Yes') )...
             ) %&& ~opt_struct.ignore_errors )
+        if ~exist('USE_REVERSE_ENGINEERED_PADDING_CALC','var')
+            warning('NEW PADDING CALCULATION IN USE, PROBABLY DOENST ACCOUNT FOR CHANNEL DATA CORRECTLY');
+            data_in.line_points  = d_struct.c*data_in.ray_length;
+            
+            
+            pad_interval=1024;
+            
+            pad_bytes=pad_interval-rem(2*data_in.line_points*(data_in.disk_bit_depth/8),pad_interval);
+            data_in.line_pad=pad_bytes/(2*(data_in.disk_bit_depth/8));
+            data_in.line_points=data_in.line_points+data_in.line_pad;
+            %             data_in.line_pad=96;%in complex samples
+            %             data_in.line_points=896;% in complex samples
+            
+            data_in.total_points = data_in.ray_length*data_in.rays_per_block*d_struct.c*data_in.ray_blocks;
+        
+        else
     %if ( strcmp(data_buffer.headfile.([data_prefix 'GS_info_dig_filling']),'Yes')...
             %|| ~opt_struct.ignore_errors )
 %             && ~regexp(data_in.vol_type,'.*radial.*')  %PVM_EncZfRead=1 for fill, or 0 for no fill, generally we fill( THIS IS NOT WELL TESTED)
@@ -733,9 +749,9 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
         % we could theoretically skip.
         data_in=rmfield(data_in,'line_points2');
         clear mul F;
+        end
     else
         data_in.line_points  = d_struct.c*data_in.ray_length;
-        %data_in.ray_blocks=*data_in.ray_blocks;
         data_in.total_points = data_in.ray_length*data_in.rays_per_block*d_struct.c*data_in.ray_blocks;
         warning(['Found no pad option with bruker scan for the first time,' ...
             'Tell james let this continue in test mode']);
@@ -966,9 +982,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         %load data with skips function, does not reshape, leave that to regridd
         %program.
         if opt_struct.debug_stop_load
-            [l,~,f]=get_dbline('rad_mat');
-            eval(sprintf('dbstop in %s at %d',f,l+3));
-            warning('Debug stop requested.');
+            db_inplace('rad_mat','Debug stop at load requested.')
         end
         time_l=tic;
         file_chunks=recon_strategy.num_chunks; %load_chunks may not be used for aything helpful, here or in load_file. ...
