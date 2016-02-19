@@ -207,7 +207,7 @@ permute_code=[];
             fprintf('Found %s encoding order\n',eid);
             enc.(eid)=data_buffer.input_headfile.(['dim_' eid '_encoding_order']);
             enc.(eid)=enc.(eid)-min(enc.(eid))+1;
-            if ~seqtest(enc.(eid))
+            if ~seqtest(enc.(eid)) || ~exist('SEQTESTBADNEVERUSEME','var')
                 encoding_sort=true;
             else
                 warning('ENCODING BANDAID IN EFFECT, ENCODING FOR %s, SPECIFIED BUT SEQUENTIAL, IT WILL BE IGNORED!',eid);
