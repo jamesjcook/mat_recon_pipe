@@ -76,6 +76,12 @@ else
     precision_bytes=0;
 end
 loads_per_chunk=chunk_size/(min_load_size+post_skip_bytes/precision_bytes);%+load_skip);
+% if ~isinteger(loads_per_chunk)
+%%%%%% IS INTEGER CHECKS CLASS TYPE!
+%if isequal(fix(loads_per_chunk),loads_per_chunk) % one possibility
+if ceil(loads_per_chunk) ~= floor(loads_per_chunk)
+    db_inplace('load_from_data_file','ERROR setting load operators: loads_per_chunk non integer but it must be an integer!')
+end
 post_skip_size=post_skip_bytes/precision_bytes;% should be 2x npoints skiped because complex.
 if mod(load_skip_bytes,precision_bytes)==0 && mod(post_skip_bytes,precision_bytes)==0  && ~force_standard
     load_skip_size=load_skip_bytes/precision_bytes;
