@@ -243,17 +243,29 @@ elseif ~isempty(regexp(data_in.vol_type,'(3D|4D)', 'once'))
                 dn=length(recon_strategy.dim_string); % EARLY EXIT OF LOOP.
             end
         end
+        %%% added to deal with bruker issues.
+        %%% need to add padding info before here. Struggling to see clean
+        %%% way  I THINK the cleanest thing to do would be to fix my
+        %%% dimstruct class to be able to set the xdim just for now.
+        %%% Trying to do a next best thing, get the non x skip dimensions,
+        %%% and their size, then prepend the x+line_pad dimension.
+        %         recon_strategy.post_skip=recon_strategy.post_skip+data_in.line_pad;
+        
+        
         skip_dims=char(skip_dims);% fix it not being a char...
-        skip_dims=['x' skip_dims];
         skip_dims=data_in.ds.Sub(skip_dims);
+        
+        skip_dims=[data_in.ds.Sub('x')+data_in.line_pad skip_dims];
+        
         sub_chunk_load_skip_dim=skip_dims;
         sub_chunk_load_skip_dim(end)=sub_chunk_load_skip_dim(end)-1;
         sub_chunk_skip_points=prod(sub_chunk_load_skip_dim);
-        recon_strategy.sub_chunk_size=2*(prod(skip_dims)-prod(sub_chunk_load_skip_dim));
-        recon_strategy.sub_chunk_skip_bytes=2*sub_chunk_skip_points*(data_in.disk_bit_depth/8);
+        
+        recon_strategy.sub_chunk_size=2*(prod(skip_dims)-sub_chunk_skip_points); % sub_chunk_size doubled! because complex!
+        recon_strategy.sub_chunk_skip_bytes=2*sub_chunk_skip_points*(data_in.disk_bit_depth/8); % convert from complex points to bytes
         recon_strategy.post_skip=recon_strategy.sub_chunk_skip_bytes;
         recon_strategy.min_load_size=recon_strategy.sub_chunk_size;%*(data_in.disk_bit_depth/8);
-        %%% do i need to double the size of load,and skip because
+                %%% do i need to double the size of load,and skip because
         %%% complex?
         %%%% have sub_chunk_skip_points, but we load each chunk in
         %%%% file. Have to pass this off to ourrecon_strat.
