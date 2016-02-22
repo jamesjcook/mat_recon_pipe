@@ -145,3 +145,15 @@ if ~isfield(procpar,'navecho'),procpar.navecho = 0;end
 procpar.navechoes = procpar.navecho*procpar.numshots/procpar.accfactor;
 
 if (verbose),disp('(readprocpar) Finished.');,end
+end
+
+function ext=getext(path)
+[p,n,ext]=fileparts(path)
+end
+
+function path=setext(path,ext,boo)
+path=[path ext];
+end
+
+
+
