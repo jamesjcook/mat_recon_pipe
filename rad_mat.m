@@ -478,7 +478,9 @@ if length(opt_struct.output_order)<length(possible_dimensions)
         end
     end
 end
-if length(opt_struct.U_dimension_order)<length(possible_dimensions)
+
+if ~islogical(opt_struct.U_dimension_order) ...
+    && length(opt_struct.U_dimension_order)<length(possible_dimensions)
     for char=1:length(possible_dimensions)
         test=strfind(opt_struct.U_dimension_order,possible_dimensions(char));
         if isempty(test)
@@ -1051,6 +1053,12 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 else
                 end
                 logm=logical(repmat( logm, length(data_buffer.data)/(data_in.line_points),1) );
+                if opt_struct.debug_stop_load
+                    warning('USING ADDIONAL MEMORY TO STORE PRE_PAD CORRECTION KSPACE');
+                    pause(3*opt_struct.warning_pause);
+                    data_buffer.addprop('padded_kspace');
+                    data_buffer.padded_kspace=reshape(data_buffer.data,[data_in.line_points data_in.input_dimensions(3:end)]);
+                end
                 data_buffer.data(logm)=[];
                 warning('padding correction applied, hopefully correctly.');
                 % could put sanity check that we are now the number of data points
@@ -1317,9 +1325,11 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         %%enhance to handle load_whole vs work_by_chunk.
         if ~opt_struct.skip_regrid
             if opt_struct.debug_stop_regrid
-%                 [l,~,f]=get_dbline('rad_mat');
-%                 eval(sprintf('dbstop in %s at %d',f,l+3));
+                warning('USING ADDIONAL MEMORY TO STORE PRE_GRID KSPACE');
+                pause(3*opt_struct.warning_pause);
                 db_inplace('rad_mat','Debug stop requested.');
+                data_buffer.addprop('unshaped_kspace');
+                data_buffer.unshaped_kspace=data_buffer.data;
             end
             if recon_strategy.num_chunks>1 && recon_strategy.recon_operations>1 %%%&& ~isempty(regexp(vol_type,'.*radial.*', 'once'))
                 data_buffer.headfile.processing_chunk=recon_num;
