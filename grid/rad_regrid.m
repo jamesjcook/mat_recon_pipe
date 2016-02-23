@@ -11,59 +11,116 @@ function rad_regrid(data_buffer,c_dims)
 % t=time
 
 %% get dimensions and dimension codes. 
-data_tag=data_buffer.input_headfile.S_scanner_tag;
+data_tag=data_buffer.headfile.S_scanner_tag;
 
-x=data_buffer.input_headfile.dim_X;
-y=data_buffer.input_headfile.dim_Y;
-z=data_buffer.input_headfile.dim_Z;
-channels=data_buffer.input_headfile.([data_tag 'channels'] );
-if isfield (data_buffer.input_headfile,[data_tag 'varying_parameter'])
-    varying_parameter=data_buffer.input_headfile.([data_tag 'varying_parameter']);
+x=data_buffer.headfile.dim_X;
+y=data_buffer.headfile.dim_Y;
+z=data_buffer.headfile.dim_Z;
+channels=data_buffer.headfile.([data_tag 'channels'] );
+if isfield (data_buffer.headfile,[data_tag 'varying_parameter'])
+    varying_parameter=data_buffer.headfile.([data_tag 'varying_parameter']);
 else
     varying_parameter='';
 end
 if regexpi(varying_parameter,'.*echo.*')% strcmp(varying_parameter,'echos') || strcmp(varying_parameter,'echoes')
-    params=data_buffer.input_headfile.ne;
+    params=data_buffer.headfile.ne;
 elseif strcmp(varying_parameter,'alpha')
-    params=length(data_buffer.input_headfile.alpha_sequence);
+    params=length(data_buffer.headfile.alpha_sequence);
 elseif strcmp(varying_parameter,'dti')
     params=data_buffer.headfile.([data_tag 'diffusion_scans']);
 elseif strcmp(varying_parameter,'tr')
-    params=length(data_buffer.input_headfile.tr_sequence);
+    params=length(data_buffer.headfile.tr_sequence);
 elseif regexpi(varying_parameter,',')
     error('MULTI VARYING PARAMETER ATTEMPTED:%s THIS HAS NOT BEEN DONE BEFORE.',varying_parameter);
 else
     fprintf('No varying parameter\n');
     params=1;
 end
-timepoints=data_buffer.input_headfile.([data_tag 'volumes'])/channels/params;
-dim_order=data_buffer.input_headfile.([data_tag 'dimension_order' ]);
-if numel(c_dims)<numel(dim_order)
+timepoints=data_buffer.headfile.([data_tag 'volumes'])/channels/params;
+dim_order=data_buffer.headfile.([data_tag 'dimension_order' ]);
+if exist('c_dims','var')
+    warning('Force using c_dims!');
     dim_order=c_dims;
 end
-if  isfield (data_buffer.input_headfile,[data_tag 'rare_factor']) ...
-        && data_buffer.input_headfile.([data_tag 'rare_factor'])~=1
-    r=data_buffer.input_headfile.([data_tag 'rare_factor']);
-    r=1;
-    % report_order=data_buffer.input_headfile.([data_tag 'axis_report_order']);
+% if numel(c_dims)<numel(dim_order)
+%     dim_order=c_dims;
+% end
+if  isfield (data_buffer.headfile,[data_tag 'rare_factor']) ...
+        && data_buffer.headfile.([data_tag 'rare_factor'])~=1
+    r=data_buffer.headfile.([data_tag 'rare_factor']);
+    if r>1
+        warning('Respecing rare factor setting for now!');
+    else
+        r=1;
+    end
+    % report_order=data_buffer.headfile.([data_tag 'axis_report_order']);
     % report order should already be handled by the dimension_order handwaving
     % which has gone on elsewhere.
     dim_order_init=dim_order;
     dim_order=char(zeros(1,numel(dim_order_init)+1));
     output_order_init=data_buffer.headfile.('rad_mat_option_output_order');
     output_order=char(zeros(1,numel(output_order_init)+1));
-    for d_num=1:numel(dim_order_init)
-        dim_order(d_num)=dim_order_init(d_num);
-        output_order(d_num)=output_order_init(d_num);
-        if strcmp(dim_order_init(d_num),'c')
-            dim_order(d_num+1)='r';
-            dim_order(d_num+2:d_num+2+numel(dim_order_init(d_num+1:end))-1)=dim_order_init(d_num+1:end);
-            output_order(d_num+1)='r';
-            output_order(d_num+2:d_num+2+numel(output_order_init(d_num+1:end))-1)=output_order_init(d_num+1:end);
-            break
+    if exist('old_r_dim_handler','var')
+        for d_num=1:numel(dim_order_init)
+            dim_order(d_num)=dim_order_init(d_num);
+            output_order(d_num)=output_order_init(d_num);
+            if strcmp(dim_order_init(d_num),'c')
+                dim_order(d_num+1)='r';
+                dim_order(d_num+2:d_num+2+numel(dim_order_init(d_num+1:end))-1)=dim_order_init(d_num+1:end);
+                output_order(d_num+1)='r';
+                output_order(d_num+2:d_num+2+numel(output_order_init(d_num+1:end))-1)=output_order_init(d_num+1:end);
+                break
+            end
         end
+    elseif exist('non_loopy_version','var')
+        rare_dim_preface='y';
+        for d_num=1:numel(dim_order_init)
+            dim_order(d_num)=dim_order_init(d_num);
+            output_order(d_num)=output_order_init(d_num);
+            if strcmp(dim_order_init(d_num),rare_dim_preface)
+                dim_order(d_num+1)=dim_order(d_num);% add current behind self
+                dim_order(d_num)='r'; % replace current with r
+                %%% do same to output
+                output_order(d_num+1)=output_order_init(d_num);
+                output_order(d_num)='r';
+                
+                dim_order(d_num+2:d_num+2+numel(dim_order_init(d_num+1:end))-1)=dim_order_init(d_num+1:end);
+                
+                output_order(d_num+2:d_num+2+numel(output_order_init(d_num+1:end))-1)=output_order_init(d_num+1:end);
+                break
+            end
+        end
+    else
+        %%%% IN TESTING< 
+        % original version was cr  to ?
+        % dim_y_encoding->1:136
+        % alex vtr scans, ry to rc is wong, but looks pretty good.... 
+        % kspace comes out cut in half. 
+        % trying rc, to rc, also wrong, but looks ok, using
+        % trying rc to cr, also wrong, again some images look ok.
+        % trying ry to yr, also wrong, again, some images look ok
+        % modaeratly confident with ry 
+        % trying ry to cr
+        % ORIGINAL IS cr, to yr! AND IGNORING OUR ENCODING IN Y.
+        
+        % TRYING ry to yr, didnt work!
+        % trying rp to yr, Seems to work.
+        
+        rare_dim_preface='p';
+        do_idx=strfind(dim_order_init,rare_dim_preface);
+%         dim_order=char(1,numel(dim_order_init)+1);
+        % order is rD
+        dim_order=[ dim_order_init(1:do_idx-1) 'r' dim_order_init(do_idx:end)];
+        % order is Dr
+        % dim_order=[ dim_order_init(1:do_idx) 'r' dim_order_init(do_idx+1:end)];
+        rare_dim_preface='y';
+        oo_idx=strfind(output_order_init,rare_dim_preface);
+        % order is rD
+%         output_order=[ output_order_init(1:oo_idx-1) 'r' output_order_init(oo_idx:end)];
+        % order is Dr
+        output_order=[ output_order_init(1:oo_idx) 'r' output_order_init(oo_idx+1:end)];
+        
     end
-    
 else
     r=1;
     output_order=data_buffer.headfile.('rad_mat_option_output_order');
@@ -121,7 +178,7 @@ permute_code=[];
     
     % dimension order should be set in the headfile by the dumpheader perl
     % function.
-    % dim_placement=data_buffer.input_headfile.permute_code;
+    % dim_placement=data_buffer.headfile.permute_code;
     %xcprzyt
     d_struct.y=d_struct.y/d_struct.r;
     input_dimensions=zeros(size(dim_order));
@@ -177,7 +234,10 @@ permute_code=[];
     % end
     
     %following reshape is what remove rare facor dimension
+        % formerly used this, switched it up while fixing john and alex
+        % scans. 
         data_buffer.data=reshape(data_buffer.data,output_dimensions(1:numel(c_dims)));% x yr z c
+        %data_buffer.data=reshape(data_buffer.data,output_dimensions); %(1:numel(c_dims)));% x yr z c
     %%%%%
     %%%%%
     %squeeze data, might cause issues!
@@ -203,23 +263,28 @@ permute_code=[];
     es_f={'X','Y','Z'};
     for es_n=1:length(es_f) % foreach encoding X Y Z
         eid=es_f{es_n}; %encoding letter.
-        if isfield(data_buffer.input_headfile,['dim_' eid '_encoding_order'])
+        if isfield(data_buffer.headfile,['dim_' eid '_encoding_order'])
             fprintf('Found %s encoding order\n',eid);
-            enc.(eid)=data_buffer.input_headfile.(['dim_' eid '_encoding_order']);
+            enc.(eid)=data_buffer.headfile.(['dim_' eid '_encoding_order']);
             enc.(eid)=enc.(eid)-min(enc.(eid))+1;
-            if ~seqtest(enc.(eid)) || ~exist('SEQTESTBADNEVERUSEME','var')
+            if ~isempty(regexpi(data_buffer.headfile.S_PSDname,'rare|vtr')) && strcmp(eid,'Y')
+                warning('I AM IGNORING YOUR ENCODING ORDER IN Y! BECAUASE S_PSDname(%s) is rare or vtr', data_buffer.headfile.S_PSDname);
+                pause(3*data_buffer.headfile.rad_mat_option_warning_pause);
+                enc.(eid)=':';
+            elseif ~seqtest(enc.(eid)) || ~exist('SEQTESTBADNEVERUSEME','var')
                 encoding_sort=true;
             else
                 warning('ENCODING BANDAID IN EFFECT, ENCODING FOR %s, SPECIFIED BUT SEQUENTIAL, IT WILL BE IGNORED!',eid);
+                enc.(eid)=':';
             end
         else
             enc.(eid)=':';
         end
     end
     if exist('barkeala','var')
-        if isfield(data_buffer.input_headfile,'dim_X_encoding_order')
+        if isfield(data_buffer.headfile,'dim_X_encoding_order')
             fprintf('Found X encoding order\n');
-            xenc=data_buffer.input_headfile.dim_X_encoding_order;
+            xenc=data_buffer.headfile.dim_X_encoding_order;
             xenc=xenc+min(xenc)+1;
             if ~seqtest(xenc)
                 warning('ENCODING BANDAID IN EFFECT, ENCODING %s,SPECIFIED BUT SEQUENTIAL, SO IT WAS IGNORED!',enc.(eid));
@@ -228,9 +293,9 @@ permute_code=[];
         else
             xenc=':';
         end
-        if isfield(data_buffer.input_headfile,'dim_Y_encoding_order')
+        if isfield(data_buffer.headfile,'dim_Y_encoding_order')
             fprintf('Found Y encoding order\n');
-            yenc=data_buffer.input_headfile.dim_Y_encoding_order;
+            yenc=data_buffer.headfile.dim_Y_encoding_order;
             yenc=yenc-min(yenc)+1;
             if ~seqtest(yenc)
                 warning('ENCODING BANDAID IN EFFECT, ENCODING %s,SPECIFIED BUT SEQUENTIAL, SO IT WAS IGNORED!',enc.(eid));
@@ -239,9 +304,9 @@ permute_code=[];
         else
             yenc=':';
         end
-        if isfield(data_buffer.input_headfile,'dim_Z_encoding_order')
+        if isfield(data_buffer.headfile,'dim_Z_encoding_order')
             fprintf('Found Z encoding order\n');
-            zenc=data_buffer.input_headfile.dim_Z_encoding_order;
+            zenc=data_buffer.headfile.dim_Z_encoding_order;
             zenc=zenc-min(zenc)+1;
             if ~seqtest(zenc)
                 encoding_sort=true;
