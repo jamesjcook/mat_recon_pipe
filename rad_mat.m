@@ -153,6 +153,7 @@ beta_options={
     'unrecognized_ok',        ' special option which must be early in list of options, controls whether arbitrary options are an error, this is so that alternate child functions could be passed the opt_struct variable and would work from there. This is also the key to inserting values into the headfile to override what our perlscript generates. '
     'debug_mode',             ' verbosity. use debug_mode=##'
     'study',                  ' set the bruker study to pull from, useful if puller fails to find the correct data'
+    'use_new_bruker_padding', ' use padding calculation based on information from john. Sometimes this will help a scan get through. Its missing one critiacl piece from bruker, where they tell us which dimensions are lumpte dtogether before paddint.  '
     'U_dimension_order',      ' input_dimension_order will override whatever the perl script comes up with.'
     'vol_type_override',      ' if the processing script fails to guess the proper acquisition type(2D|3D|4D|radial) it can be specified.'
     'kspace_shift',           ' x:y:z shift of kspace, use kspace_shift=##:##:##' 
@@ -673,7 +674,8 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
     if (  ( ~isempty(regexpi(data_buffer.headfile.([data_prefix 'GO_block_size']),'standard'))  ...
             &&  strcmp(data_buffer.headfile.([data_prefix 'GS_info_dig_filling']),'Yes') )...
             ) %&& ~opt_struct.ignore_errors )
-        if ~exist('USE_REVERSE_ENGINEERED_PADDING_CALC','var')
+        %if ~exist('USE_REVERSE_ENGINEERED_PADDING_CALC','var')
+        if opt_struct.use_new_bruker_padding
             warning('NEW PADDING CALCULATION IN USE, PROBABLY DOENST ACCOUNT FOR CHANNEL DATA CORRECTLY');
             data_in.line_points  = d_struct.c*data_in.ray_length;
             
