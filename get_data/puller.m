@@ -9,7 +9,7 @@ if ~exist('output','var')
         output=data_buffer.headfile.work_dir_path;
     end
 else
-    data_buffer.headfile.work_dir_path=output;
+   % data_buffer.headfile.work_dir_path=output;
 end
 
 if opt_struct.overwrite
