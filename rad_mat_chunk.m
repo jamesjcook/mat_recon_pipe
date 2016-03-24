@@ -49,7 +49,7 @@ if ~strcmp(scanner,'nemo')...
         && ~strcmp(scanner,'centospc')
     error('THIS HAS ONLY BEEN DONE ON THE BRUKER SCANNER NEMO. WE ONLY EXPECT IT TO WORK ON THE nemo OR centospc SCANNER!');
 end
-rad_mat_options={'warning_pause=0',['param_file=rad_mat_chunk_',patient_id,strjoin(strsplit(num2str(scan_ids),' '),'_')]};
+rad_mat_options={'warning_pause=0',['param_file=rad_mat_chunk_',patient_id,strjoin(strsplit(num2str(scan_ids),' '),'_'),'.param']};
 rad_mat_options_full_only={};
 %% options for rad mat split up into chunks.
 required_options_for_unknown_sequence={'debug_mode=50'};
