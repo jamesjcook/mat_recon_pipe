@@ -394,7 +394,9 @@ if opt_struct.skip_load
     opt_struct.skip_regrid=true;
     opt_struct.write_kimage=false;
     opt_struct.write_kimage_unfiltered=false;
-    opt_struct.skip_write=true;
+    if ~opt_struct.reprocess_rp
+        opt_struct.skip_write=true;
+    end
 end
 if opt_struct.skip_write_civm_raw &&...
         ~opt_struct.write_complex &&... 
@@ -639,8 +641,13 @@ elseif isunix
 elseif ispc   
     df_field=4;
 end
-[~,local_space_bytes] = unix(['df ',data_buffer.engine_constants.engine_work_directory,' | tail -1 | awk ''{print $' num2str(df_field) '}'' ']);
+% [~,local_space_bytes] = unix(['df ',data_buffer.engine_constants.engine_work_directory,' | tail -1 | awk ''{print $' num2str(df_field) '}'' ']);
+[~,local_space_bytes] = system(['df ',data_buffer.engine_constants.engine_work_directory,' | tail -1 | awk ''{print $' num2str(df_field) '}'' ']);
 local_space_bytes=512*str2double(local_space_bytes); %this converts to bytes because default blocksize=512 byte
+if isnan(local_space_bytes)
+    db_inplace('rad_mat','some kinda error finding free disk space');
+end
+
 fprintf('Available disk space is %0.2fMB\n',local_space_bytes/1024/1024);
 if data_out.disk_total_bytes<local_space_bytes|| opt_struct.ignore_errors
     fprintf('\t... Proceding with plenty of disk space.\n');
