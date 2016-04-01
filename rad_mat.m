@@ -202,6 +202,8 @@ planned_options={
     'fp32_magnitude',         ' write fp32 civm raws instead of the normal ones'
     'write_kimage',           ' write the regridded and filtered kspace data to the work directory.'
     'write_kimage_unfiltered',' write the regridded unfiltered   kspace data to the work direcotry.'
+    'write_complex_component',' write the complex image outputs by compnent.'
+    'write_mat_format',       ' write the complex image components in mat format'
     'matlab_parallel',        ' use the matlab pool to parallelize.'
     'reprocess_rp',           ' load and reprocess rp file saved by write_complex. Mostly useful in case of error on write or process interruption.'
     'ignore_errors',          ' will try to continue regarless of any error'
@@ -402,7 +404,8 @@ if opt_struct.skip_write_civm_raw &&...
         ~opt_struct.write_complex &&... 
         ~opt_struct.write_phase &&...
         ~opt_struct.write_unscaled &&...
-        ~opt_struct.write_unscaled_nD
+        ~opt_struct.write_unscaled_nD  && ...
+        ~opt_struct.write_complex_component
     %         ~opt_struct.write_kimage &&...
     %         ~opt_struct.write_kimage_unfiltered &&...
     opt_struct.skip_fft=true;
@@ -2419,7 +2422,10 @@ dim_text=dim_text(1:end-1);
             end
                            
             %% pull single vol to save
-            if ( opt_struct.write_complex || opt_struct.write_unscaled || ~opt_struct.skip_write_civm_raw) ...
+            if ( opt_struct.write_complex ...
+                    || opt_struct.write_complex_component ...
+                    || opt_struct.write_unscaled ...
+                    || ~opt_struct.skip_write_civm_raw) ...
                     &&( ~opt_struct.skip_recon  || opt_struct.reprocess_rp )
                 fprintf('Extracting image channel:%0.0f param:%0.0f timepoint:%0.0f\n',d_s.c,d_s.p,d_s.t);
                 tmp=data_buffer.data;
@@ -2465,7 +2471,24 @@ dim_text=dim_text(1:end-1);
                 fprintf('\twrite_complex (radish_format) save\n');
                 save_complex(tmp,[ work_dir_img_path opt_struct.filter_imgtag '.rp.out']);
             end
-            
+
+            %%% write imaginary and real components of complex data
+            if opt_struct.write_complex_component && ~opt_struct.skip_recon
+                if ~opt_struct.write_mat_format
+                    fov = [data_buffer.headfile.fovx,...
+                        data_buffer.headfile.fovy,...
+                        data_buffer.headfile.fovz];
+                    voxsize = fov./[data_buffer.headfile.dim_X data_buffer.headfile.dim_Y data_buffer.headfile.dim_Z];
+                    origin=first_voxel_offset.*voxsize;
+                    save_nii(make_nii(imag(tmp),voxsize,origin./voxsize-size(tmp)/2),[work_dir_img_path opt_struct.filter_imgtag '_i.nii']);
+                    save_nii(make_nii(real(tmp),voxsize,origin./voxsize-size(tmp)/2),[work_dir_img_path opt_struct.filter_imgtag '_r.nii']);
+                    write_headfile([work_dir_img_path opt_struct.filter_imgtag '_cplx_c.headfile'],data_buffer.headfile,0);
+                else
+                    save([work_dir_img_path opt_struct.filter_imgtag '.mat'],'img_imaginary','img_real','-v7.3');
+                    write_headfile([work_dir_img_path opt_struct.filter_imgtag '_mat.headfile'],data_buffer.headfile,0);
+                end
+                clear img_real img_imaginary;
+            end
             if opt_struct.write_phase && ~opt_struct.skip_recon
                 fprintf('\twrite_phase \n');
                 nii=make_nii(angle(tmp), [ ...
@@ -2491,6 +2514,7 @@ dim_text=dim_text(1:end-1);
                 save_nii(nii,[work_dir_img_path opt_struct.filter_imgtag '.nii']);
                 clear nii;
             end
+            
             %% civmraw save
             if ~exist(space_dir_img_folder,'dir') || opt_struct.ignore_errors
                 if ~opt_struct.skip_write_civm_raw || ~opt_struct.skip_write_headfile
@@ -2588,7 +2612,11 @@ dim_text=dim_text(1:end-1);
                     dim_select.p=pn;
                     
                     %% pull single vol to save
-                    if ~opt_struct.skip_recon && ( opt_struct.write_complex || opt_struct.write_unscaled || ~opt_struct.skip_write_civm_raw)
+                    if ~opt_struct.skip_recon && ( ...
+                            opt_struct.write_complex ...
+                            || opt_struct.write_complex_component ...
+                            || opt_struct.write_unscaled ...
+                            || ~opt_struct.skip_write_civm_raw)
                         fprintf('Extracting image channel:%0.0f param:%0.0f timepoint:%0.0f\n',cn,pn,tn);
                         if ~isempty(regexp(data_in.vol_type,'.*radial.*', 'once')) && strcmp(opt_struct.regrid_method,'scott')&& recon_num==1
                             oo=[ data_out.ds.Rem('c') 'c'];
@@ -2651,7 +2679,7 @@ dim_text=dim_text(1:end-1);
                         fprintf('Integrated Rolling code\n');
                         channel_code_r=[channel_code '_'];
                         if ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X' ])
-                            input_center=get_wrapped_volume_center(tmp);
+                            [input_center,first_voxel_offset]=get_wrapped_volume_center(tmp);
                             ideal_center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
                             shift_values=ideal_center-input_center;
                             for di=1:length(shift_values)
@@ -2668,12 +2696,15 @@ dim_text=dim_text(1:end-1);
                             data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' ])
                             data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' ])
                             ];
+                         
                             fprintf('\tExisting Roll value\n');
                         end
                         fprintf('\tshift by :');
                         fprintf('%d,',shift_values);
                         fprintf('\n');
                         tmp=circshift(tmp,round(shift_values));
+                    else
+                        first_voxel_offset=[1,1,1]; % this maybe should be 0,0,0
                     end
                     m_number=(tn-1)*d_struct.p+pn-1;
                     if d_struct.t> 1 || d_struct.p >1
@@ -2732,6 +2763,37 @@ dim_text=dim_text(1:end-1);
                         fprintf('\twrite_complex (radish_format) save\n');
                         save_complex(tmp,[ work_dir_img_path '.rp.out']);
                     end
+                    %%% write imaginary and real components of complex data
+                    if opt_struct.write_complex_component && ~opt_struct.skip_recon
+                        if ~opt_struct.write_mat_format
+                            fov = [data_buffer.headfile.fovx,...
+                                data_buffer.headfile.fovy,...
+                                data_buffer.headfile.fovz];
+                            voxsize = fov./[data_buffer.headfile.dim_X data_buffer.headfile.dim_Y data_buffer.headfile.dim_Z];
+%                             input_center
+% [input_center,roll_3d_val_new]=get_wrapped_volume_center(data_buffer.data,ctype);
+%                             roll_keys={'roll_corner_X','roll_corner_Y','roll_first_Z'};
+%                             input_shift=zeros(1,length(roll_keys));
+%                             for rk=1:length(roll_keys)
+%                                 if ~isfield(data_buffer.headfile,roll_keys{rk})
+%                                     data_buffer.headfile.(roll_keys{rk})=1;
+%                                 end
+%                                 input_shift(rk)=data_buffer.headfile.(roll_keys{rk});
+%                             end;clear rk;
+%                             total_shift=roll_3d_val_new+input_shift-1;
+%                             first_voxel_offset=dimoverflow(total_shift,size(tmp),3);
+%                             [data_buffer.headfile.roll_change,data_buffer.headfile.first_voxel_offset] = reroll_img(data_buffer,roll_keys,0);
+                            origin=first_voxel_offset.*voxsize;
+                            save_nii(make_nii(imag(tmp),voxsize,origin./voxsize-size(tmp)/2),[work_dir_img_path opt_struct.filter_imgtag '_i.nii']);
+                            save_nii(make_nii(real(tmp),voxsize,origin./voxsize-size(tmp)/2),[work_dir_img_path opt_struct.filter_imgtag '_r.nii']);
+                            write_headfile([work_dir_img_path opt_struct.filter_imgtag '_cplx_c.headfile'],data_buffer.headfile,0);
+                        else
+                            save([work_dir_img_path opt_struct.filter_imgtag '.mat'],'img_imaginary','img_real','-v7.3');
+                            write_headfile([work_dir_img_path opt_struct.filter_imgtag '_mat.headfile'],data_buffer.headfile,0);
+                        end
+                        clear img_real img_imaginary;
+                    end
+                    
                     if opt_struct.write_phase && ~opt_struct.skip_recon
                         fprintf('\twrite_phase \n');
                         nii=make_nii(angle(tmp), [ ...
