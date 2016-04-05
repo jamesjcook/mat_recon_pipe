@@ -201,8 +201,10 @@ planned_options={
     'write_phase',            ' write a phase output to the work directory'
     'fp32_magnitude',         ' write fp32 civm raws instead of the normal ones'
     'write_kimage',           ' write the regridded and filtered kspace data to the work directory.'
+    'write_kspace_complex',   ' instead of a kspace magnitude, write it as a complex nifti'
     'write_kimage_unfiltered',' write the regridded unfiltered   kspace data to the work direcotry.'
     'write_complex_component',' write the complex image outputs by compnent.'
+    'nifti_complex_only',     ' do not write rp.outs'
     'write_mat_format',       ' write the complex image components in mat format'
     'matlab_parallel',        ' use the matlab pool to parallelize.'
     'reprocess_rp',           ' load and reprocess rp file saved by write_complex. Mostly useful in case of error on write or process interruption.'
@@ -1725,13 +1727,17 @@ dim_text=dim_text(1:end-1);
             %             end
             %             if opt_struct.write_kimage && ~opt_struct.skip_filter && ~opt_struct.skip_load
             fprintf('\twrite_kimage make_nii\n');
-            nii=make_nii(log(abs(squeeze(data_buffer.data))));
+            if ~opt_struct.write_kspace_complex
+                nii=make_nii(log(abs(squeeze(data_buffer.data))));
+            else
+                nii=make_nii(data_buffer.data);
+            end
             fprintf('\t\t save_nii\n');
             kimg_code='';
             if recon_strategy.recon_operations>1 || length(recon_strategy.recon_operations)>1
                 kimg_code=sprintf(['_%' num2str(length(recon_strategy.recon_operations)) 'd'],recon_num);
             end
-            save_nii(nii,[work_dir_img_path_base kimg_code '_kspace.nii']);clear nii;
+            save_nii(nii,[work_dir_img_path_base kimg_code '_kimage.nii']);clear nii;
         end       
         %% fft, resort, cut bad data, and display
         if ~opt_struct.skip_fft
@@ -2437,11 +2443,11 @@ dim_text=dim_text(1:end-1);
             end
             %% integrated rolling
             %
-            if opt_struct.integrated_rolling
+            if opt_struct.integrated_rolling && numel(tmp)>=1024
                 fprintf('Integrated Rolling code\n');
                 channel_code_r=[channel_code '_'];
                 if ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X' ])
-                    input_center=get_wrapped_volume_center(tmp);
+                    [input_center,first_voxel_offset]=get_wrapped_volume_center(tmp);
                     ideal_center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
                     shift_values=ideal_center-input_center;
                     for di=1:length(shift_values)
@@ -2464,14 +2470,13 @@ dim_text=dim_text(1:end-1);
                 fprintf('%d,',shift_values);
                 fprintf('\n');
                 tmp=circshift(tmp,round(shift_values));
+            elseif numel(tmp)<1024
+                db_inplace('rad_mat','dataset wrong size, cannot continue');
+            else
+                first_voxel_offset=[0,0,0];
             end
             %% save types.
             %% complex save
-            if ( opt_struct.write_complex  || recon_strategy.work_by_chunk || recon_strategy.work_by_sub_chunk ) && ~opt_struct.skip_recon && ~opt_struct.skip_load
-                fprintf('\twrite_complex (radish_format) save\n');
-                save_complex(tmp,[ work_dir_img_path opt_struct.filter_imgtag '.rp.out']);
-            end
-
             %%% write imaginary and real components of complex data
             if opt_struct.write_complex_component && ~opt_struct.skip_recon
                 if ~opt_struct.write_mat_format
@@ -2489,6 +2494,12 @@ dim_text=dim_text(1:end-1);
                 end
                 clear img_real img_imaginary;
             end
+            if ( opt_struct.write_complex  || recon_strategy.work_by_chunk || recon_strategy.work_by_sub_chunk ) ...
+                    && ~opt_struct.skip_recon && ~opt_struct.skip_load && ~opt_struct.nifti_complex_only
+                fprintf('\twrite_complex (radish_format) save\n');
+                save_complex(tmp,[ work_dir_img_path opt_struct.filter_imgtag '.rp.out']);
+            end
+
             if opt_struct.write_phase && ~opt_struct.skip_recon
                 fprintf('\twrite_phase \n');
                 nii=make_nii(angle(tmp), [ ...
@@ -2704,7 +2715,7 @@ dim_text=dim_text(1:end-1);
                         fprintf('\n');
                         tmp=circshift(tmp,round(shift_values));
                     else
-                        first_voxel_offset=[1,1,1]; % this maybe should be 0,0,0
+                        first_voxel_offset=[0,0,0]; % this maybe should be 0,0,0
                     end
                     m_number=(tn-1)*d_struct.p+pn-1;
                     if d_struct.t> 1 || d_struct.p >1
@@ -2759,10 +2770,6 @@ dim_text=dim_text(1:end-1);
                     
                     %% save types.
                     %%% complex save
-                    if opt_struct.write_complex && ~opt_struct.skip_recon
-                        fprintf('\twrite_complex (radish_format) save\n');
-                        save_complex(tmp,[ work_dir_img_path '.rp.out']);
-                    end
                     %%% write imaginary and real components of complex data
                     if opt_struct.write_complex_component && ~opt_struct.skip_recon
                         if ~opt_struct.write_mat_format
@@ -2793,7 +2800,10 @@ dim_text=dim_text(1:end-1);
                         end
                         clear img_real img_imaginary;
                     end
-                    
+                    if opt_struct.write_complex && ~opt_struct.skip_recon && ~opt_struct.nifti_complex_only
+                        fprintf('\twrite_complex (radish_format) save\n');
+                        save_complex(tmp,[ work_dir_img_path '.rp.out']);
+                    end
                     if opt_struct.write_phase && ~opt_struct.skip_recon
                         fprintf('\twrite_phase \n');
                         nii=make_nii(angle(tmp), [ ...
@@ -2809,7 +2819,9 @@ dim_text=dim_text(1:end-1);
                     if isprop(data_buffer,'kspace')
                     if opt_struct.write_kimage && ~opt_struct.skip_filter && ~opt_struct.skip_load
                         fprintf('\twrite_kimage make_nii\n');
-                        nii=make_nii(log(abs(data_buffer.kspace(...
+                        
+                        if ~opt_struct.write_kspace_complex
+                            nii=make_nii(log(abs(data_buffer.kspace(...
                                 dim_select.(opt_struct.output_order(1)),...
                                 dim_select.(opt_struct.output_order(2)),...
                                 dim_select.(opt_struct.output_order(3)),...
@@ -2817,8 +2829,18 @@ dim_text=dim_text(1:end-1);
                                 dim_select.(opt_struct.output_order(5)),...
                                 dim_select.(opt_struct.output_order(6))...
                                 ))));
+                        else
+                            nii=make_nii(((data_buffer.kspace(...
+                                dim_select.(opt_struct.output_order(1)),...
+                                dim_select.(opt_struct.output_order(2)),...
+                                dim_select.(opt_struct.output_order(3)),...
+                                dim_select.(opt_struct.output_order(4)),...
+                                dim_select.(opt_struct.output_order(5)),...
+                                dim_select.(opt_struct.output_order(6))...
+                                ))));
+                        end
                         fprintf('\t\t save_nii\n');
-                        save_nii(nii,[work_dir_img_path '_kspace.nii']);
+                        save_nii(nii,[work_dir_img_path '_kimage.nii']);
                     end
                     end
                     if isprop(data_buffer,'kspace_unfiltered')
