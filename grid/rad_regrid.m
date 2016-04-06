@@ -342,11 +342,11 @@ permute_code=[];
         kslice(1:ds(1),ds(2)+1:end)=mv.xz;
         figure(300);
         imshow(kslice');
-        if exist('align_figure','file')==2
-            align_figure([mf.xy,mf.yz,mf.xz]);
-        else
-            disp('missing align_figure function');
-        end
+%         if exist('align_figure','file')==2
+%             align_figure([mf.xy,mf.yz,mf.xz]);
+%         else
+%             disp('missing align_figure function');
+%         end
         clear ds mf mv;
         if isfield(data_buffer.headfile,'rad_mat_option_debug_mode')  &&  data_buffer.headfile.rad_mat_option_debug_mode>20
             pause_len=3+2*data_buffer.headfile.rad_mat_option_warning_pause;
