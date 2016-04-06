@@ -316,7 +316,44 @@ permute_code=[];
         end
     end
     if encoding_sort
-        data_buffer.data(enc.X,enc.Y,enc.Z,:,:,:)=data_buffer.data;
+        warning('APPLING DATA RESORTING. PLEASE LOOK AT FIGURES, IT SHOULD LOOK LIKE KSPACE IF IT DOESNT STOP THIS RECON AND GET JAMES.!');
+        close all;
+        %         data_buffer.data(enc.X,enc.Y,enc.Z,:,:,:)=data_buffer.data; %THIS WAS WRONG FOR JOHNS CHUNK BRAIN FOR SOME REASON!!! WHY DID I DO THIS IN THE FIRST PLACE. ;
+        data_buffer.data=data_buffer.data(enc.X,enc.Y,enc.Z,:,:,:);
+        ds=size(data_buffer.data);
+        %         mf.xy=figure(201);
+        %         imshow(squeeze(log(abs(data_buffer.data(:,:,round(ds(3)/2))))))
+        %         mf.yz=figure(202);
+        %         imshow(squeeze(log(abs(data_buffer.data(round(ds(1)/2),:,:)))))
+        %         mf.xz=figure(203);
+        %         imshow(squeeze(log(abs(data_buffer.data(:,round(ds(2)/2),:)))))
+        
+        
+        %         mf.xy=figure(201);
+        mv.xy=squeeze(log(abs(data_buffer.data(:,:,round(ds(3)/2)))));
+        %         mf.yz=figure(202);
+        mv.yz=squeeze(log(abs(data_buffer.data(round(ds(1)/2),:,:))));
+        %         mf.xz=figure(203);
+        mv.xz=squeeze(log(abs(data_buffer.data(:,round(ds(2)/2),:))));
+        kslice=zeros(x+z,y+z);
+        kslice(:)=min([mv.xy(:);mv.yz(:);mv.xz(:)]);
+        kslice(1:ds(1),1:ds(2))=mv.xy;
+        kslice(ds(1)+1:ds(1)+ds(3),1:ds(2))=mv.yz';
+        kslice(1:ds(1),ds(2)+1:end)=mv.xz;
+        figure(300);
+        imshow(kslice');
+        if exist('align_figure','file')==2
+            align_figure([mf.xy,mf.yz,mf.xz]);
+        else
+            disp('missing align_figure function');
+        end
+        clear ds mf mv;
+        if isfield(data_buffer.headfile,'rad_mat_option_debug_mode')  &&  data_buffer.headfile.rad_mat_option_debug_mode>20
+            pause_len=3+2*data_buffer.headfile.rad_mat_option_warning_pause;
+        else
+            pause_len=3*data_buffer.headfile.rad_mat_option_warning_pause;
+        end
+        pause(pause_len);
     end
 else
     %% radial regridding.
