@@ -2254,7 +2254,7 @@ dim_text=dim_text(1:end-1);
     rp_path=[work_dir_img_path opt_struct.filter_imgtag '.rp.out'];
     if ~exist('rp_path','file')
         rp_path=rp_path2;
-        opt_struct.skip_filter=false;
+%         opt_struct.skip_filter=false;
     end
         
     if opt_struct.skip_load && opt_struct.reprocess_rp ...
