@@ -1437,13 +1437,13 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                     dim_text=[dim_text '1:end-1,'];
                 end
             end
-%             dims=size(data_buffer.data);
-dim_text=dim_text(1:end-1);
-%%% this eval is an ugly way to handle our remove slice problem, a good
-%%% solution should be found in the future. 
+            %             dims=size(data_buffer.data);
+            dim_text=dim_text(1:end-1);
+            %%% this eval is an ugly way to handle our remove slice problem, a good
+            %%% solution should be found in the future.
             data_buffer.data=eval([ 'data_buffer.data(' dim_text ')']);
-%             dims(strfind(opt_struct.output_order,'z'))=dims(strfind(opt_struct.output_order,'z'))-1;
-%             data_buffer.data=reshape(data_buffer.data,dims);
+            %             dims(strfind(opt_struct.output_order,'z'))=dims(strfind(opt_struct.output_order,'z'))-1;
+            %             data_buffer.data=reshape(data_buffer.data,dims);
         end
         %% handle echo asymmetry
         if isfield(data_buffer.headfile,'echo_asymmetry')
@@ -1722,6 +1722,8 @@ dim_text=dim_text(1:end-1);
         else
             fprintf('skipping fermi filter\n');
         end
+        fig_id=disp_vol_center(data_buffer.data,1,300+recon_num);
+        set(fig_id,'Name',sprintf('kspace_pre_fft_r%i',recon_num));
         %% write kspace image log(abs(img))
         if opt_struct.write_kimage && ~( opt_struct.write_kimage_unfiltered && opt_struct.skip_filter)
             %%% should move the kspace writing code to here with a check if it already exists, in the case we're iterating over it for some reason.
