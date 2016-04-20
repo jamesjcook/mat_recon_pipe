@@ -316,10 +316,11 @@ permute_code=[];
         end
     end
     if encoding_sort
-        warning('APPLING DATA RESORTING. PLEASE LOOK AT FIGURES, IT SHOULD LOOK LIKE KSPACE IF IT DOESNT STOP THIS RECON AND GET JAMES.!');
-        close all;
+        warning('APPLING DATA RESORTING. PLEASE LOOK AT FIGURE, IT SHOULD LOOK LIKE KSPACE IF IT DOESNT STOP THIS RECON AND GET JAMES.!');
+%         close all;
         %         data_buffer.data(enc.X,enc.Y,enc.Z,:,:,:)=data_buffer.data; %THIS WAS WRONG FOR JOHNS CHUNK BRAIN FOR SOME REASON!!! WHY DID I DO THIS IN THE FIRST PLACE. ;
         data_buffer.data=data_buffer.data(enc.X,enc.Y,enc.Z,:,:,:);
+        if exist('use_in_line_code','var')
         ds=size(data_buffer.data);
         %         mf.xy=figure(201);
         %         imshow(squeeze(log(abs(data_buffer.data(:,:,round(ds(3)/2))))))
@@ -335,7 +336,8 @@ permute_code=[];
         mv.yz=squeeze(log(abs(data_buffer.data(round(ds(1)/2),:,:))));
         %         mf.xz=figure(203);
         mv.xz=squeeze(log(abs(data_buffer.data(:,round(ds(2)/2),:))));
-        kslice=zeros(x+z,y+z);
+        %         kslice=zeros(x+z,y+z);
+        kslice=zeros(ds(1)+ds(3),ds(2)+ds(3));
         kslice(:)=min([mv.xy(:);mv.yz(:);mv.xz(:)]);
         kslice(1:ds(1),1:ds(2))=mv.xy;
         kslice(ds(1)+1:ds(1)+ds(3),1:ds(2))=mv.yz';
@@ -348,6 +350,10 @@ permute_code=[];
 %             disp('missing align_figure function');
 %         end
         clear ds mf mv;
+        else
+            fig_id=disp_vol_center(data_buffer.data,1,300);
+            set(fig_id,'Name','kspace_sorted');
+        end
         if isfield(data_buffer.headfile,'rad_mat_option_debug_mode')  &&  data_buffer.headfile.rad_mat_option_debug_mode>20
             pause_len=3+2*data_buffer.headfile.rad_mat_option_warning_pause;
         else
