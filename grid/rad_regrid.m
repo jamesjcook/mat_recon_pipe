@@ -352,7 +352,9 @@ permute_code=[];
         clear ds mf mv;
         else
             fig_id=disp_vol_center(data_buffer.data,1,300);
-            set(fig_id,'Name','kspace_sorted');
+            if fig_id>0 
+                set(fig_id,'Name','kspace_sorted');
+            end
         end
         if isfield(data_buffer.headfile,'rad_mat_option_debug_mode')  &&  data_buffer.headfile.rad_mat_option_debug_mode>20
             pause_len=3+2*data_buffer.headfile.rad_mat_option_warning_pause;

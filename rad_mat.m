@@ -1723,7 +1723,9 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
             fprintf('skipping fermi filter\n');
         end
         fig_id=disp_vol_center(data_buffer.data,1,300+recon_num);
+        if fig_id>0
         set(fig_id,'Name',sprintf('kspace_pre_fft_r%i',recon_num));
+        end
         %% write kspace image log(abs(img))
         if opt_struct.write_kimage && ~( opt_struct.write_kimage_unfiltered && opt_struct.skip_filter)
             %%% should move the kspace writing code to here with a check if it already exists, in the case we're iterating over it for some reason.
