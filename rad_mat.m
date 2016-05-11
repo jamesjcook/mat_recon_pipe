@@ -684,7 +684,7 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
     
     %~strcmp(data_buffer.headfile.([data_prefix 'GO_block_size']),'continuous')
     if (  ( ~isempty(regexpi(data_buffer.headfile.([data_prefix 'GO_block_size']),'standard'))  ...
-            &&  strcmp(data_buffer.headfile.([data_prefix 'GS_info_dig_filling']),'Yes') )...
+            &&  ~isempty(regexpi(data_buffer.headfile.([data_prefix 'GS_info_dig_filling']),'Yes')) )...
             ) %&& ~opt_struct.ignore_errors )
         %if ~exist('USE_REVERSE_ENGINEERED_PADDING_CALC','var')
         if opt_struct.use_new_bruker_padding
@@ -853,7 +853,8 @@ if calculated_kspace_file_size~=measured_filesize
     aspect_remainder=138443;% a constant amount of bytes that aspect scans have to spare.
     remainder=measured_filesize-calculated_kspace_file_size;
     if (measured_filesize>calculated_kspace_file_size && opt_struct.ignore_kspace_oversize) || opt_struct.ignore_errors % measured > expected provisional continue
-        warning('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=\t%d\nCalculated=\t%d\n',measured_filesize,calculated_kspace_file_size);
+        warning('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=\t%d\nCalculated=\t%d\n\n\tYou could try again adding the use_new_bruker_padding option.',measured_filesize,calculated_kspace_file_size);
+        
         % extra warning when acaual is greater than 10% of exptected
         
         if remainder/calculated_kspace_file_size> 0.1 && remainder~=aspect_remainder
@@ -869,9 +870,9 @@ if calculated_kspace_file_size~=measured_filesize
         end
     else %if measured_filesize<kspace_file_size    %if measured < exected fail.
         if strcmp(data_buffer.scanner_constants.scanner_vendor,'aspect') && remainder==aspect_remainder
-            warning('Measured data file size and calculated dont match. However this is Aspect data, and we match our expected remainder! \nMeasured=\t%d\nCalculated=\t%d\n\tAspect_remainder=%d\n',measured_filesize,calculated_kspace_file_size,aspect_remainder);
+            warning('Measured data file size and calculated dont match. However this is Aspect data, and we match our expected remainder! \nMeasured=\t%d\nCalculated=\t%d\n\tAspect_remainder=%d\n\n\tYou could try again adding the use_new_bruker_padding option.',measured_filesize,calculated_kspace_file_size,aspect_remainder);
         else
-            error('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=\t%d\nCalculated=\t%d\n',measured_filesize,calculated_kspace_file_size);
+            error('Measured data file size and calculated dont match. WE''RE DOING SOMETHING WRONG!\nMeasured=\t%d\nCalculated=\t%d\n\n\tYou could try again adding the use_new_bruker_padding option.',measured_filesize,calculated_kspace_file_size);
         end
     end
 else
