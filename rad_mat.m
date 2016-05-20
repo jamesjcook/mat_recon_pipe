@@ -568,8 +568,12 @@ if numel(input_data)==2 && strcmp(data_buffer.scanner_constants.scanner_vendor,'
     end
 end %else
 puller_data=[strjoin(input_data, '/'), dirext];
-datapath=[data_buffer.scanner_constants.scanner_data_directory '/' puller_data ];
-data_buffer.input_headfile.origin_path=datapath;
+if isfield(data_buffer.scanner_constants,'scanner_data_directory')
+    datapath=[data_buffer.scanner_constants.scanner_data_directory '/' puller_data ];
+    data_buffer.input_headfile.origin_path=datapath;
+else
+    data_buffer.input_headfile.origin_path='UNKNOWN_LIMITED_SCANNER_SUPPORT';
+end
 % display(['data path should be omega@' scanner ':' datapath ' based on given inputs']);
 % display(['base runno is ' runno ' based on given inputs']);
 puller(data_buffer,opt_struct,scanner,puller_data);
