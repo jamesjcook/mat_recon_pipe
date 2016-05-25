@@ -2263,7 +2263,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
     %% load rp file for reprocessing
     rp_path2=[work_dir_img_path  '.rp.out'];
     rp_path=[work_dir_img_path opt_struct.filter_imgtag '.rp.out'];
-    if ~exist('rp_path','file')
+    if ~exist(rp_path,'file')
         rp_path=rp_path2;
 %         opt_struct.skip_filter=false;
     end
@@ -2543,7 +2543,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
             
             %% civmraw save
             if ~exist(space_dir_img_folder,'dir') || opt_struct.ignore_errors
-                if ~opt_struct.skip_write_civm_raw || ~opt_struct.skip_write_headfile
+                if ~opt_struct.skip_write_civm_raw || ~opt_struct.skip_write_headfile || opt_struct.write_complex
                     mkdir(space_dir_img_folder);
                 end
             elseif ~opt_struct.overwrite
@@ -2558,7 +2558,11 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 write_headfile(hf_path,data_buffer.headfile,0);
                 % insert validate_header perl script check here?
             end
-            if ~opt_struct.skip_write_civm_raw && (~opt_struct.skip_recon || opt_struct.reprocess_rp)
+            
+            
+            
+            if (opt_struct.write_complex || ~opt_struct.skip_write_civm_raw ) ...
+                    && (~opt_struct.skip_recon || opt_struct.reprocess_rp)
                 fprintf('\tconvert_info_histo save\n');
                 histo_bins=numel(tmp);
                 if opt_struct.independent_scaling || recon_strategy.work_by_chunk || recon_strategy.work_by_sub_chunk
@@ -2587,13 +2591,15 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 fprintf(ofid,'%f : max voxel value used to construct histogram\n',data_buffer.headfile.group_max_intensity);
                 fprintf(ofid,' rad_mat convert_info_histo dump 2013/11/05\n');
                 fclose(ofid);
-                if ~recon_strategy.work_by_chunk && ~recon_strategy.work_by_sub_chunk
-                    fprintf('\tcivm_raw save\n');
-                    % alternatively,
-                    % ~recon_stragey.recon_operations>1    % : p
-                    complex_to_civmraw(tmp,data_buffer.headfile.U_runno , ...
-                        data_buffer.scanner_constants.scanner_tesla_image_code, ...
-                        space_dir_img_folder,'',outpath,1,datatype)
+                if ~opt_struct.skip_write_civm_raw && (~opt_struct.skip_recon || opt_struct.reprocess_rp)
+                    if ~recon_strategy.work_by_chunk && ~recon_strategy.work_by_sub_chunk
+                        fprintf('\tcivm_raw save\n');
+                        % alternatively,
+                        % ~recon_stragey.recon_operations>1    % : p
+                        complex_to_civmraw(tmp,data_buffer.headfile.U_runno , ...
+                            data_buffer.scanner_constants.scanner_tesla_image_code, ...
+                            space_dir_img_folder,'',outpath,1,datatype)
+                    end
                 end
             end
             %%% convenience prompts
@@ -2910,7 +2916,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                     
                     %%% civmraw save
                     if ~exist(space_dir_img_folder,'dir') || opt_struct.ignore_errors
-                        if ~opt_struct.skip_write_civm_raw || ~opt_struct.skip_write_headfile 
+                        if ~opt_struct.skip_write_civm_raw || ~opt_struct.skip_write_headfile || opt_struct.write_complex
                             mkdir(space_dir_img_folder);
                         end
                     elseif ~opt_struct.overwrite
@@ -2925,7 +2931,8 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                         write_headfile(hf_path,data_buffer.headfile,0);
                         % insert validate_header perl script check here?
                     end
-                    if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon
+                    if (opt_struct.write_complex || ~opt_struct.skip_write_civm_raw ) ...
+                            && (~opt_struct.skip_recon || opt_struct.reprocess_rp)
                         fprintf('\tconvert_info_histo save\n');
                         histo_bins=numel(tmp);
                         if opt_struct.independent_scaling
@@ -2933,17 +2940,17 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                             data_buffer.headfile.group_max_intensity=max(img_s);
                             data_buffer.headfile.group_max_atpct=img_s(round(numel(img_s)*opt_struct.histo_percent/100));%throwaway highest % of data... see if that helps.
                             fprintf('\tMax for scale = %f\n',data_buffer.headfile.group_max_atpct);
-%                         else
-%                              data_buffer.headfile.group_max_atpct= data_buffer.headfile.group_max_atpct;
-clear img_s;
+                            %                         else
+                            %                              data_buffer.headfile.group_max_atpct= data_buffer.headfile.group_max_atpct;
+                            clear img_s;
                         end
                         % must write convert_info_histo for old school radish purposes
-%                       opt_struct.histo_percent=99.95;
-
+                        %                       opt_struct.histo_percent=99.95;
+                        
                         outpath=[space_dir_img_folder '/convert_info_histo'];
                         % display(['Saving vintage threeft to ' outpath '.']);
                         ofid=fopen(outpath,'w+');
-                        if ofid==-1 
+                        if ofid==-1
                             error('problem opening convert_info_hist file for writing file');
                         end
                         fprintf(ofid,'%f=scale_max found by rad_mat in complex file %s\n', data_buffer.headfile.group_max_atpct,[work_dir_img_path '.out']);
@@ -2954,13 +2961,17 @@ clear img_s;
                         fprintf(ofid,'%f : max voxel value used to construct histogram\n',data_buffer.headfile.group_max_intensity);
                         fprintf(ofid,' rad_mat convert_info_histo dump 2013/11/05\n');
                         fclose(ofid);
-                        if ~recon_strategy.work_by_chunk && ~recon_strategy.work_by_sub_chunk
-                            fprintf('\tcivm_raw save\n');
-                            % alternatively,
-                            % ~recon_stragey.recon_operations>1    % : p
-                            complex_to_civmraw(tmp,data_buffer.headfile.U_runno , ...
-                                data_buffer.scanner_constants.scanner_tesla_image_code, ...
-                                space_dir_img_folder,'',outpath,1,datatype)
+                        
+                        
+                        if ~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon
+                            if ~recon_strategy.work_by_chunk && ~recon_strategy.work_by_sub_chunk
+                                fprintf('\tcivm_raw save\n');
+                                % alternatively,
+                                % ~recon_stragey.recon_operations>1    % : p
+                                complex_to_civmraw(tmp,data_buffer.headfile.U_runno , ...
+                                    data_buffer.scanner_constants.scanner_tesla_image_code, ...
+                                    space_dir_img_folder,'',outpath,1,datatype)
+                            end
                         end
                     end
                     %%% convenience prompts
