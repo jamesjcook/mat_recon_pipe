@@ -138,7 +138,7 @@ rad_bunch_data.archive_tag_output=archive_tag_output;
 %         data_buffer.headfile.rad_mat_roll_prompt=roll_prompt;
 % roll_3d -x %d -y %d -z %d %s;
 runno_list(1)=[];
-if numel(runno_roll_promps)>0
+if numel(runno_roll_prompts)>0
 fprintf('%s %s\n',strtrim(runno_roll_prompts{1}),strjoin(runno_list,' '));
 rad_bunch_data.runno_roll_prompts=runno_roll_prompts;
 end
