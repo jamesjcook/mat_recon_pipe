@@ -989,6 +989,7 @@ clear dim_order ds hf_path ;
 %%% bunk that. 
 % reference to chunk in opt_struct should be fixed to recon_operation.
 work_dir_img_path_base=[ data_buffer.headfile.work_dir_path '/' runno ] ;
+ij_prompt=''; % init a blank ij_prompt
 for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,recon_strategy.recon_operations);
 % for recon_num=1:recon_strategy.recon_operations
     meminfo=imaqmem;
@@ -2245,7 +2246,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
     work_dir_img_path=[work_dir_img_path_base channel_code m_code];
     
     if d_struct.c > 1
-        data_buffer.headfile.work_dir=data_buffer.engine_constants.engine_work_directory;
+        data_buffer.headfile.work_dir_path=data_buffer.engine_constants.engine_work_directory;
         data_buffer.headfile.runno_base=runno;
     end
     if ~isfield(data_buffer.headfile,'fovx')
@@ -2458,10 +2459,13 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
             end
             %% integrated rolling
             %
-            if opt_struct.integrated_rolling && numel(tmp)>=1024
-                fprintf('Integrated Rolling code\n');
+            %if opt_struct.integrated_rolling && numel(tmp)>=1024
+            if numel(tmp)>=1024 % && opt_struct.integrated_rolling
+%db_inplace('rad_mat','db_testing rollcode');
+% this code never runs? what....
                 channel_code_r=[channel_code '_'];
-                if ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X' ])
+                if ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X' ]) ...
+                   && ~isfield([ 'roll' channel_code_r 'corner_X_recommendation' ])
                     [input_center,first_voxel_offset]=get_wrapped_volume_center(tmp);
                     ideal_center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
                     shift_values=ideal_center-input_center;
@@ -2470,25 +2474,46 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                             shift_values(di)=shift_values(di)+size(data_buffer.data,di);
                         end
                     end
+                else
+                    fprintf('\tExisting Roll value\n');
+                    if isfield([ 'roll' channel_code_r 'corner_X' ])
+                      shift_values=[ data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' ])
+                        data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' ])
+                        data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' ])
+                        ];
+                    elseif isfield([ 'roll' channel_code_r 'corner_X_recommendation' ])
+                      shift_values=[ data_buffer.headfile.([ 'roll' channel_code_r 'corner_X_recommendation' ])
+                        data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y_recommendation' ])
+                        data_buffer.headfile.([ 'roll' channel_code_r 'first_Z_recommendation' ])
+                        ];
+                    else 
+                      warning('expected exising roll values to pull out of headfile.');
+                    end
+                end
+                if ~opt_struct.integrated_rolling
+                  first_voxel_offset=[0,0,0];
+                  data_buffer.headfile.([ 'roll' channel_code_r 'corner_X_recommendation' ])=...
+                    shift_values(strfind(opt_struct.output_order,'x'));
+                  data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y_recommendation' ])=...
+                    shift_values(strfind(opt_struct.output_order,'y'));
+                  data_buffer.headfile.([ 'roll' channel_code_r 'first_Z_recommendation' ])=...
+                    shift_values(strfind(opt_struct.output_order,'z'));
+               else
                     data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' ])=shift_values(strfind(opt_struct.output_order,'x'));
                     data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' ])=shift_values(strfind(opt_struct.output_order,'y'));
                     data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' ])=shift_values(strfind(opt_struct.output_order,'z'));
                     fprintf('\tSet Roll value\n');
-                else
-                    shift_values=[ data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' ])
-                        data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' ])
-                        data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' ])
-                        ];
-                    fprintf('\tExisting Roll value\n');
                 end
-                fprintf('\tshift by :');
-                fprintf('%d,',shift_values);
-                fprintf('\n');
-                tmp=circshift(tmp,round(shift_values));
+
+                if ~opt_struct.integrated_rolling
+                  fprintf('Integrated Rolling code\n');
+                  fprintf('\tshift by :');
+                  fprintf('%d,',shift_values);
+                  fprintf('\n');
+                  tmp=circshift(tmp,round(shift_values));
+                end
             elseif numel(tmp)<1024
                 db_inplace('rad_mat','dataset wrong size, cannot continue');
-            else
-                first_voxel_offset=[0,0,0];
             end
             %% save types.
             %% complex save
@@ -2752,7 +2777,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
 %                     work_dir_img_path_per_vol=[data_buffer.engine_constants.engine_work_directory '/' space_dir_img_name '.work/' space_dir_img_name 'images' ];
                     work_dir_img_path=[work_dir_img_path_base channel_code m_code];
                     if d_struct.c > 1
-                        data_buffer.headfile.work_dir=data_buffer.engine_constants.engine_work_directory;
+                        data_buffer.headfile.work_dir_path=data_buffer.engine_constants.engine_work_directory;
                         data_buffer.headfile.runno_base=runno;
                     end
                     %%% set param value in output
@@ -3001,11 +3026,22 @@ clear img_s;
         fprintf('chunk_time:%0.2f\n',toc(time_chunk));
     end
     clear tmp;
+%populate our ij_prompt
+if (~opt_struct.skip_recon&&exist('openmacro_path','var') )||opt_struct.force_ij_prompt
+    % display ij call to examine images.
+    [~,txt]=system('echo -n $ijstart');  %-n for no newline i think there is a smarter way to get system variables but this works for now.
+    ij_prompt=sprintf('%s -macro %s',txt, openmacro_path);
+    mat_ij_prompt=sprintf('system(''%s'');',ij_prompt);
+    data_buffer.headfile.rad_mat_ij_macro=openmacro_path;
+    data_buffer.headfile.rad_mat_ij_macro_prompt=ij_prompt;
 end
 
+
+end
+post_commands={};
 %% stich chunks together
 % this is not implimented yet.
-    
+
 %% run group reformer for select datasets.
 if recon_strategy.num_chunks>1&&~opt_struct.skip_write&&~opt_struct.skip_write_civm_raw %recon_strategy.work_by_chunk
     if ~exist('runnumbers','var')
@@ -3025,15 +3061,6 @@ if recon_strategy.num_chunks>1&&~opt_struct.skip_write&&~opt_struct.skip_write_c
 end
 
 %% convenience prompts
-ij_prompt='';
-if (~opt_struct.skip_recon&&exist('openmacro_path','var') )||opt_struct.force_ij_prompt
-    % display ij call to examine images.
-    [~,txt]=system('echo -n $ijstart');  %-n for no newline i think there is a smarter way to get system variables but this works for now.
-    ij_prompt=sprintf('%s -macro %s',txt, openmacro_path);
-    mat_ij_prompt=sprintf('system(''%s'');',ij_prompt);
-    data_buffer.headfile.rad_mat_ij_macro=openmacro_path;
-    data_buffer.headfile.rad_mat_ij_macro_prompt=ij_prompt;
-end
 if ~isempty(ij_prompt)&& ~opt_struct.skip_write_civm_raw
     fprintf('test civm image output from a terminal using following command\n');
     fprintf('  (it may only open the first and last in large sequences).\n');
@@ -3041,7 +3068,9 @@ if ~isempty(ij_prompt)&& ~opt_struct.skip_write_civm_raw
     fprintf('test civm image output from matlab using following command\n');
     fprintf('  (it may only open the first and last in large sequences).\n');
     fprintf('\n%s\n\n',mat_ij_prompt);
+    post_commands{end+1}=ij_prompt;
 end
+
 if opt_struct.force_write_archive_tag || (~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon && isfield(data_buffer.headfile,'U_code'))
     archive_tag_output=write_archive_tag(runnumbers,...
         data_buffer.engine_constants.engine_work_directory,...
@@ -3091,7 +3120,7 @@ if opt_struct.force_write_archive_tag || (~opt_struct.skip_write_civm_raw && ~op
             data_vol=data_buffer.data(:,:,:,c_r,1,1);
 
             if opt_struct.integrated_rolling && opt_struct.post_rolling
-                disk_path= [ data_buffer.headfile.work_dir '/' ...
+                disk_path= [ data_buffer.headfile.work_dir_path '/' ...
                     data_buffer.headfile.runno_base data_postfix '/' ...
                     data_buffer.headfile.runno_base data_postfix 'images' '/' ];
                 fprintf('Crazy double roll calculation requested, loading path%s\n',disk_path);
@@ -3146,11 +3175,15 @@ if opt_struct.force_write_archive_tag || (~opt_struct.skip_write_civm_raw && ~op
         end
         fprintf('%s',roll_prompt);
         data_buffer.headfile.rad_mat_roll_prompt=strjoin(cmd_list,'\n');
+        post_commands{end+1}=data_buffer.headfile.rad_mat_roll_prompt;
     end
     
 end
-
-
+cmd_outfile=[  data_buffer.headfile.work_dir_path '/' 'post_commands.txt' ];
+fprintf('Calculated terminal commands saved to \n\t%s.\n',cmd_outfile); 
+co_fid=fopen(cmd_outfile,'w+');
+fprintf(co_fid,'%s\n',strjoin(post_commands,'\n'));
+fclose(co_fid);
 %% End of line set output
 %%% handle image return type at somepoint in future using image_return_type
 %%% option, for now we're just going to magnitude. 
