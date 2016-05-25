@@ -98,7 +98,12 @@ for i=1:numel(list)
     [~,rad_bunch_data.(['img', num2str(i)]),rad_bunch_data.(['buffer' num2str(i)])]=rad_mat(scanner,runno,data,[opts,sprintf('param_file=%s.param',base_runno)]);
 %     runno_text=sprintf('%s %s',runno_text,runno);
     runno_openmacro_paths{i}=rad_bunch_data.(['buffer' num2str(i)]).headfile.rad_mat_ij_macro;
-    runno_roll_prompts{i}=rad_bunch_data.(['buffer' num2str(i)]).headfile.rad_mat_roll_prompt;
+
+    if isfield(rad_bunch_data.(['buffer' num2str(i)]).headfile,'rad_mat_roll_prompt')
+        runno_roll_prompts{i}=rad_bunch_data.(['buffer' num2str(i)]).headfile.rad_mat_roll_prompt;
+    else 
+        warning('no roll prompt');
+    end
 end
 % rad_bunch_data.runno_text=strjoin(runno_list);
 rad_bunch_data.runno_list=runno_list;
@@ -133,5 +138,7 @@ rad_bunch_data.archive_tag_output=archive_tag_output;
 %         data_buffer.headfile.rad_mat_roll_prompt=roll_prompt;
 % roll_3d -x %d -y %d -z %d %s;
 runno_list(1)=[];
+if numel(runno_roll_promps)>0
 fprintf('%s %s\n',strtrim(runno_roll_prompts{1}),strjoin(runno_list,' '));
 rad_bunch_data.runno_roll_prompts=runno_roll_prompts;
+end
