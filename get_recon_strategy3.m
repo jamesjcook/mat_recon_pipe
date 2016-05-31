@@ -193,12 +193,41 @@ recon_strategy.work_by_sub_chunk=false;
 %%% blocks = chunks, so how big is the block dimension, that should
 %%% matchup with the possible read data dimensions.
 
+
+% unique_test_string=data_in.ds.showorder([data_in.ray_blocks data_in.ray_blocks data_in.ray_blocks]);
+% unique_test_string=unique_test_string([true diff(unique_test_string)~=0]);%collapses any extra f's to a singluar f'.
+    
 %%%% if 2D we will operate in slice mode.... (code that later).
-if strcmp(data_in.vol_type,'2D')...
-        && recon_strategy.maximum_RAM_requirement > useable_RAM
-    warning('did not do 2D recon strategy. code');
+if strcmp(data_in.vol_type,'2D')
+    % 20160531 first use of 2D after long hiatus. 
+    msg='did not do 2D recon strategy. code';
+    if recon_strategy.maximum_RAM_requirement > useable_RAM
+        save([data_buffer.headfile.work_dir_path '/insufficient_mem_stop.mat']);
+        error(msg);
+    else
+        warning(msg);
+    end
+    % first 2D problem, num_chunks ~= num_blocks of file! resulting in to
+    % much header assumption when the loader loads, need to fix num chunks
+    % and min size.
+    %
+    % if our chunks are in the wrong way..., and we're fitting in mem just
+    % fine.
+    if  data_in.ray_blocks<recon_strategy.num_chunks ...
+            && recon_strategy.recon_operations == 1 ...
+            && recon_strategy.load_whole
+        recon_strategy.chunk_size=recon_strategy.num_chunks*recon_strategy.min_load_size;
+        recon_strategy.min_load_size=recon_strategy.chunk_size;
+        recon_strategy.num_chunks=1;
+    else
+        save([data_buffer.headfile.work_dir_path '/multi_op_2D_stop.mat']);
+        error('2D recon strategy unknown error. Why would you make a big 2D recon? (contact james to fix this)');
+    end
+    
+    
     %%%% if 3D
-elseif ~isempty(regexp(data_in.vol_type,'(3D|4D)', 'once'))
+elseif ~isempty(regexp(data_in.vol_type,'(3D|4D)', 'once')) %...
+        % || ( isfield(opt_struct,'no_2D_strategy') && opt_struct.no_2D_strategy ) 
     if ( recon_strategy.num_chunks ~= prod(data_out.output_dimensions)/prod(data_out.ds.Sub('xyz')))
         warning('native fft blocks dont line up with chunks!');
     end
