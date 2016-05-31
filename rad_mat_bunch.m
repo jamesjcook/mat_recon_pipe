@@ -71,7 +71,7 @@ end
 % list='S65460_01/ser02.fid;S65460_m01, S65460_01/ser03.fid;S65460_m02, S65460_01/ser04.fid;S65460_m03, S65460_01/ser05.fid;S65460_m04, S65460_01/ser06.fid;S65460_m05, S65460_01/ser07.fid;S65460_m06, S65460_01/ser08.fid;S65460_m07';
 list=radish_load_info_stub(full_list_path);
 list=strsplit(list,', '); 
-opts={'debug_mode=0','warning_pause=0','skip_fft=0','skip_write_temp_headfile','write_complex'};
+opts={'debug_mode=0','warning_pause=0','skip_fft=0','skip_write_civm_raw','skip_write_temp_headfile','write_complex','planned_ok','force_write_archive_tag'};
 if exist('rad_options','var')
     opts=[opts,rad_options];
 end
@@ -109,6 +109,7 @@ end
 rad_bunch_data.runno_list=runno_list;
 %% combine output into single image, scaleit save it.
 cmd=sprintf('reform_group %s', strjoin(runno_list));
+fprintf('Starting reformer with :\n\t%s\n',cmd);
 system(cmd);
 toc(ts)
 
