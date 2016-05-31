@@ -3193,8 +3193,12 @@ end
 cmd_outfile=[  data_buffer.headfile.work_dir_path '/' 'post_commands.txt' ];
 fprintf('Calculated terminal commands saved to \n\t%s.\n',cmd_outfile); 
 co_fid=fopen(cmd_outfile,'w+');
+if co_fid<=0
+    warning('couldnt open cmd_output ');
+else
 fprintf(co_fid,'%s\n',strjoin(post_commands,'\n'));
 fclose(co_fid);
+end
 %% End of line set output
 %%% handle image return type at somepoint in future using image_return_type
 %%% option, for now we're just going to magnitude. 
