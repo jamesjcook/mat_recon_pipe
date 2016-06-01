@@ -1077,7 +1077,8 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                     warning('USING ADDIONAL MEMORY TO STORE PRE_PAD CORRECTION KSPACE');
                     pause(3*opt_struct.warning_pause);
                     data_buffer.addprop('padded_kspace');
-                    data_buffer.padded_kspace=reshape(data_buffer.data,[data_in.line_points data_in.input_dimensions(3:end)]);
+                    % data_buffer.padded_kspace=reshape(data_buffer.data,[data_in.line_points data_in.input_dimensions(3:end)]);
+                    data_buffer.padded_kspace=data_buffer.data;
                 end
                 data_buffer.data(logm)=[];
                 warning('padding correction applied, hopefully correctly.');
@@ -1347,9 +1348,9 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
             if opt_struct.debug_stop_regrid
                 warning('USING ADDIONAL MEMORY TO STORE PRE_GRID KSPACE');
                 pause(3*opt_struct.warning_pause);
-                db_inplace('rad_mat','Debug stop requested.');
                 data_buffer.addprop('unshaped_kspace');
                 data_buffer.unshaped_kspace=data_buffer.data;
+                db_inplace('rad_mat','Debug stop requested.');
             end
             if recon_strategy.num_chunks>1 && recon_strategy.recon_operations>1 %%%&& ~isempty(regexp(vol_type,'.*radial.*', 'once'))
                 data_buffer.headfile.processing_chunk=recon_num;
@@ -1927,6 +1928,10 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 % bad result has in checkerboard LX helped find solution
                 % missing fftshifts prior to fft required.
                 data_buffer.data=fftshift(fftshift(fftshift(ifft(ifft(ifft(fftshift(fftshift(fftshift(data_buffer.data,1),2),3),[],1),[],2),[],3),1),2),3);
+                % fft with a change in res : ) not sure how/when this would
+                % work... 
+                
+                %output=dim_X*1.4;test=fftshift(fftshift(fftshift(ifft(ifft(ifft(fftshift(fftshift(fftshift(padarray(data_buffer.data,[round((output-160)/2),round((output-160)/2),round((output-160)/2)],0,'both'),1),2),3),[],1),[],2),[],3),1),2),3);disp_vol_center(test,0,100);
 %                 data_buffer.data=fftshift(ifftn(fftshift(data_buffer.data)));%%% THIS WAY IS CORRECT< MUST TEST PHASE (angle) TO PROVE OTHER METHODS.
                 
                 
