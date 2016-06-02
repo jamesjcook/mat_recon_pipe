@@ -153,6 +153,7 @@ beta_options={
     'unrecognized_ok',        ' special option which must be early in list of options, controls whether arbitrary options are an error, this is so that alternate child functions could be passed the opt_struct variable and would work from there. This is also the key to inserting values into the headfile to override what our perlscript generates. '
     'debug_mode',             ' verbosity. use debug_mode=##'
     'study',                  ' set the bruker study to pull from, useful if puller fails to find the correct data'
+    'alt_encoding_assign',    ' switch encoding assignment from data=data(encode)  to  data(encode)=data'
     'use_new_bruker_padding', ' use padding calculation based on information from john. Sometimes this will help a scan get through. Its missing one critiacl piece from bruker, where they tell us which dimensions are lumpte dtogether before paddint.  '
     'U_dimension_order',      ' input_dimension_order will override whatever the perl script comes up with.'
     'vol_type_override',      ' if the processing script fails to guess the proper acquisition type(2D|3D|4D|radial) it can be specified.'

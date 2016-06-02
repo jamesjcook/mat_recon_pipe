@@ -318,8 +318,11 @@ permute_code=[];
     if encoding_sort
         warning('APPLING DATA RESORTING. PLEASE LOOK AT FIGURE, IT SHOULD LOOK LIKE KSPACE IF IT DOESNT STOP THIS RECON AND GET JAMES.!');
 %         close all;
-        %         data_buffer.data(enc.X,enc.Y,enc.Z,:,:,:)=data_buffer.data; %THIS WAS WRONG FOR JOHNS CHUNK BRAIN FOR SOME REASON!!! WHY DID I DO THIS IN THE FIRST PLACE. ;
-        data_buffer.data=data_buffer.data(enc.X,enc.Y,enc.Z,:,:,:);
+        if data_buffer.headfile.rad_mat_option_alt_encoding_assign
+            data_buffer.data(enc.X,enc.Y,enc.Z,:,:,:)=data_buffer.data; % This is correct for at least some MDEFT scans. THIS WAS WRONG FOR THE CHUNK BRAIN FOR SOME REASON!!! WHY DID I DO THIS IN THE FIRST PLACE. ;
+        else
+            data_buffer.data=data_buffer.data(enc.X,enc.Y,enc.Z,:,:,:); % This is correct for the custom chunk acquisition. THIS WAS WRONG FOR MDEFT FOR SOME REASON!!! 
+        end
         if exist('use_in_line_code','var')
         ds=size(data_buffer.data);
         %         mf.xy=figure(201);
