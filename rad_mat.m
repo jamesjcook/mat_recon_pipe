@@ -2471,7 +2471,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
 % this code never runs? what....
                 channel_code_r=[channel_code '_'];
                 if ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X' ]) ...
-                   && ~isfield([ 'roll' channel_code_r 'corner_X_recommendation' ])
+                   && ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X_recommendation' ])
                     [input_center,first_voxel_offset]=get_wrapped_volume_center(tmp);
                     ideal_center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
                     shift_values=ideal_center-input_center;
@@ -2482,12 +2482,12 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                     end
                 else
                     fprintf('\tExisting Roll value\n');
-                    if isfield([ 'roll' channel_code_r 'corner_X' ])
+                    if isfield(data_buffer.headfile,[ 'roll' channel_code_r 'corner_X' ])
                       shift_values=[ data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' ])
                         data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' ])
                         data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' ])
                         ];
-                    elseif isfield([ 'roll' channel_code_r 'corner_X_recommendation' ])
+                    elseif isfield(data_buffer.headfile,[ 'roll' channel_code_r 'corner_X_recommendation' ])
                       shift_values=[ data_buffer.headfile.([ 'roll' channel_code_r 'corner_X_recommendation' ])
                         data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y_recommendation' ])
                         data_buffer.headfile.([ 'roll' channel_code_r 'first_Z_recommendation' ])
