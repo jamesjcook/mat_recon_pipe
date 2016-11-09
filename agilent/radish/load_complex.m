@@ -1,30 +1,41 @@
-function rp_ca=load_complex(complex_file,dims,precision,endian,componentboolean)
+function rp_ca=load_complex(complex_file,dims,precision,endian,componentboolean,real_first)
 % function complex=load_rp_file(paht_to_complex,dims,precision,endian,componentboolean)
 % loads an interleaved complex file to a variable,
 % if this is not cartesian data, 
 %   dims should be just the number of points, 
-% compentne boolean looks for complex_file.i and complex_file.r to load
+% component boolean looks for complex_file.i and complex_file.r to load
 % instead of complex_file.
 % 
 % assumes all header bytes are in beginning of file, 
 % 32-bit float('single') little-endian data, is default. others not well
 % tested
+% 
+% loads imaginary first, unless flag variable is present real_first
 
-if ~exist('bitdepth','var')
+
+
+if ~exist('precision','var')
     precision='single';
     bytes_per_point=4;
-elseif strcmp(bitdepth,'single')
+elseif strcmp(precision,'single')
     bytes_per_point=4;
-elseif strcmp(bitdepth,'double') 
+elseif strcmp(precision,'double') 
     bytes_per_point=8;
-elseif strcmp(bitdepth,'unint16') ||strcmp(bitdepth,'float16')
-    bytes_per_point=2
-elseif strcmp(bitdepth,'unint32')
+elseif strcmp(precision,'unint16') ||strcmp(bitdepth,'float16')
+    bytes_per_point=2;
+elseif strcmp(precision,'unint32')
     bytes_per_point=4;
 else 
     error('bad precision');
 end
-
+if ~exist('real_first','var') 
+    real_first=false;
+end
+if real_first
+    warning('Assuming real component first');
+else
+    warning('Imaginary component first');
+end
 if ~exist('componentboolean','var')
     componentboolean=0;
 end
@@ -34,16 +45,18 @@ if ~exist('endian','var')
     endian='l';
 end
 
-data_points=1;
-for i=1:length(dims)
-    data_points=data_points*dims(i);
-end
+% data_points=1;
+% for i=1:length(dims)
+%     data_points=data_points*dims(i);
+% end
+data_points=prod(dims); % haha i make silly code above
 %multiply datapointsby 2 becuase complex doubles the data.
 
 
 
 
 if componentboolean
+    %% component type
     data_bytes=data_points*bytes_per_point;
     if ~exist([complex_file '.i'] ,'file') || ~exist([complex_file '.i'],'file')
         error(' name.i and name.r file not found')
@@ -98,6 +111,7 @@ if componentboolean
     
     data=reshape(data,[2 data_points]);
 else
+    %%  interleaved type
     data_bytes=2*data_points*bytes_per_point;
     if ~exist(complex_file,'file')
         error('file not found');
@@ -106,11 +120,11 @@ else
     fileSize = fileInfo.bytes;
     headersize=fileSize-data_bytes;
     if headersize>data_bytes
-        warning('Header bigger than data, that cant be right');
+        db_inplace('load_complex','Header bigger than data, that cant be right');
     elseif  headersize<0
-        warning('Header less than 0, that cant be right');
+        db_inplace('load_complex','Header less than 0, that cant be right, go get James.');
     elseif headersize==0
-        warning('load_complex:header','Header is 0 bytes big');
+        fprintf('load_complex:header\n\tHeader is 0 bytes big, this is pretty standard.\n');
     end
     
     fid=fopen(complex_file,'r',endian);
@@ -119,7 +133,7 @@ else
     end
     
     fseek(fid,headersize,-1);
-    data=fread(fid,inf,precision,0,endian);
+    data=fread(fid,inf,[precision '=>' precision],0,endian);
     fclose(fid);
     data=reshape(data,[2 data_points]);
 end
@@ -128,8 +142,19 @@ end
 % data=permute(data,[2 3 4 5 1]);
 % r=data(:,:,:,:,1);
 % i=data(:,:,:,:,2);
+if real_first || componentboolean
+    ridx=1;
+    iidx=2;
+else
+    ridx=2;
+    iidx=1;
+end
+if exist('old_way','var')
+    rp_ca=reshape(complex(squeeze(data(ridx,:)),squeeze(data(iidx,:))),dims);
+else
+    rp_ca=reshape((data(ridx,:) + 1i*data(iidx,:)),dims);
+end
 
-rp_ca=reshape(complex(squeeze(data(1,:)),squeeze(data(2,:))),dims);
 % reshape()
 
 end
