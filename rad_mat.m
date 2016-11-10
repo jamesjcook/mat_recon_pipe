@@ -2470,8 +2470,14 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
 %db_inplace('rad_mat','db_testing rollcode');
 % this code never runs? what....
                 channel_code_r=[channel_code '_'];
-                if ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X' ]) ...
-                   && ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X_recommendation' ])
+                field_postfix='';
+                if ~opt_struct.integrated_rolling
+                    fprintf('Calculating Recommended Roll\n');
+                    field_postfix='_recommendation';
+                else
+                    fprintf('Integrated Rolling code\n');
+                end
+                if ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X' field_postfix])                    
                     [input_center,first_voxel_offset]=get_wrapped_volume_center(tmp);
                     ideal_center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
                     shift_values=ideal_center-input_center;
@@ -2480,43 +2486,23 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                             shift_values(di)=shift_values(di)+size(data_buffer.data,di);
                         end
                     end
-                else
-                    fprintf('\tExisting Roll value\n');
-                    if isfield(data_buffer.headfile,[ 'roll' channel_code_r 'corner_X' ])
-                      shift_values=[ data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' ])
-                        data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' ])
-                        data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' ])
-                        ];
-                    elseif isfield(data_buffer.headfile,[ 'roll' channel_code_r 'corner_X_recommendation' ])
-                      shift_values=[ data_buffer.headfile.([ 'roll' channel_code_r 'corner_X_recommendation' ])
-                        data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y_recommendation' ])
-                        data_buffer.headfile.([ 'roll' channel_code_r 'first_Z_recommendation' ])
-                        ];
-                    else 
-                      warning('expected exising roll values to pull out of headfile.');
-                    end
-                end
-                if ~opt_struct.integrated_rolling
-                  first_voxel_offset=[0,0,0];
-                  data_buffer.headfile.([ 'roll' channel_code_r 'corner_X_recommendation' ])=...
-                    shift_values(strfind(opt_struct.output_order,'x'));
-                  data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y_recommendation' ])=...
-                    shift_values(strfind(opt_struct.output_order,'y'));
-                  data_buffer.headfile.([ 'roll' channel_code_r 'first_Z_recommendation' ])=...
-                    shift_values(strfind(opt_struct.output_order,'z'));
-               else
-                    data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' ])=shift_values(strfind(opt_struct.output_order,'x'));
-                    data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' ])=shift_values(strfind(opt_struct.output_order,'y'));
-                    data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' ])=shift_values(strfind(opt_struct.output_order,'z'));
+                    data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' field_postfix ])=shift_values(strfind(opt_struct.output_order,'x'));
+                    data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' field_postfix ])=shift_values(strfind(opt_struct.output_order,'y'));
+                    data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' field_postfix ])=shift_values(strfind(opt_struct.output_order,'z'));
                     fprintf('\tSet Roll value\n');
+                else
+                    shift_values=[ data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' field_postfix ])
+                        data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' field_postfix ])
+                        data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' field_postfix ])
+                        ];
+                    first_voxel_offset=[1,1,1];
+                    fprintf('\tExisting Roll value\n');
                 end
-
-                if ~opt_struct.integrated_rolling
-                  fprintf('Integrated Rolling code\n');
-                  fprintf('\tshift by :');
-                  fprintf('%d,',shift_values);
-                  fprintf('\n');
-                  tmp=circshift(tmp,round(shift_values));
+                fprintf('\tshift by :');
+                fprintf('%d,',shift_values);
+                fprintf('\n');
+                if opt_struct.integrated_rolling
+                    tmp=circshift(tmp,round(shift_values));
                 end
             elseif numel(tmp)<1024
                 db_inplace('rad_mat','dataset wrong size, cannot continue');
@@ -2738,36 +2724,40 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                     
                     %% integrated rolling
                     %
-                    if opt_struct.integrated_rolling
-                        fprintf('Integrated Rolling code\n');
-                        channel_code_r=[channel_code '_'];
-                        if ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X' ])
-                            [input_center,first_voxel_offset]=get_wrapped_volume_center(tmp);
-                            ideal_center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
-                            shift_values=ideal_center-input_center;
-                            for di=1:length(shift_values)
-                                if shift_values(di)<0
-                                    shift_values(di)=shift_values(di)+size(data_buffer.data,di);
-                                end
-                            end
-                            data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' ])=shift_values(strfind(opt_struct.output_order,'x'));
-                            data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' ])=shift_values(strfind(opt_struct.output_order,'y'));
-                            data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' ])=shift_values(strfind(opt_struct.output_order,'z'));
-                            fprintf('\tSet Roll value\n');
-                        else
-                            shift_values=[ data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' ])
-                            data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' ])
-                            data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' ])
-                            ];
-                         
-                            fprintf('\tExisting Roll value\n');
-                        end
-                        fprintf('\tshift by :');
-                        fprintf('%d,',shift_values);
-                        fprintf('\n');
-                        tmp=circshift(tmp,round(shift_values));
+                    channel_code_r=[channel_code '_'];
+                    field_postfix='';
+                    if ~opt_struct.integrated_rolling
+                        fprintf('Calculating Recommended Roll\n');
+                        field_postfix='_recommendation';
                     else
-                        first_voxel_offset=[0,0,0]; % this maybe should be 0,0,0
+                        fprintf('Integrated Rolling code\n');
+                    end
+                    if ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X' field_postfix])
+                        [input_center,first_voxel_offset]=get_wrapped_volume_center(tmp);
+                        ideal_center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
+                        shift_values=ideal_center-input_center;
+                        for di=1:length(shift_values)
+                            if shift_values(di)<0
+                                shift_values(di)=shift_values(di)+size(data_buffer.data,di);
+                            end
+                        end
+                        data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' field_postfix ])=shift_values(strfind(opt_struct.output_order,'x'));
+                        data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' field_postfix ])=shift_values(strfind(opt_struct.output_order,'y'));
+                        data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' field_postfix ])=shift_values(strfind(opt_struct.output_order,'z'));
+                        fprintf('\tSet Roll value\n');
+                    else
+                        shift_values=[ data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' field_postfix ])
+                            data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' field_postfix ])
+                            data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' field_postfix ])
+                            ];
+                        first_voxel_offset=[1,1,1];
+                        fprintf('\tExisting Roll value\n');
+                    end
+                    fprintf('\tshift by :');
+                    fprintf('%d,',shift_values);
+                    fprintf('\n');
+                    if opt_struct.integrated_rolling
+                        tmp=circshift(tmp,round(shift_values));
                     end
                     m_number=(tn-1)*d_struct.p+pn-1;
                     if d_struct.t> 1 || d_struct.p >1
@@ -2829,19 +2819,6 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                                 data_buffer.headfile.fovy,...
                                 data_buffer.headfile.fovz];
                             voxsize = fov./[data_buffer.headfile.dim_X data_buffer.headfile.dim_Y data_buffer.headfile.dim_Z];
-%                             input_center
-% [input_center,roll_3d_val_new]=get_wrapped_volume_center(data_buffer.data,ctype);
-%                             roll_keys={'roll_corner_X','roll_corner_Y','roll_first_Z'};
-%                             input_shift=zeros(1,length(roll_keys));
-%                             for rk=1:length(roll_keys)
-%                                 if ~isfield(data_buffer.headfile,roll_keys{rk})
-%                                     data_buffer.headfile.(roll_keys{rk})=1;
-%                                 end
-%                                 input_shift(rk)=data_buffer.headfile.(roll_keys{rk});
-%                             end;clear rk;
-%                             total_shift=roll_3d_val_new+input_shift-1;
-%                             first_voxel_offset=dimoverflow(total_shift,size(tmp),3);
-%                             [data_buffer.headfile.roll_change,data_buffer.headfile.first_voxel_offset] = reroll_img(data_buffer,roll_keys,0);
                             origin=first_voxel_offset.*voxsize;
                             save_nii(make_nii(imag(tmp),voxsize,origin./voxsize-size(tmp)/2),[work_dir_img_path opt_struct.filter_imgtag '_i.nii']);
                             save_nii(make_nii(real(tmp),voxsize,origin./voxsize-size(tmp)/2),[work_dir_img_path opt_struct.filter_imgtag '_r.nii']);
@@ -3088,13 +3065,15 @@ if ~isempty(ij_prompt)&& ~opt_struct.skip_write_civm_raw
     post_commands{end+1}=ij_prompt;
 end
 
-if opt_struct.force_write_archive_tag || (~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon && isfield(data_buffer.headfile,'U_code'))
-    archive_tag_output=write_archive_tag(runnumbers,...
-        data_buffer.engine_constants.engine_work_directory,...
-        d_struct.z,data_buffer.headfile.U_code,datatype,...
-        data_buffer.headfile.U_civmid,false);
-    fprintf('initiate archive from a terminal using following command, (should change person to yourself). \n\n\t%s\n\n OR run archiveme in matlab useing \n\tsystem(''%s'');\n',archive_tag_output,archive_tag_output);
-    
+if opt_struct.force_write_archive_tag || (~opt_struct.skip_write_civm_raw && ~opt_struct.skip_recon )
+    if isfield(data_buffer.headfile,'U_code')
+        archive_tag_output=write_archive_tag(runnumbers,...
+            data_buffer.engine_constants.engine_work_directory,...
+            d_struct.z,data_buffer.headfile.U_code,datatype,...
+            data_buffer.headfile.U_civmid,false);
+        fprintf('initiate archive from a terminal using following command, (should change person to yourself). \n\n\t%s\n\n OR run archiveme in matlab useing \n\tsystem(''%s'');\n',archive_tag_output,archive_tag_output);
+    end
+    warning('THIS CODE IS NOT WELL TESTED');
     %%% sepearate the runnumberes by channel.
     %% post recon rolling
     if ~opt_struct.integrated_rolling || opt_struct.post_rolling
@@ -3106,8 +3085,6 @@ if opt_struct.force_write_archive_tag || (~opt_struct.skip_write_civm_raw && ~op
         %http://www.mathworks.com/help/images/ref/regionprops.html#bqkf8ln
         cmd_list=cell(1,d_struct.c);
         
-        
-
         for c_r=1:d_struct.c
             run_postexp='';
             data_postfix='';
