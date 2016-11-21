@@ -1732,11 +1732,15 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         else
             fprintf('skipping fermi filter\n');
         end
-        fig_id=disp_vol_center(data_buffer.data,1,300+recon_num);
-        if fig_id>0
-        set(fig_id,'Name',sprintf('kspace_pre_fft_r%i',recon_num));
-        end
         %% write kspace image log(abs(img))
+        kimg_code='';
+        if recon_strategy.recon_operations>1 || length(recon_strategy.recon_operations)>1
+            kimg_code=sprintf(['_%' num2str(length(recon_strategy.recon_operations)) 'd'],recon_num);
+        end
+        fig_id=disp_vol_center(data_buffer.data,1,300+recon_num,[work_dir_img_path_base kimg_code '_kimage_preview' ] );
+        if fig_id>0
+            set(fig_id,'Name',sprintf('kspace_pre_fft_r%i',recon_num));
+        end
         if opt_struct.write_kimage && ~( opt_struct.write_kimage_unfiltered && opt_struct.skip_filter)
             %%% should move the kspace writing code to here with a check if it already exists, in the case we're iterating over it for some reason.
             %             if  ~isprop(data_buffer,'kspace')
@@ -1751,10 +1755,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 nii=make_nii(data_buffer.data);
             end
             fprintf('\t\t save_nii\n');
-            kimg_code='';
-            if recon_strategy.recon_operations>1 || length(recon_strategy.recon_operations)>1
-                kimg_code=sprintf(['_%' num2str(length(recon_strategy.recon_operations)) 'd'],recon_num);
-            end
+
             save_nii(nii,[work_dir_img_path_base kimg_code '_kimage.nii']);clear nii;
         end       
         %% fft, resort, cut bad data, and display
@@ -2467,8 +2468,8 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
             %
             %if opt_struct.integrated_rolling && numel(tmp)>=1024
             if numel(tmp)>=1024 % && opt_struct.integrated_rolling
-%db_inplace('rad_mat','db_testing rollcode');
-% this code never runs? what....
+                %db_inplace('rad_mat','db_testing rollcode');
+                % this code never runs? what....
                 channel_code_r=[channel_code '_'];
                 field_postfix='';
                 if ~opt_struct.integrated_rolling
