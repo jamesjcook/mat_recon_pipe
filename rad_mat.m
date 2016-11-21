@@ -196,6 +196,7 @@ beta_options={
     'warning_pause',          ' length of pause after warnings (default 3). Errors outside matlab from the perl parsers are not effected. use warning_pause=##'
     'no_navigator',           ' aspect spinecho? scans have a navigator of 50 points, this forces that off.'
     'ij_custom_macro',        ' use custom macro to load file instead of CIVM_RunnoOpener macro'
+    'idf',                    ' Interactive data fiddling(or insert word of preference): Just before fft, we may need to edit kspace for some reason, The puts a debug stop right there. '
     '',                       ''
     };
 planned_options={
@@ -1757,6 +1758,21 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
             end
             save_nii(nii,[work_dir_img_path_base kimg_code '_kimage.nii']);clear nii;
         end       
+        
+        %% interactive kspace editing
+        % sometimes we have bad views in ksapce, this will auto stop hre to
+        % let us edit in progfresss
+        if opt_struct.idf
+            if srtcmp(data_buffer.headfile.S_PSDname,'mge3d')
+                warning('special handling for just gary''s gre errors due to supposed power glitch, else dbhere. This a terribly incomplete solution. should do better.');
+                data_buffer.data(1:40,:,:)=0;
+                data_buffer.data(2245:end,:,:)=0;
+            else
+                db_inplace('rad_mat','Interactive data fiddling(or insert word of preference)');
+            end
+        end
+        
+        
         %% fft, resort, cut bad data, and display
         if ~opt_struct.skip_fft
             %% fft
@@ -2478,7 +2494,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                     fprintf('Integrated Rolling code\n');
                 end
                 if ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X' field_postfix])                    
-                    [input_center,first_voxel_offset]=get_wrapped_volume_center(tmp);
+                    [input_center,first_voxel_offset]=get_wrapped_volume_center(tmp,2);
                     ideal_center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
                     shift_values=ideal_center-input_center;
                     for di=1:length(shift_values)
@@ -2504,7 +2520,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 if opt_struct.integrated_rolling
                     tmp=circshift(tmp,round(shift_values));
                 end
-            elseif numel(tmp)<1024
+            elseif numel(tmp)<1024 &&~opt_struct.ignore_errors
                 db_inplace('rad_mat','dataset wrong size, cannot continue');
             end
             %% save types.
@@ -2733,7 +2749,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                         fprintf('Integrated Rolling code\n');
                     end
                     if ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X' field_postfix])
-                        [input_center,first_voxel_offset]=get_wrapped_volume_center(tmp);
+                        [input_center,first_voxel_offset]=get_wrapped_volume_center(tmp,2);
                         ideal_center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
                         shift_values=ideal_center-input_center;
                         for di=1:length(shift_values)
@@ -3123,7 +3139,7 @@ if opt_struct.force_write_archive_tag || (~opt_struct.skip_write_civm_raw && ~op
             if opt_struct.roll_with_centroid
                 new_center=get_volume_centroid(data_vol);
             else
-                new_center=get_wrapped_volume_center(data_vol);
+                new_center=get_wrapped_volume_center(data_vol,2);
             end
             %%%% could use hist followed by extrema or derivative and find
             % center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
