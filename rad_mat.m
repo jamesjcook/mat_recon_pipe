@@ -120,6 +120,11 @@ if exist('options','var')
 else
     options={};
 end
+warn_string='';
+err_string='';
+if length(runno)>16
+    warn_string=sprintf('%s\nRunnumber too long for db\n This scan will not be archiveable.',warn_string);
+end
 %% define the possible options, so we can error for unrecognized options.
 % 3 classes of options,
 % standard, ready for use,
@@ -279,11 +284,7 @@ opt_struct.regrid_method='scott';
 %% handle options cellarray.
 % look at all before erroring by placing into cellarray err_strings or
 % warn_strings.
-warn_string='';
-err_string='';
-if length(runno)>16
-    warn_string=sprintf('%s\nRunnumber too long for db\n This scan will not be archiveable.',warn_string);
-end
+
 for o_num=1:length(options)
     option=options{o_num};
     if isempty(option)
