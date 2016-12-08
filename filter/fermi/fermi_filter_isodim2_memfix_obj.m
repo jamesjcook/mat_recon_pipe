@@ -105,6 +105,7 @@ else
     %%%
     % code copy from the n-d 2d code
     if ~bool_2D_mode
+        %% Filtering in 3D or more
         if numel(size(large_array.(output_field)))>3
             large_array.(output_field)=reshape(large_array.(output_field),[dims(1:3) prod(dims(4:end))]);
         end
@@ -114,15 +115,17 @@ else
         fprintf('Filtering %d volumes... ',size(large_array.(output_field),4));
         tic;
         for v=1:size(large_array.(output_field),4)
-%             temp=large_array.(output_field)(:,:,:,v);
-%             temp=temp.*FW;
-%             temp=large_array.(output_field)(:,:,:,v).*FW;
-%             large_array.(output_field)(:,:,:,v)=temp;
+            %             temp=large_array.(output_field)(:,:,:,v);
+            %             temp=temp.*FW;
+            %             temp=large_array.(output_field)(:,:,:,v).*FW;
+            %             large_array.(output_field)(:,:,:,v)=temp;
+            fprintf('.');
             large_array.(output_field)(:,:,:,v)=large_array.(output_field)(:,:,:,v).*FW;
         end
         fprintf('Apply filter time was %f seconds.\n',toc);
         %     oraw=reshape(oraw,dims);
     else
+        %% Filtering in 2D
         for image=1:size(large_array.(output_field),3)
             large_array.(output_field)(:,:,image)=large_array.(output_field)(:,:,image).*FW;
         end
