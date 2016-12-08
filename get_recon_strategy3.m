@@ -73,6 +73,9 @@ recon_strategy.maximum_RAM_requirement = data_in.total_bytes_RAM+data_out.total_
 
 fprintf('\tdata_input.sample_points(Complex kspace points):%d output_voxels:%d\n',data_in.total_points,data_out.total_voxel_count);
 fprintf('\ttotal_memory_required for all at once:%0.02fM, system memory(- reserve):%0.2fM\n',recon_strategy.maximum_RAM_requirement/1024/1024,(useable_RAM)/1024/1024);
+if ~isfield(opt_struct,'force_load_partial')
+    opt_struct.force_load_partial=0;
+end
 % handle ignore memory limit options
 if opt_struct.skip_mem_checks;
     display('you have chosen to ignore this machine''s memory limits, this machine may crash');
@@ -175,7 +178,8 @@ end
 % we can load the whole volume.
 if ( recon_strategy.memory_space_required < recon_strategy.maximum_RAM_requirement)
     if ( useable_RAM < ...
-            (recon_strategy.memory_space_required + data_in.total_bytes_RAM - data_in.single_vol_RAM ) )
+            (recon_strategy.memory_space_required + data_in.total_bytes_RAM - data_in.single_vol_RAM ) ) ...
+            || opt_struct.force_load_partial
         recon_strategy.load_whole=false;
     else
         recon_strategy.memory_space_required=recon_strategy.memory_space_required + data_in.total_bytes_RAM - data_in.single_vol_RAM ;
