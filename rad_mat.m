@@ -230,6 +230,8 @@ planned_options={
     'roll_with_centroid',     ' calculate roll value using centroid(regionprops) method instead of by the luke/russ handy quick way'
 %     'allow_headfile_override' ' Allow arbitrary options to be passed which will overwrite headfile values once the headfile is created/loaded'
     'force_write_archive_tag',' force archive tag write even if we didnt do antyhing'
+    'force_load_partial',     ' modifies loading behavior to load partial if we''re reconning partial'
+    'debug_stop_recon_strategy',' sets debug point just prior to creation of the recon_strategy struct'
     'debug_stop_load',        ' sets debug point just prior to running load'
     'debug_stop_regrid',      ' sets debug point just prior to regridding(reshapping)'
     'debug_stop_filter',      ' sets debug point just prior to running filter'
@@ -889,6 +891,9 @@ clear data_in.kspace_header_bytes kspace_file_size fileInfo measured_filesize;
 
 %% set the recon strategy dependent on memory requirements
 meminfo=imaqmem; %check available memory
+if opt_struct.debug_stop_recon_strategy
+    db_inplace('rad_mat','debug stop requested prior to recon strategy');
+end
 [recon_strategy,opt_struct]=get_recon_strategy3(data_buffer,opt_struct,d_struct,data_in,data_work,data_out,meminfo);
 if recon_strategy.recon_operations>data_buffer.headfile.([data_tag 'volumes'])
     save([data_buffer.headfile.work_dir_path '/insufficient_mem_stop.mat']);
@@ -1029,6 +1034,9 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
 %             file_chunks=1;
 %             load_chunk_size=(recon_strategy.chunk_size+recon_strategy.load_skip)*recon_strategy.num_chunks;
             chunks_to_load=1:recon_strategy.num_chunks;
+            if recon_strategy.work_by_chunk && ~isprop(data_buffer,'kspace')
+                addprop(data_buffer,'kspace');
+            end
         elseif recon_strategy.work_by_sub_chunk 
             file_header=data_in.binary_header_bytes+(recon_num-1)*recon_strategy.min_load_size*(data_in.disk_bit_depth/8);
             chunks_to_load=1:recon_strategy.num_chunks;
@@ -1047,10 +1055,14 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         %             recon_strategy.num_chunks=1;
         %             recon_strategy.chunk_size=temp_size*temp_chunks;
         %         end
-
-        if  recon_num==1 || (  file_chunks>1 ) ||  ~isprop(data_buffer,'data') %~recon_strategy.load_whole &&
+        
+        % This loading code is running TOO often. I need to move this
+        % if stament around.
+%         if  recon_num==1 || (  file_chunks>1 ) ||  ~isprop(data_buffer,'data') %~recon_strategy.load_whole &&
+        if  recon_num==1 || ~recon_strategy.load_whole
             % we load the data for only the first chunk of a load_whole, 
             % or for each/any chunk when recon_strategy.num_chunks  > 1
+           
             if ~isprop(data_buffer,'data')
                 data_buffer.addprop('data');
             end
@@ -1363,13 +1375,21 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                     rad_regrid(data_buffer,recon_strategy.w_dims);%%%% w_dims is WRONG for load whole!!!
                 elseif recon_num==1 && recon_strategy.load_whole
                     rad_regrid(data_buffer,data_in.input_order);%%%% w_dims is WRONG for load whole!!!
+                    if recon_strategy.recon_operations>1
+                        data_buffer.kspace=data_buffer.data;
+                    end
+                end
+                if recon_strategy.load_whole && recon_strategy.work_by_chunk
+                    %%% decode w_dims and op_dims?
+                    warning('Load_whole, work_by_(sub)_chunk not well tested');
+                    data_buffer.data=data_buffer.kspace(:,:,:,recon_num);
                 end
             elseif strcmp(data_in.vol_type,'radial') && strcmp(opt_struct.regrid_method,'scott')
                 scott_grid(data_buffer,opt_struct,data_in,data_work,data_out); % lets make scott grid responsible for loading and closing system matrices.
             else 
                 db_inplace('rad_mat','Unknown grid error');
             end
-            %% when omitting channgles, as in the case we have bad channel data,
+            %% when omitting channels, as in the case we have bad channel data,
             % remove the bad channel data, and fix the data objects to refer to the reduced number of channels.
             if opt_struct.omit_channels
                 % fix data_work, data_out, recon_srategy?
@@ -1664,6 +1684,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
             fprintf('Performing fermi filter on volume with size %s\n',dim_string );
             
             if strcmp(data_in.vol_type,'2D')
+                %% Filter 2D
                 % this requires regridding to place volume in same dimensions as the output dimensions
                 % it also requires the first two dimensions of the output to be to be xy.
                 % these asumptions may not always be true.
@@ -1673,6 +1694,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 data_buffer.data=reshape(data_buffer.data,data_out.output_dimensions );
                 %elseif strcmp(data_in.vol_type,'3D')
             elseif regexpi(data_in.vol_type,'3D|4D');
+                %% Filter 3D|4D non-radial
                 fermi_filter_isodim2_memfix_obj(data_buffer,...
                     opt_struct.filter_width,opt_struct.filter_window,false);
                 
@@ -1682,6 +1704,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 %                 data_buffer.data=fermi_filter_isodim2(data_buffer.data,...
                 %                     opt_struct.filter_width,opt_struct.filter_window,false);
             elseif regexpi(data_in.vol_type,'radial');
+                %% Filter Radial
                 mem_efficient_filter=true;
                 if mem_efficient_filter;
                     fermi_filter_isodim2_memfix_obj(data_buffer,...
@@ -1716,12 +1739,6 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                             
                             fermi_filter_isodim2_memfix_obj(data_buffer,...
                                 opt_struct.filter_width,opt_struct.filter_window,false);
-                            
-                            
-                            
-                            %                     if d_struct.t>1
-                            %                         save(['/tmp/temp_' num2str(time_pt) '.mat' ],'data','-v7.3');
-                            %                     end
                         end
                         clear vol_select;
                     end
@@ -2474,7 +2491,10 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                     || ~opt_struct.skip_write_civm_raw) ...
                     &&( ~opt_struct.skip_recon  || opt_struct.reprocess_rp )
                 fprintf('Extracting image channel:%0.0f param:%0.0f timepoint:%0.0f\n',d_s.c,d_s.p,d_s.t);
-                tmp=data_buffer.data;
+                tmp=data_buffer.data; % error! not pulling out expected
+                %data
+                %                 data_buffer.data=reshape(data_buffer.data,data_out.output_dimensions);
+                %                 tmp=data_buffer.data(:,:,:,d_s.c,d_s.p,d_s.t); % ERROR Not handling output dimensionality!
                 if numel(tmp)<prod(data_out.output_dimensions(1:3))
                     error('Save file not right, chunking error likly');
                 end
