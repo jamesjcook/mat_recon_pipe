@@ -937,7 +937,7 @@ clear data_in.ray_length2 data_in.ray_length3 fileInfo bytes_per_vox copies_in_m
 % if regexpi(data_buffer.headfile.S_PSDname, strjoin(data_buffer.headfile.bruker_radial_methods,'|')
 % load_bruker_traj
 % end
-%% insert unrecognized fields into headfile
+%% insert unrecognized fields into headfile again
 data_buffer.headfile=combine_struct(data_buffer.headfile,unrecognized_fields);
 clear fnum option value parts;
 %%% last second stuff options into headfile
