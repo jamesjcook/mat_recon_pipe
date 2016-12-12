@@ -1,4 +1,4 @@
-function fermi_filter_isodim2_memfix_obj(large_array,w1,w2,bool_2D_mode)
+function fermi_filter_isodim2_memfix_obj(large_array,w1,w2,bool_2D_mode,output_field)
 % -------------------------------------------------------------------------
 % function fermi_filter_isodim2_memfix_obj(large_array,w1,w2,2D_switch)
 % kspace_filter(iraw) generates the 3D filtered kspace image. Only filter 
@@ -56,10 +56,12 @@ if ~exist('bool_2D_mode','var')
 end
 % get correct data element of large_array
 % if no kspace to filter, presume filter data
+if ~exist('output_field','var')
 if ~isprop(large_array,'kspace')
     output_field='data';
 else
     output_field='kspace';
+end
 end
 %% fermi filter
 if ~isprop(large_array,'filter')

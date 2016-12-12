@@ -1671,9 +1671,8 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 warning('Debug stop requested.');
             end
             
-            if ~isprop(data_buffer,'kspace')
-                filter_input='data';
-            else
+            filter_input='data';
+            if isprop(data_buffer,'kspace') && recon_strategy.recon_operations==1
                 filter_input='kspace';
             end
             %  dim_string=sprintf('%d ',size(data_buffer.(filter_input),1),size(data_buffer.(filter_input),2),size(data_buffer.(filter_input),3));
@@ -1696,7 +1695,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
             elseif regexpi(data_in.vol_type,'3D|4D');
                 %% Filter 3D|4D non-radial
                 fermi_filter_isodim2_memfix_obj(data_buffer,...
-                    opt_struct.filter_width,opt_struct.filter_window,false);
+                    opt_struct.filter_width,opt_struct.filter_window,false,filter_input);
                 
                 %                 data_buffer.data=fermi_filter_isodim2(data_buffer.data,...
                 %                     opt_struct.filter_width,opt_struct.filter_window,false);
