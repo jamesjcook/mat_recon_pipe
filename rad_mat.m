@@ -2516,6 +2516,8 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 end
                 if ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X' field_postfix])                    
                     [input_center,first_voxel_offset]=get_wrapped_volume_center(tmp,2);
+                    shift_values=first_voxel_offset;
+                    %{
                     ideal_center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
                     shift_values=ideal_center-input_center;
                     for di=1:length(shift_values)
@@ -2523,6 +2525,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                             shift_values(di)=shift_values(di)+size(data_buffer.data,di);
                         end
                     end
+                    %}
                     data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' field_postfix ])=shift_values(strfind(opt_struct.output_order,'x'));
                     data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' field_postfix ])=shift_values(strfind(opt_struct.output_order,'y'));
                     data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' field_postfix ])=shift_values(strfind(opt_struct.output_order,'z'));
@@ -2532,7 +2535,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                         data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' field_postfix ])
                         data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' field_postfix ])
                         ];
-                    first_voxel_offset=[1,1,1];
+                    first_voxel_offset=shift_values;%[1,1,1];
                     fprintf('\tExisting Roll value\n');
                 end
                 fprintf('\tshift by :');
@@ -2771,6 +2774,8 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                     end
                     if ~isfield(data_buffer.headfile, [ 'roll' channel_code_r 'corner_X' field_postfix])
                         [input_center,first_voxel_offset]=get_wrapped_volume_center(tmp,2);
+                        shift_values=first_voxel_offset;
+                        %{
                         ideal_center=[d_struct.x/2,d_struct.y/2,d_struct.z/2];
                         shift_values=ideal_center-input_center;
                         for di=1:length(shift_values)
@@ -2778,6 +2783,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                                 shift_values(di)=shift_values(di)+size(data_buffer.data,di);
                             end
                         end
+                        %}
                         data_buffer.headfile.([ 'roll' channel_code_r 'corner_X' field_postfix ])=shift_values(strfind(opt_struct.output_order,'x'));
                         data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' field_postfix ])=shift_values(strfind(opt_struct.output_order,'y'));
                         data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' field_postfix ])=shift_values(strfind(opt_struct.output_order,'z'));
@@ -2787,7 +2793,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                             data_buffer.headfile.([ 'roll' channel_code_r 'corner_Y' field_postfix ])
                             data_buffer.headfile.([ 'roll' channel_code_r 'first_Z' field_postfix ])
                             ];
-                        first_voxel_offset=[1,1,1];
+                        first_voxel_offset=shift_values;%[1,1,1];
                         fprintf('\tExisting Roll value\n');
                     end
                     fprintf('\tshift by :');
