@@ -38,7 +38,7 @@ else
     buffer_length=MB*1024^2/(2*write_count);
     fid=fopen(path,'w','l');
     if fid == -1
-        error('could not open output path');
+        error(sprintf('could not open output path: %s',path));
     end
     vol=vol(:);
     written=0;
