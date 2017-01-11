@@ -83,6 +83,9 @@ if opt_struct.skip_mem_checks;
     useable_RAM=Inf;
     
 end
+if isfield(opt_struct,'max_ram') && opt_struct.max_ram %~islogical(opt_struct.max_ram)  % islogical is a dangerous check, because 1 may not be a logical.
+    useable_RAM=opt_struct.max_ram;
+end
 
 %% set the recon strategy dependent on memory requirements
 %%% Load size calculation,
@@ -177,9 +180,10 @@ end
 % memory_space_required is an operational minimum. We havnt checked yet if
 % we can load the whole volume.
 if ( recon_strategy.memory_space_required < recon_strategy.maximum_RAM_requirement)
-    if ( useable_RAM < ...
+    if opt_struct.force_load_partial ...
+            || ( useable_RAM < ...
             (recon_strategy.memory_space_required + data_in.total_bytes_RAM - data_in.single_vol_RAM ) ) ...
-            || opt_struct.force_load_partial
+            || ( ~strcmp(data_in.vol_type,'2D') && numel(recon_strategy.w_dims)<3 )
         recon_strategy.load_whole=false;
     else
         recon_strategy.memory_space_required=recon_strategy.memory_space_required + data_in.total_bytes_RAM - data_in.single_vol_RAM ;
@@ -235,16 +239,28 @@ elseif ~isempty(regexp(data_in.vol_type,'(3D|4D)', 'once')) %...
     if ( recon_strategy.num_chunks ~= prod(data_out.output_dimensions)/prod(data_out.ds.Sub('xyz')))
         warning('native fft blocks dont line up with chunks!');
     end
+    %%% the chunk dimension is ray_blocks, try to find it in the dimension
+    %%% list by its size.
     unique_test_string=data_in.ds.showorder([data_in.ray_blocks data_in.ray_blocks data_in.ray_blocks]);
-    unique_test_string=unique_test_string([true diff(unique_test_string)~=0]);%collapses any extra f's to a singluar f'.
+    if numel(recon_strategy.w_dims)<3 % for some special conditisions this helps sub chunk opreation
+        unique_test_string(end+1)='f';
+    end
+    unique_test_string=unique_test_string([true diff(unique_test_string)~=0]); % collapses any extra f's to a singluar f'.
+%      && ~strcmp(unique_test_string(end),'f') )
+        
+         
     
     %%% if the chunk dimension includes z we have to work by sub_chunks, this
     %%% occurs with MGRE agilent.
-    if (   (numel(unique_test_string)>=2 && strcmp(unique_test_string(end-1),'z')...
-            &&strcmp(unique_test_string(end),'f') )...
+    if (  (  numel(unique_test_string)>=2 && strcmp(unique_test_string(end-1),'z')...
+            && strcmp(unique_test_string(end),'f') )...
             || (numel(unique_test_string)>=1 &&strcmp(unique_test_string(end),'f') )   ) ...
-            && ~recon_strategy.load_whole && (    recon_strategy.memory_space_required > useable_RAM ...    %memory_space_required or maximum_RAM_requirement
-            || recon_strategy.num_chunks ~= prod(data_out.output_dimensions)/prod(data_out.ds.Sub('xyz') ))
+            && ...
+            ~recon_strategy.load_whole && (    recon_strategy.memory_space_required > useable_RAM ...    %memory_space_required or maximum_RAM_requirement
+            || recon_strategy.num_chunks ~= prod(data_out.output_dimensions)/prod(data_out.ds.Sub(recon_strategy.w_dims))    )
+            % || recon_strategy.num_chunks ~= prod(data_out.output_dimensions)/prod(data_out.ds.Sub('xyz'))    )
+
+        
         %  %memory_space_required or maximum_RAM_requirement
         % switched out for a test of load_whole
         %    || prod(data_out.ds.Sub(recon_strategy.op_dims))>1     )
@@ -353,7 +369,7 @@ end
 
 function useable_RAM = load_check(maximum_RAM_requirement,meminfo,opt_struct)
 % system_reserved_memory=2*1024*1024*1024;% reserve 2gb for the system while we work.
-system_reserved_RAM=min(6*1024*1024*1024,meminfo.TotalPhys*0.3); % reserve at least 2gb for the system while we work
+system_reserved_RAM=min(6*1024*1024*1024,meminfo.TotalPhys*0.3); % reserve at least 6gb for the system while we work
 
 if meminfo.AvailPhys < meminfo.TotalPhys-system_reserved_RAM ... %*.85 ...  %mem clogged check
         && meminfo.AvailPhys < maximum_RAM_requirement              % not enough avail mem check
