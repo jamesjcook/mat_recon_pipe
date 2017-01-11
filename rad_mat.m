@@ -224,6 +224,7 @@ planned_options={
     'chunk_test_min',         ' first chunks to process before. NOT a production option!'
     'recon_operation_min',    ' first recon operation to do. NOT a production option!'
     'recon_operation_max',    ' last recon operation to do. NOT a production option!'
+    'max_ram',                ' maximum ram in bytes, so we can simulate low ram conditions with small datasets'
     'image_return_type',      ' set the return type image from unscaled 32-bit float magnitude to something else.'
     'no_navigator',           ''
     'force_navigator',        ' Force the navigator selection code on for aspect scans, By default only SE SE classic and ME SE are expected to use navigator.'
@@ -895,12 +896,12 @@ if opt_struct.debug_stop_recon_strategy
     db_inplace('rad_mat','debug stop requested prior to recon strategy');
 end
 [recon_strategy,opt_struct]=get_recon_strategy3(data_buffer,opt_struct,d_struct,data_in,data_work,data_out,meminfo);
-if recon_strategy.recon_operations>data_buffer.headfile.([data_tag 'volumes'])
+if recon_strategy.recon_operations>data_buffer.headfile.([data_tag 'volumes']) ...
+        && ~strcmp(data_in.vol_type,'2D')
     save([data_buffer.headfile.work_dir_path '/insufficient_mem_stop.mat']);
-    %     [l,n,f]=get_dbline('rad_mat');
-    %     eval(sprintf('dbstop in %s at %d',f,l+3));
     if ~opt_struct.ignore_errors
-        db_inplace('rad_mat','Cannot proceede sanely on this recon engine due to insufficient RAM');
+        % db_inplace('rad_mat','Cannot proceede sanely on this recon engine due to insufficient RAM');
+        warning('Cannot proceede sanely on this recon engine due to insufficient RAM');
     end
 end
 %% mem purging when we expect to fit.
@@ -1793,13 +1794,14 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         
         %% fft, resort, cut bad data, and display
         if ~opt_struct.skip_fft
-            %% fft
             if opt_struct.debug_stop_fft
+                %% fft stop
                 [l,~,f]=get_dbline('rad_mat');
                 eval(sprintf('dbstop in %s at %d',f,l+3));
                 warning('Debug stop requested.');
             end
             fprintf('Performing FFT on ');
+            
             if strcmp(data_in.vol_type,'2D')
                 %% fft-2D
                 fprintf('%s volumes\n',data_in.vol_type);
@@ -2085,35 +2087,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
             end
             %% display result images
             if opt_struct.display_output==true
-                if ~exist('old_way','var')
-                    pan_nd_image(data_buffer,opt_struct);
-                else
-                dim_select.x=':';
-                dim_select.y=':';
-                for zn=1:d_struct.z
-                    dim_select.z=zn;
-                    for tn=1:d_struct.t
-                        dim_select.t=tn;
-                        for pn=1:d_struct.p
-                            dim_select.p=pn;
-                            for cn=1:d_struct.c
-                                dim_select.c=cn;
-                                imagesc(log(abs(squeeze(data_buffer.data(...
-                                    dim_select.(opt_struct.output_order(1)),...
-                                    dim_select.(opt_struct.output_order(2)),...
-                                    dim_select.(opt_struct.output_order(3)),...
-                                    dim_select.(opt_struct.output_order(4)),...
-                                    dim_select.(opt_struct.output_order(5)),...
-                                    dim_select.(opt_struct.output_order(6))...
-                                    ))))), axis image;
-                                pause(4/d_struct.z/d_struct.c/d_struct.p);
-                                
-                            end
-                        end
-                        fprintf('%d %d\n',zn,tn);
-                    end
-                end
-                end
+                pan_nd_image(data_buffer,opt_struct);
             end
             %% combine channel data
             % should make collapse dimension function.
@@ -2178,14 +2152,42 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
             %         fft(data_buffer,interleave_num);
             %         savedata(data_buffer,interleave_num,outloc);
             %     end
-            %% chunk save
-            % while chunks are volumes this is entirely unnecessary.
-            %             if recon_strategy.num_chunks>1
-            %                 fprintf('Saving chunk %d...',chunk_num);
-            %                 work_dir_img_path_base=[ data_buffer.headfile.work_dir_path '/C' data_buffer.headfile.U_runno ] ;
-            %                 save_complex(data_buffer.data,[work_dir_img_path_base '_' num2str(chunk_num) '.rp.out']);
-            %                 fprintf('\tComplete\n');
-            %             end
+            %% partial save
+            % while chunks are volumes this is entirely unnecessary. BUt we
+            % finally have a dataset too big to fit in memory for 3dfft. 
+            if strcmp(recon_strategy.w_dims,'xy') ...
+                && ( recon_strategy.recon_operations > 1 ...
+                    && ( recon_strategy.num_chunks > 1 ...
+                    && recon_strategy.work_by_chunk ...
+                    || recon_strategy.work_by_sub_chunk )   )
+                %                 fft_slice_dir=sprintf('%s/fft_slices',data_buffer.headfile.work_dir_path);
+                %                 if ~exist(fft_slice_dir,'dir')
+                %                     mkdir(fft_slice_dir);
+                %                 end
+                blob_path=sprintf('%s/%s.xy',data_buffer.headfile.work_dir_path,data_buffer.headfile.U_runno);
+                fprintf('Saving chunk %d...',recon_num);
+                %                 work_dir_img_path_base=[ data_buffer.headfile.work_dir_path '/C' data_buffer.headfile.U_runno ] ;
+                %                 save_complex(data_buffer.data,[work_dir_img_path_base '_' num2str(chunk_num) '.rp.out']);
+                %                 skip=prod(data_out.output_dimensions(1:3))/recon_strategy.recon_operations-8;
+                if ~isprop(data_buffer,'chunk_out')
+                    addprop(data_buffer,'chunk_out');
+                    data_buffer.chunk_out=fopen(blob_path,'w+','b');% tried r+, tried a+, but didnt seem to work as expected.
+                end
+                % fft_num=0;
+                %% intereleave data
+                % intr=[zeros(1,4);ones(1,4)];intr=intr(:);
+                A=data_buffer.data;
+                A=[imag(A(:)');real(A(:)')];
+                A=A(:);
+                
+                %% save data
+                A=typecast(A,'double');
+                %                 fseek(data_buffer.chunk_out,fft_num*8,'bof');
+                fwrite(data_buffer.chunk_out,A,'double');
+                fprintf('\tComplete\n');
+                clear A;
+                continue;
+            end
         else
            fprintf('Skipped fft\n');
            if opt_struct.remove_slice
@@ -2352,64 +2354,34 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 % if group scale, or write_unscaled_nd.  why do we want
                 % this for unscaled nd? its unscaled!
                 data_buffer.headfile.group_max_atpct=0;
-                if ~exist('old_way','var')
-                    if opt_struct.skip_combine_channels 
-                        c_div=data_out.ds.Sub('c');
-                    else
-                        c_div=1;
-                    end
-                    for vn=1:prod(data_in.ds.Sub(recon_strategy.op_dims))% for vn=1:numel(data_buffer.data)/(prod(data_out.ds.Sub(recon_strategy.w_dims))/c_div)
-                        d_pos=indx_calc(vn,data_out.ds.Sub(recon_strategy.op_dims));%matlab has a function for this... its used int he mouse stitch code. i forgot it now .
-                        % for dx=1:length(recon_strategy.op_dims)
-                        %     d_s.(recon_strategy.op_dims(dx))=d_pos(dx);
-                        % end
-                        ed_string=strjoin(strsplit(num2str(d_pos),' '),',');
-                        if ~isempty(ed_string)
-                            tmp=abs(eval(['data_buffer.data(:,:,:,' strjoin(strsplit(num2str(d_pos),' '),',') ')' ]));
-                        else
-                            if numel(size(data_buffer.data))~=3
-                                warning('data_buffer dims greater than 3 but didnt figure out which part we''re saving.');
-                            end
-                            tmp=abs(data_buffer.data);
-                        end
-%                         tmp=sort(tmp(:)); only needed when not doing
-%                         perentile, should check performance of the two.
-                        m_tmp=max(tmp(:)); % maybe do unshape, reshape for speed?
-                        p_tmp=prctile(tmp(:),opt_struct.histo_percent);
-                        if m_tmp>data_buffer.headfile.group_max_intensity
-                            data_buffer.headfile.group_max_intensity=m_tmp;
-                        end
-                        if data_buffer.headfile.group_max_atpct<p_tmp
-                            data_buffer.headfile.group_max_atpct=p_tmp;
-                        end
-                    end
+                if opt_struct.skip_combine_channels
+                    c_div=data_out.ds.Sub('c');
                 else
-                    error('old_way bad');
-                    for tn=1:d_struct.t
-                        dim_select.t=tn;
-                        for cn=1:d_struct.c
-                            dim_select.c=cn;
-                            for pn=1:d_struct.p
-                                dim_select.p=pn;
-                                tmp=abs(squeeze(data_buffer.data(...
-                                    dim_select.(opt_struct.output_order(1)),...
-                                    dim_select.(opt_struct.output_order(2)),...
-                                    dim_select.(opt_struct.output_order(3)),...
-                                    dim_select.(opt_struct.output_order(4)),...
-                                    dim_select.(opt_struct.output_order(5)),...
-                                    dim_select.(opt_struct.output_order(6))...
-                                    )));
-                                tmp=sort(tmp(:));
-                                m_tmp=max(tmp);
-                                p_tmp=prctile(tmp,opt_struct.histo_percent);
-                                if m_tmp>data_buffer.headfile.group_max_intensity
-                                    data_buffer.headfile.group_max_intensity=m_tmp;
-                                end
-                                if data_buffer.headfile.group_max_atpct<p_tmp
-                                    data_buffer.headfile.group_max_atpct=p_tmp;
-                                end
-                            end
+                    c_div=1;
+                end
+                for vn=1:prod(data_in.ds.Sub(recon_strategy.op_dims))% for vn=1:numel(data_buffer.data)/(prod(data_out.ds.Sub(recon_strategy.w_dims))/c_div)
+                    d_pos=indx_calc(vn,data_out.ds.Sub(recon_strategy.op_dims));%matlab has a function for this... its used int he mouse stitch code. i forgot it now .
+                    % for dx=1:length(recon_strategy.op_dims)
+                    %     d_s.(recon_strategy.op_dims(dx))=d_pos(dx);
+                    % end
+                    ed_string=strjoin(strsplit(num2str(d_pos),' '),',');
+                    if ~isempty(ed_string)
+                        tmp=abs(eval(['data_buffer.data(:,:,:,' strjoin(strsplit(num2str(d_pos),' '),',') ')' ]));
+                    else
+                        if numel(size(data_buffer.data))~=3
+                            warning('data_buffer dims greater than 3 but didnt figure out which part we''re saving.');
                         end
+                        tmp=abs(data_buffer.data);
+                    end
+                    %                         tmp=sort(tmp(:)); only needed when not doing
+                    %                         perentile, should check performance of the two.
+                    m_tmp=max(tmp(:)); % maybe do unshape, reshape for speed?
+                    p_tmp=prctile(tmp(:),opt_struct.histo_percent);
+                    if m_tmp>data_buffer.headfile.group_max_intensity
+                        data_buffer.headfile.group_max_intensity=m_tmp;
+                    end
+                    if data_buffer.headfile.group_max_atpct<p_tmp
+                        data_buffer.headfile.group_max_atpct=p_tmp;
                     end
                 end
                 if ( opt_struct.write_unscaled_nD && ~opt_struct.skip_recon ) %|| opt_struct.skip_write_civm_raw
@@ -2482,20 +2454,38 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                     opt_struct.write_kimage_unfiltered
                 fprintf('Writing debug outputs to %s\n',data_buffer.headfile.work_dir_path);
             end
-                           
+            if strcmp(recon_strategy.w_dims,'xy') && exist('never_run','var')
+                warning('Very big set of data, had to work on less than 3 dims : ( gonna have to save tmp complex data.');
+                
+                % write_civm_image(data_buffer,{'planned_ok',sprintf(['write_complex_rp=%s/%s.%0' num2str(length(num2str(recon_strategy.recon_operations))) 'i.rp'],data_buffer.headfile.work_dir_path,data_buffer.headfile.U_runno,recon_num)});
+                fft_slice_dir=sprintf('%s/fft_slices',data_buffer.headfile.work_dir_path);
+                if ~exist(fft_slice_dir,'dir')
+                    mkdir(fft_slice_dir);
+                end
+                save_complex(data_buffer.data,sprintf(['%s/%s.%0', num2str(length(num2str(recon_strategy.recon_operations))) 'i.rp.xy'],fft_slice_dir,data_buffer.headfile.U_runno,recon_num));
+                %                         save_complex(tmp,sprintf(['%s/fft_slices/%s.%0' num2str(length(num2str(recon_strategy.recon_operations))) 'i.rp.xy'],data_buffer.headfile.work_dir_path,data_buffer.headfile.U_runno,recon_num));
+                continue;
+            end
             %% pull single vol to save
             if ( opt_struct.write_complex ...
                     || opt_struct.write_complex_component ...
                     || opt_struct.write_unscaled ...
                     || ~opt_struct.skip_write_civm_raw) ...
-                    &&( ~opt_struct.skip_recon  || opt_struct.reprocess_rp )
+                    && ( ~opt_struct.skip_recon  || opt_struct.reprocess_rp ) ...
+                    && ~strcmp(recon_strategy.w_dims,'xy')
+                
                 fprintf('Extracting image channel:%0.0f param:%0.0f timepoint:%0.0f\n',d_s.c,d_s.p,d_s.t);
                 tmp=data_buffer.data; % error! not pulling out expected
                 %data
                 %                 data_buffer.data=reshape(data_buffer.data,data_out.output_dimensions);
                 %                 tmp=data_buffer.data(:,:,:,d_s.c,d_s.p,d_s.t); % ERROR Not handling output dimensionality!
                 if numel(tmp)<prod(data_out.output_dimensions(1:3))
-                    error('Save file not right, chunking error likly');
+%                     warning('Very big set of data, had to work on less than 3 dims : ( gonna have to save tmp complex data.');
+                    if strcmp(recon_strategy.w_dims,'xy') 
+                        error('well HOW did THIS happen');
+                    else
+                        error('Save file not right, chunking error likely');
+                    end
                 end
             else
                 tmp='RECON_DISABLED';
@@ -3063,21 +3053,37 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
         fprintf('chunk_time:%0.2f\n',toc(time_chunk));
     end
     clear tmp;
-%populate our ij_prompt
-if (~opt_struct.skip_recon&&exist('openmacro_path','var') )||opt_struct.force_ij_prompt
-    % display ij call to examine images.
-    [~,txt]=system('echo -n $ijstart');  %-n for no newline i think there is a smarter way to get system variables but this works for now.
-    ij_prompt=sprintf('%s -macro %s',txt, openmacro_path);
-    mat_ij_prompt=sprintf('system(''%s'');',ij_prompt);
-    data_buffer.headfile.rad_mat_ij_macro=openmacro_path;
-    data_buffer.headfile.rad_mat_ij_macro_prompt=ij_prompt;
+    %populate our ij_prompt
+    if (~opt_struct.skip_recon&&exist('openmacro_path','var') )||opt_struct.force_ij_prompt
+        % display ij call to examine images.
+        [~,txt]=system('echo -n $ijstart');  %-n for no newline i think there is a smarter way to get system variables but this works for now.
+        ij_prompt=sprintf('%s -macro %s',txt, openmacro_path);
+        mat_ij_prompt=sprintf('system(''%s'');',ij_prompt);
+        data_buffer.headfile.rad_mat_ij_macro=openmacro_path;
+        data_buffer.headfile.rad_mat_ij_macro_prompt=ij_prompt;
+    end
+
+
 end
-
-
+if isprop(data_buffer,'chunk_out')
+     fclose(data_buffer.chunk_out);
 end
 post_commands={};
 %% stich chunks together
 % this is not implimented yet.
+if strcmp(recon_strategy.w_dims,'xy') ...
+        && opt_struct.recon_operation_min==1 ...
+        && opt_struct.recon_operation_max>=recon_strategy.recon_operations
+    zfft1(sprintf('%s/%s.xy',data_buffer.headfile.work_dir_path,data_buffer.headfile.U_runno),...
+        sprintf('%s/%s.rp.out',data_buffer.headfile.work_dir_path,data_buffer.headfile.U_runno),recon_strategy.recon_operations);
+    % load one complex number at a time from each file... do fft
+%     for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,recon_strategy.recon_operations);
+%         if ~exist(fft_slice_dir,'dir')
+%             mkdir(fft_slice_dir);
+%         end
+%         save_complex(data_buffer.data,sprintf(['%s/%s.%0', num2str(length(num2str(recon_strategy.recon_operations))) 'i.rp.xy'],fft_slice_dir,data_buffer.headfile.U_runno,recon_num));
+%     end
+end
 
 %% run group reformer for select datasets.
 if recon_strategy.num_chunks>1&&~opt_struct.skip_write&&~opt_struct.skip_write_civm_raw %recon_strategy.work_by_chunk
