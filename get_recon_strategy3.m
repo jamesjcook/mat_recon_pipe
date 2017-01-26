@@ -344,6 +344,10 @@ elseif ~isempty(regexp(data_in.vol_type,'(3D|4D)', 'once')) %...
         
         warning('UNHANDLED CHUNK CONDIDTION :(%s)',unique_test_string(end-1));
     end
+elseif ~isempty(regexpi(data_in.vol_type,'radial'))
+    warning('woo, radial, lets fail now');
+else
+    warning('I have no idea what kinda of acquisition this is so I will probably fail.');
 end
 
 %if recon_strategy.work_by_chunk || recon_strategy.work_by_sub_chunk
