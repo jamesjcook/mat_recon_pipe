@@ -232,6 +232,7 @@ planned_options={
 %     'allow_headfile_override' ' Allow arbitrary options to be passed which will overwrite headfile values once the headfile is created/loaded'
     'force_write_archive_tag',' force archive tag write even if we didnt do antyhing'
     'force_load_partial',     ' modifies loading behavior to load partial if we''re reconning partial'
+    'old_trajectory',         ' load static trajectory stored on workstation if we''ve got one. Not recommended.'
     'debug_stop_recon_strategy',' sets debug point just prior to creation of the recon_strategy struct'
     'debug_stop_load',        ' sets debug point just prior to running load'
     'debug_stop_regrid',      ' sets debug point just prior to regridding(reshapping)'
@@ -1108,7 +1109,12 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 % BRUKER FLASH scans broke this rule. had to fix this for alex. New calculation shouldnt be breakable, there may be exceptions for radial(ofcourse:(  
                 % expected_data_length=(data_in.line_points-data_in.line_pad)...
                 %     *data_in.rays_per_block*data_in.ray_blocks/numel(chunks_to_load);
-                expected_data_length=prod(data_in.ds.Sub(recon_strategy.w_dims));
+                
+                if recon_strategy.load_whole||~isempty(regexpi(data_in.vol_type,'radial'))
+                    expected_data_length=data_in.total_points;
+                else
+                    expected_data_length=prod(data_in.ds.Sub(recon_strategy.w_dims));
+                end
                 if numel(data_buffer.data) ~= expected_data_length && ~opt_struct.ignore_errors;
                     error('Ray_padding reversal went awry. Data length should be %d, but is %d',...
                         expected_data_length,numel(data_buffer.data));
@@ -1153,12 +1159,21 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 scanner '/'...
                 data_buffer.headfile.S_PSDname '/' ...
                 ];
+            mkay='';
+            if isfield(data_buffer.headfile,'traj_matrix')
+                mkay=['_M' num2str(data_buffer.headfile.traj_matrix)];
+            else 
+                mkay=['_M' num2str(data_buffer.headfile.ray_length)];
+            end
             static_file_path = [static_base_path '/' ...
                 trajectory_name ...
-                '_M' num2str(data_buffer.headfile.traj_matrix) ...
+                mkay ...
                 '_K' num2str(data_buffer.headfile.ray_blocks_per_volume) ...
                 '_U' num2str(data_buffer.headfile.radial_undersampling) ];
-            if ~exist(static_file_path,'file')
+            if ~exist(trajectory_file_path,'file') && ~exist(static_file_path,'file')&& ~opt_struct.ignore_errors
+                db_inplace('rad_mat','Trajectory not available! Maybe you can resolve this manually');
+            end
+            if ~exist(static_file_path,'file') 
                 if ~exist(static_base_path,'dir')
                     warning('Making trajectory storage directory %s\n',static_base_path);
                     [tc_status, tc_message]=mkdir(static_base_path);
@@ -1175,35 +1190,110 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                 fprintf('New trajectory detected!, copying to %s\n',static_file_path);
                 trajectory_file_path=static_file_path;
             end
-            if ~opt_struct.new_trajectory
-                trajectory_file_path=static_file_path;
+            % if ~opt_struct.new_trajectory
+            if opt_struct.old_trajectory 
+                if exist(static_file_path,'file') 
+                    trajectory_file_path=static_file_path;
+                else
+                    db_inplace('rad_mat','You wanted an old trajectory, but there wasnt one. Stop that');
+                end
             end
-            %%% load the file
+            %% load trajectory
             if ~isprop(data_buffer,'trajectory')
                 data_buffer.addprop('trajectory');
                 fileid = fopen(trajectory_file_path, 'r', data_in.disk_endian);
                 % data_buffer.trajectory = fread(fileid, Inf, ['double' '=>single']);
                 data_buffer.trajectory = fread(fileid, Inf,'double');
                 fclose(fileid);
+               
                 %             data_buffer.headfile.rays_acquired_in_total=length(data_buffer.trajectory)/(3*npts); %total number of views
                 fprintf('The total number of trajectory co-ordinates loaded is %d\n', numel(data_buffer.trajectory)/3);
-                data_buffer.trajectory=reshape(data_buffer.trajectory,...
-                    [3,  data_buffer.headfile.ray_length,...
-                    data_buffer.headfile.rays_per_volume]);
                 fprintf('Trajectory loading took %f seconds.\n',toc(t_lt));
                 clear t_lt fileid;
             else
                 fprintf('\ttrajectory in memory.\n');
             end
-            data_buffer.trajectory=reshape(data_buffer.trajectory,...
-                [3,  data_buffer.headfile.ray_length,...
-                data_buffer.headfile.rays_per_volume]);
+            %% trim ramp points and reshape
+            if regexpi(data_buffer.headfile.B_ParavisionVersion,'^\s*6')
+                data_buffer.trajectory=reshape(data_buffer.trajectory,...
+                    [3,  numel(data_buffer.trajectory)/3/data_buffer.headfile.rays_per_volume,...
+                    data_buffer.headfile.rays_per_volume]);
+                if size(data_buffer.trajectory,2) ~= data_buffer.headfile.ray_length &&~opt_struct.ignore_errors
+                    %%% z_Bruker_RampPoints
+                    if ~isfield(data_buffer.headfile,'z_Bruker_RampPoints') ...
+                            || size(data_buffer.trajectory,2)-data_buffer.headfile.ray_length~=data_buffer.headfile.z_Bruker_RampPoints
+                       warning('Trajectory has extra points on every line, what is going on! Removing earliest points of trajectory.');
+                       pause(opt_struct.warning_pause);
+                    end
+                    %%% remove extra points in trajectory.
+                    data_buffer.trajectory(:,1:size(data_buffer.trajectory,2)-data_buffer.headfile.ray_length,:)=[];
+%                     db_inplace('rad_mat','Trajectory has extra points on every line, what is going on!');
+                end
+            else
+                data_buffer.trajectory=reshape(data_buffer.trajectory,...
+                    [3,  data_buffer.headfile.ray_length/data_in.ds.Sub('c'),...
+                    data_buffer.headfile.rays_per_volume]);
+            end
+            
+            %{
+                %%% visualize trajectory
+                %%% first 10
+                range=1:10; t=data_buffer.trajectory;plot3(squeeze(t(1,:,range)),squeeze(t(2,:,range)),squeeze(t(3,:,range)))
+                %%% first 10 points 1:5
+                hold off;
+                range=1:100;max=10; t=data_buffer.trajectory;offset=0;plot3(squeeze(t(1,offset+1:max,range)),squeeze(t(2,offset+1:max,range)),squeeze(t(3,offset+1:max,range)))
+                hold on;
+                offset=5;plot3(squeeze(t(1,offset+1:5,range)),squeeze(t(2,offset+1:5,range)),squeeze(t(3,offset+1:5,range)))
+                hold off;
+            
+                range=1:100;max=16; t=data_buffer.trajectory;offset=6;
+                figure;hold on;
+                for i=range
+                plot3(squeeze(t(1,offset+1:max,i)),squeeze(t(2,offset+1:max,i)),squeeze(t(3,offset+1:max,i)),'o');
+%                 plot3(squeeze(t(1,offset+1:max,i)),squeeze(t(2,offset+1:max,i)),squeeze(t(3,offset+1:max,i)));
+                pause(0.07);end
+
+                %%% endpoints
+                range=1:data_buffer.headfile.rays_per_volume; t=data_buffer.trajectory;plot3(squeeze(t(1,end,range)),squeeze(t(2,end,range)),squeeze(t(3,end,range)))
+                %%% startpoints
+                range=1:data_buffer.headfile.rays_per_volume; t=data_buffer.trajectory;plot3(squeeze(t(1,1,range)),squeeze(t(2,1,range)),squeeze(t(3,1,range)))
+                
+                %%% loop through all ray positions one at a time
+                
+                range=1:data_buffer.headfile.rays_per_volume; t=data_buffer.trajectory; 
+                plot3(squeeze(t(1,end,range)),squeeze(t(2,end,range)),squeeze(t(3,end,range)));
+                hold on ;for i=size(t,2)-data_buffer.headfile.ray_length+1:round(data_buffer.headfile.ray_length/5):size(t,2); s=tic;
+                plot3(squeeze(t(1,i,range)),squeeze(t(2,i,range)),squeeze(t(3,i,range)));
+                e=toc(s); if(e>1); break; else; pause(0.15); end;
+                end;
+                hold off;
+
+                %For super big sets, do first 1%
+                range=1:round(0.01*data_buffer.headfile.rays_per_volume); t=data_buffer.trajectory;
+                plot3(squeeze(t(1,end,range)),squeeze(t(2,end,range)),squeeze(t(3,end,range)),'o');
+                hold on ;for i=size(t,2)-data_buffer.headfile.ray_length/data_buffer.headfile.B_channels+1:round(data_buffer.headfile.ray_length/data_buffer.headfile.B_channels/5):size(t,2); s=tic;
+                plot3(squeeze(t(1,i,range)),squeeze(t(2,i,range)),squeeze(t(3,i,range)),'o');
+                e=toc(s); if(e>1); break; else; pause(0.15); end;
+                end;
+                hold off;
+            
+                range=1:round(0.01*data_buffer.headfile.rays_per_volume); t=data_buffer.trajectory;
+                plot3(squeeze(t(1,end,range)),squeeze(t(2,end,range)),squeeze(t(3,end,range)),'o');
+                hold on ;for i=size(t,2)-data_buffer.headfile.ray_length/data_buffer.headfile.B_channels+1:round(data_buffer.headfile.ray_length/data_buffer.headfile.B_channels/5):size(t,2); s=tic;
+                plot3(squeeze(t(1,i,range)),squeeze(t(2,i,range)),squeeze(t(3,i,range)),'o');
+                e=toc(s); if(e>1); break; else; pause(0.15); end;
+                end;
+                hold off;
+            
+            
+                %}
+            
             %% create a key centered frequencey cutoff filter,
             % when we dont have enough data to be centered we will circ shift
             % appropriatly
             opt_struct.radial_filter_postfix='';
             radial_filter_modifier=1;
-            if ~isprop(data_buffer,'cutoff_filter')
+            if ~isprop(data_buffer,'cutoff_filter') && strcmp(opt_struct.regrid_method,'sdc3_mat')
                 nyquist_cutoff=25;
                 data_buffer.addprop('cutoff_filter');
                 cutoff_filter=ones(data_buffer.headfile.ray_length,...
