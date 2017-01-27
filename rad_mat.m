@@ -698,20 +698,28 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
             &&  ~isempty(regexpi(data_buffer.headfile.([data_prefix 'GS_info_dig_filling']),'Yes')) )...
             ) %&& ~opt_struct.ignore_errors )
         %if ~exist('USE_REVERSE_ENGINEERED_PADDING_CALC','var')
+        if isfield(data_buffer.headfile,'B_ParavisionVersion') ...
+                && ~isempty(regexpi(data_buffer.headfile.B_ParavisionVersion,'^\s*6'))
+            warning('FORCED NEW BRUKER PADDING CALCULATION IN PV6+');
+            opt_struct.use_new_bruker_padding;
+        end
         if opt_struct.use_new_bruker_padding
             warning('NEW PADDING CALCULATION IN USE, PROBABLY DOENST ACCOUNT FOR CHANNEL DATA CORRECTLY');
-            data_in.line_points  = d_struct.c*data_in.ray_length;
             
-            
+            data_in.ramp_points=0;
+            if isfield(data_buffer.headfile,'z_Bruker_RampPoints')
+                data_in.ramp_points=data_buffer.headfile.z_Bruker_RampPoints;
+            end
+            data_in.line_points  = d_struct.c*(data_in.ray_length+data_in.ramp_points);
+                        
             pad_interval=1024;
-            
             pad_bytes=pad_interval-rem(2*data_in.line_points*(data_in.disk_bit_depth/8),pad_interval);
             data_in.line_pad=pad_bytes/(2*(data_in.disk_bit_depth/8));
             data_in.line_points=data_in.line_points+data_in.line_pad;
             %             data_in.line_pad=96;%in complex samples
             %             data_in.line_points=896;% in complex samples
             
-            data_in.total_points = data_in.ray_length*data_in.rays_per_block*d_struct.c*data_in.ray_blocks;
+            data_in.total_points = (data_in.ray_length+data_in.ramp_points)*data_in.rays_per_block*d_struct.c*data_in.ray_blocks;
         
         else
     %if ( strcmp(data_buffer.headfile.([data_prefix 'GS_info_dig_filling']),'Yes')...
@@ -849,10 +857,10 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')&&alt_agilent_c
 elseif strcmp(data_buffer.scanner_constants.scanner_vendor,'agilent')
     data_in.kspace_header_bytes  =data_in.binary_header_bytes+data_in.ray_block_hdr_bytes*data_in.ray_blocks*d_struct.c; 
 end
-data_in.kspace_data=2*(data_in.line_points*data_in.rays_per_block)*data_in.ray_blocks*(data_in.disk_bit_depth/8); % data bytes in file (not counting header bytes)
-% data_in.kspace_data          =recon_strategy.min_load_size*max_loads_per_chunk;
+data_in.kspace_file_size_bytes=2*(data_in.line_points*data_in.rays_per_block)*data_in.ray_blocks*(data_in.disk_bit_depth/8); % data bytes in file (not counting header bytes)
+% data_in.kspace_file_size_bytes          =recon_strategy.min_load_size*max_loads_per_chunk;
 % total bytes used in data only(no header/meta info)
-calculated_kspace_file_size     =data_in.kspace_header_bytes+data_in.kspace_data; % total ammount of bytes in data file.
+calculated_kspace_file_size     =data_in.kspace_header_bytes+data_in.kspace_file_size_bytes; % total ammount of bytes in data file.
 
 fileInfo = dir(data_buffer.headfile.kspace_data_path);
 if isempty(fileInfo)
@@ -1213,8 +1221,13 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
             else
                 fprintf('\ttrajectory in memory.\n');
             end
-            %% trim ramp points and reshape
-            if regexpi(data_buffer.headfile.B_ParavisionVersion,'^\s*6')
+            %% trim ramp points and reshape No No NOOOOO
+            ramp_points=0;
+            if isfield(data_in,'ramp_points')
+                ramp_points=data_in.ramp_points;
+            end
+            if regexpi(data_buffer.headfile.B_ParavisionVersion,'^\s*6') ...
+                    && isfield(opt_struct,'trim_ramp') && opt_struct.trim_ramp
                 data_buffer.trajectory=reshape(data_buffer.trajectory,...
                     [3,  numel(data_buffer.trajectory)/3/data_buffer.headfile.rays_per_volume,...
                     data_buffer.headfile.rays_per_volume]);
@@ -1226,12 +1239,16 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
                        pause(opt_struct.warning_pause);
                     end
                     %%% remove extra points in trajectory.
-                    data_buffer.trajectory(:,1:size(data_buffer.trajectory,2)-data_buffer.headfile.ray_length,:)=[];
+                    % the beginning points
+                    % data_buffer.trajectory(:,1:size(data_buffer.trajectory,2)-data_buffer.headfile.ray_length,:)=[];
+                    % the end points
+                    data_buffer.trajectory(:,end-(size(data_buffer.trajectory,2)-data_buffer.headfile.ray_length)+1:end,:)=[];
 %                     db_inplace('rad_mat','Trajectory has extra points on every line, what is going on!');
                 end
             else
+                %%% may have errors related to multi channel.
                 data_buffer.trajectory=reshape(data_buffer.trajectory,...
-                    [3,  data_buffer.headfile.ray_length/data_in.ds.Sub('c'),...
+                    [3,  (data_buffer.headfile.ray_length+ramp_points),...
                     data_buffer.headfile.rays_per_volume]);
             end
             
@@ -1424,7 +1441,7 @@ for recon_num=opt_struct.recon_operation_min:min(opt_struct.recon_operation_max,
             else
                 fprintf('\tdcf in memory.\n');
             end
-            data_buffer.trajectory=reshape(data_buffer.trajectory,[3,data_in.ray_length,data_in.rays_per_block,data_buffer.headfile.ray_blocks_per_volume]);
+            % data_buffer.trajectory=reshape(data_buffer.trajectory,[3,data_in.ray_length,data_in.rays_per_block,data_buffer.headfile.ray_blocks_per_volume]);
             if  isprop(data_buffer,'dcf')
                 data_buffer.dcf=reshape(data_buffer.dcf,[data_in.ray_length,data_in.rays_per_block,data_buffer.headfile.ray_blocks_per_volume]);
             end

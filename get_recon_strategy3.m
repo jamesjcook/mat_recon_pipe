@@ -117,7 +117,7 @@ recon_strategy.min_load_size=recon_strategy.chunk_size; % minimum_load_size in d
 recon_strategy.load_skip=data_in.ray_block_hdr_bytes;
 recon_strategy.post_skip=0;  % part of subchunk code 
 chunk_size_bytes=recon_strategy.chunk_size*(data_in.disk_bit_depth/8);
-recon_strategy.num_chunks=data_in.kspace_data/chunk_size_bytes; clear chunk_size_bytes;
+recon_strategy.num_chunks=data_in.kspace_file_size_bytes/chunk_size_bytes; clear chunk_size_bytes;
 
 
 %%% set starting point to exactly one ray worth of input in memory.
