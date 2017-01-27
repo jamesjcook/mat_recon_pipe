@@ -3,7 +3,8 @@ function scott_grid(data_buffer,opt_struct,data_in,data_work,data_out)
 if ~exist('data_buffer','var')
     warning('LOADING STATIC TEST DATA');
     pause(3);
-    load /Volumes/workstation_home/software/recon/External/ScottHaileRobertson/Duke-CIVM-MRI-Tools/DukePackage/Recon/ReconScripts/Bruker/ScottDemoVarLoad_B02124;
+    %load /Volumes/workstation_home/software/recon/External/ScottHaileRobertson/Duke-CIVM-MRI-Tools/DukePackage/Recon/ReconScripts/Bruker/ScottDemoVarLoad_B02124;
+    load /Volumes/workstation_home/software/recon/External/ScottHaileRobertson/Duke-CIVM-MRI-Tools/DukePackage/Recon/ReconScripts/Bruker/ScottDemoVarload128.mat
 end
 if ~isfield(opt_struct,'nThreads')
     opt_struct.nThreads = feature('numCores');
