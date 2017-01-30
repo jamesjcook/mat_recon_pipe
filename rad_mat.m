@@ -713,7 +713,26 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
             data_in.line_points  = d_struct.c*(data_in.ray_length+data_in.ramp_points);
                         
             pad_interval=1024;
-            pad_bytes=pad_interval-rem(2*data_in.line_points*(data_in.disk_bit_depth/8),pad_interval);
+            % pad_bytes=pad_interval-rem(2*data_in.line_points*(data_in.disk_bit_depth/8),pad_interval);
+            line_bytes=2*data_in.line_points*(data_in.disk_bit_depth/8);
+            
+            interval_count=line_bytes/pad_interval;
+            pad_bytes=0;
+            if floor(interval_count)<interval_count
+                pad_bytes=pad_interval-rem(line_bytes,pad_interval);
+            end
+            
+            %{
+            if line_bytes>pad_interval
+                over_bytes=rem(line_bytes,pad_interval);
+            else
+                warning('Extra odd padding condition');
+                pause(opt_struct.warning_pause);
+                over_bytes=line_bytes;
+            end
+            %}
+       
+            
             data_in.line_pad=pad_bytes/(2*(data_in.disk_bit_depth/8));
             data_in.line_points=data_in.line_points+data_in.line_pad;
             %             data_in.line_pad=96;%in complex samples
