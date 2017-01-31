@@ -12,7 +12,7 @@ known_methods={'ute3d_keyhole','UTE3D','ute3d_test_gm','ute3df','ute3df2','ute3d
 known_methods={'.*'};
 
 %max_age='-2d'; % the max modify age for find command % mac version
-max_age='-2'; % the max modify age for find command 
+max_age='-1'; % the max modify age for find command 
 fprintf('Known/tested Methods\n ');
 fprintf('%s,\n ',known_methods{:});
 verbosity=0;
@@ -38,6 +38,7 @@ options={'warning_pause=0'
     'write_unscaled_nD'
     'ignore_errors'
     'skip_filter'
+    'skip_recon'
     }';
 
 for scanner_num=1:numel(scanner_list)
