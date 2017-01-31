@@ -4,7 +4,12 @@ end
 if ~exist('scott_buffer','var');
     load('scottload.mat');
 end
-
+%Hints from scott on visualizing points n bits.
+%obj=sphere(radius?)
+%surf(obj)
+% He has some pointers on visualizing density, which we'll get back to me with 
+  
+save_path='';
 %%{
 %%% display first 1%'
 range_offset=0;
@@ -142,13 +147,14 @@ figure(fig_base+2);plot3(squeeze(t(1,end,range)),squeeze(t(2,end,range)),squeeze
 pause(1);
 
 %%% display scan progression 5% at a time
+save_path='bruker_';
 range_offset=0;
 fig_base=16;
 %%% init figure with first 40 points of scott data to get a good scale on graph
 db=scott_buffer;
 range=1:40; t=db.trajectory;
 fprintf('plot %i-%i endpoints\n',range(1),range(end));
-figure(fig_base+1);hold off;
+fig_id=figure(fig_base+1);hold off;
 plot3(squeeze(t(1,end,range)),squeeze(t(2,end,range)),squeeze(t(3,end,range)),'.');
 
 db=ute_buffer;
@@ -160,16 +166,17 @@ rmax=round(size(t,3)*min(i,100)/100);
 range=rmin:rmax;
 fprintf('plot %i-%i endpoints\n',range(1),range(end));
 plot3(squeeze(t(1,end,range)),squeeze(t(2,end,range)),squeeze(t(3,end,range)),'.');
+%saveas(fig_id, sprintf('%s_%02i',save_path,i), 'png');
 e=toc(s); if(e>1); break; else pause(0.15); end
 rmin=rmax+1;
 end
 hold off;
 
-
+save_path='scott_';
 db=scott_buffer;
 range=1:40; t=db.trajectory;
 fprintf('plot %i-%i endpoints\n',range(1),range(end));
-figure(fig_base+2);hold off;
+fig_id=figure(fig_base+2);hold off;
 plot3(squeeze(t(1,end,range)),squeeze(t(2,end,range)),squeeze(t(3,end,range)),'.');
 hold on;
 rmin=1;
@@ -178,6 +185,7 @@ rmax=round(size(t,3)*min(i,100)/100);
 range=rmin:rmax;
 fprintf('plot %i-%i endpoints\n',range(1),range(end));
 plot3(squeeze(t(1,end,range)),squeeze(t(2,end,range)),squeeze(t(3,end,range)),'.');
+saveas(fig_id, sprintf('%s_%02i',save_path,i), 'png');
 e=toc(s); if(e>1); break; else pause(0.15); end
 rmin=rmax+1;
 end
