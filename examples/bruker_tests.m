@@ -12,7 +12,7 @@ known_methods={'ute3d_keyhole','UTE3D','ute3d_test_gm','ute3df','ute3df2','ute3d
 known_methods={'.*'};
 
 %max_age='-2d'; % the max modify age for find command % mac version
-max_age='-1'; % the max modify age for find command 
+max_age='-4'; % the max modify age for find command 
 fprintf('Known/tested Methods\n ');
 fprintf('%s,\n ',known_methods{:});
 verbosity=0;
@@ -27,8 +27,8 @@ dataroot=['/opt/PV6.0.1/data/' b_user '/'];
 fail_list='';
 test_brukerextract=false;
 % test_brukerextract=true;
-% test_rad_mat=true;
-test_rad_mat=false;
+test_rad_mat=true;
+% test_rad_mat=false;
 % options={'existing_data','overwrite','ignore_kspace_oversize','skip_filter','warning_pause=0','debug_mode=0',};
 options={'warning_pause=0'
     'debug_mode=50'
@@ -96,6 +96,7 @@ for scanner_num=1:numel(scanner_list)
                     
                     if regexp(study_fieldname,'-')  % check for spaces.
                         patient_studyname=regexprep(study_fieldname,'-','___');
+                        patient_studyname=regexprep(patient_studyname,'[^\w]','');
                         if  verbosity>0
                             warning('dash in name, replacing with triple underscore_');%, ka boom, note this condition should be fixed, as sally allowed this.(bleh).');
                             fprintf('%s',study_fieldname);
@@ -111,6 +112,7 @@ for scanner_num=1:numel(scanner_list)
                 end
                 if regexp(patient_fieldname,'-')  % check for spaces.
                     patient_fieldname=regexprep(patient_fieldname,'-','___');
+                    patient_fieldname=regexprep(patient_fieldname,'[^\w]','');
                     if  verbosity>0
                         warning('dash in name, replacing with triple underscore_');%, ka boom, note this condition should be fixed, as sally allowed this.(bleh).');
                         fprintf('%s',patient_fieldname);

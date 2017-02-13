@@ -2,14 +2,20 @@ options={'existing_data','overwrite','warning_pause=0','debug_mode=50',...
     'skip_write_civm_raw','write_unscaled','skip_filter','use_new_bruker_padding'};%,'ignore_errors'};%,'ignore_kspace_oversize'};
 
 try % 128 scott
-[success_status_jcnUTE3D,img_jcnUTE3D, data_buffer_jcnUTE3D]=rad_mat('nemopv6','test_RM_nemopv6_jcn_UTE3D_20170125_20170124_084234_121205_1_3_20170124_s21',{'20170124_084234_121205_1_3','21'},options);
+%[success_status_jcnUTE3D,img_jcnUTE3D, data_buffer_jcnUTE3D]=rad_mat('nemopv6','test_RM_nemopv6_jcn_UTE3D_20170125_20170124_084234_121205_1_3_20170124_s21',{'20170124_084234_121205_1_3','21'},options);
+[success_status_jcnUTE3D,img_jcnUTE3D, data_buffer_jcnUTE3D]=rad_mat('nemopv6','test_RM_nemopv6_jcn_UTE3D_20170125_121205_1_3_1_3_20170131_09_20170131_s17',{'121205_1_3_1_3_20170131_09','17'},options);
+
 !open /androsspace/test_RM_nemopv6_jcn_UTE3D_20170125_20170124_084234_121205_1_3_20170124_s21.work
+!open /panoramaspace/test_RM_nemopv6_jcn_UTE3D_20170125_121205_1_3_1_3_20170131_09_20170131_s17.work
 catch err
     warning(err.message);
 end
 try % 128 bruker
-[success_status_UTE3D,img_UTE3D, data_buffer_UTE3D]=rad_mat('nemopv6','test_RM_nemopv6_UTE3D_20170124_084234_121205_1_3_20170124_s13',{'20170124_084234_121205_1_3','13'},options);
+% [success_status_UTE3D,img_UTE3D, data_buffer_UTE3D]=rad_mat('nemopv6','test_RM_nemopv6_UTE3D_20170124_084234_121205_1_3_20170124_s13',{'20170124_084234_121205_1_3','13'},options);
+[success_status_UTE3D,img_UTE3D, data_buffer_UTE3D]=rad_mat('nemopv6','test_RM_nemopv6_UTE3D_121205_1_3_1_3_20170131_09_20170131_s05',{'121205_1_3_1_3_20170131_09','5'},options);
+
 !open /androsspace/test_RM_nemopv6_UTE3D_20170124_084234_121205_1_3_20170124_s13.work
+!open /panoramaspace/test_RM_nemopv6_UTE3D_121205_1_3_1_3_20170131_09_20170131_s05.work
 catch err
     warning(err.message);
 end
@@ -20,6 +26,9 @@ end
 % ACQ_gradient_amplitude=100 <<<< !!!!
 
 %%% !compare_headfiles test_RM_nemopv6_UTE3D_20170124_084234_121205_1_3_20170124_s13 test_RM_nemopv6_jcn_UTE3D_20170125_20170124_084234_121205_1_3_20170124_s21
+%%% !compare_headfiles test_RM_nemopv6_UTE3D_121205_1_3_1_3_20170131_09_20170131_s05 test_RM_nemopv6_jcn_UTE3D_20170125_121205_1_3_1_3_20170131_09_20170131_s17
+return;
+stop;
 
 
 try
