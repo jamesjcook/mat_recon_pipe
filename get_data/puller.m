@@ -41,7 +41,7 @@ data_buffer.headfile.comment{end+1}=['# ' cmd_list ];
 data_buffer.headfile.comment{end+1}=['# /\ pull cmd ' '/\'];
 if ~opt_struct.existing_data || ~exist(output,'dir')  %&&~opt_struct.skip_recon
     if ~exist(output,'dir') && opt_struct.existing_data
-        warning(sprintf('You wanted existing data BUT IT WASNT THERE Or I dont know how to look!\n\tContinuing by tring to fetch new.\nMaybe puller will understand you.'));
+        warning(sprintf('You wanted existing data BUT IT WASNT THERE Or I dont know how to look!\n\tContinuing by trhing to fetch new.\nMaybe puller will understand you.'));
         pause(1);
     end
     p_status =system(cmd_list);
