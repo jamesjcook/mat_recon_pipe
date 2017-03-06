@@ -943,7 +943,7 @@ if meminfo.AvailPhys<recon_strategy.memory_space_required
     meminfo=imaqmem;
 end
 %%% now prompt for program close and purge and update available mem.
-while meminfo.AvailPhys<recon_strategy.memory_space_required
+while meminfo.AvailPhys<recon_strategy.memory_space_required && ~opt_struct.skip_mem_checks
     fprintf('%0.2fM/%0.2fM you have too many programs open.\n ',meminfo.AvailPhys/1024/1024,recon_strategy.memory_space_required/1024/1024);
     user_response=input('close some programs and then press enter >> (press c to ignore mem limit, NOT RECOMMENDED)','s');
     if strcmp(user_response,'c')
