@@ -1,5 +1,5 @@
 options={'existing_data','overwrite','warning_pause=0','debug_mode=50',...
-    'skip_write_civm_raw','write_unscaled','skip_filter','use_new_bruker_padding'};%,'ignore_errors'};%,'ignore_kspace_oversize'};
+    'skip_write_civm_raw','write_unscaled','skip_filter','use_new_bruker_padding','skip_mem_checks'};%,'ignore_errors'};%,'ignore_kspace_oversize'};
 
 try % 128 scott
 %[success_status_jcnUTE3D,img_jcnUTE3D, data_buffer_jcnUTE3D]=rad_mat('nemopv6','test_RM_nemopv6_jcn_UTE3D_20170125_20170124_084234_121205_1_3_20170124_s21',{'20170124_084234_121205_1_3','21'},options);
