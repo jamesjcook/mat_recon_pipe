@@ -692,6 +692,11 @@ alt_agilent_channel_code=true;
 data_in.line_pad=0;
 if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
     %% calculate padding for bruker
+    data_in.ramp_points=0;
+    if isfield(data_buffer.headfile,'z_Bruker_RampPoints')
+        data_in.ramp_points=data_buffer.headfile.z_Bruker_RampPoints;
+    end
+    data_in.line_points  = d_struct.c*(data_in.ray_length+data_in.ramp_points);
     
     %~strcmp(data_buffer.headfile.([data_prefix 'GO_block_size']),'continuous')
     if (  ( ~isempty(regexpi(data_buffer.headfile.([data_prefix 'GO_block_size']),'standard'))  ...
@@ -706,12 +711,7 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
         if opt_struct.use_new_bruker_padding
             warning('NEW PADDING CALCULATION IN USE, PROBABLY DOENST ACCOUNT FOR CHANNEL DATA CORRECTLY');
             
-            data_in.ramp_points=0;
-            if isfield(data_buffer.headfile,'z_Bruker_RampPoints')
-                data_in.ramp_points=data_buffer.headfile.z_Bruker_RampPoints;
-            end
-            data_in.line_points  = d_struct.c*(data_in.ray_length+data_in.ramp_points);
-                        
+           
             pad_interval=1024;
             % pad_bytes=pad_interval-rem(2*data_in.line_points*(data_in.disk_bit_depth/8),pad_interval);
             line_bytes=2*data_in.line_points*(data_in.disk_bit_depth/8);
@@ -805,8 +805,8 @@ if strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
         clear mul F;
         end
     else
-        data_in.line_points  = d_struct.c*data_in.ray_length;
-        data_in.total_points = data_in.ray_length*data_in.rays_per_block*d_struct.c*data_in.ray_blocks;
+        % data_in.line_points  = d_struct.c*data_in.ray_length;% set above
+        data_in.total_points = data_in.line_points*data_in.rays_per_block*data_in.ray_blocks;
         warning(['Found no pad option with bruker scan for the first time,' ...
             'Tell james let this continue in test mode']);
                 
@@ -923,6 +923,10 @@ meminfo=imaqmem; %check available memory
 if opt_struct.debug_stop_recon_strategy
     db_inplace('rad_mat','debug stop requested prior to recon strategy');
 end
+if ~isempty(regexp(data_in.vol_type,'.*radial.*', 'once'))
+    opt_struct.skip_mem_checks=1;
+end
+
 [recon_strategy,opt_struct]=get_recon_strategy3(data_buffer,opt_struct,d_struct,data_in,data_work,data_out,meminfo);
 if recon_strategy.recon_operations>data_buffer.headfile.([data_tag 'volumes']) ...
         && ~strcmp(data_in.vol_type,'2D')
