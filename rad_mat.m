@@ -565,7 +565,9 @@ end
 if numel(input_data)==1
     input_data= strsplit(input_data{1},'/');
 end
-if numel(input_data)==2 && strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
+if numel(input_data)==2 ...
+    && isfield(data_buffer.scanner_constants,'scanner_vendor') ...
+    && strcmp(data_buffer.scanner_constants.scanner_vendor,'bruker')
     input_data{1}=[input_data{1} '*'];
     if opt_struct.study~=0
         if isnumeric(opt_struct.study)
